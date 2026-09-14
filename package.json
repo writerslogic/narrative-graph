@@ -1,0 +1,78 @@
+{
+  "name": "narrative-graph",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "author": "WritersLogic, Inc. <david@writerslogic.com>",
+  "description": "Turn prose into candidate relational facts — entity detection, relation labeling, confidence scoring, entirely local.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/writerslogic/narrative-graph"
+  },
+  "homepage": "https://github.com/writerslogic/narrative-graph",
+  "keywords": [
+    "nlp",
+    "relation-extraction",
+    "entity-extraction",
+    "heuristics",
+    "semantic",
+    "text-processing"
+  ],
+  "main": "index.js",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs",
+      "require": "./index.js"
+    }
+  },
+  "types": "index.d.ts",
+  "napi": {
+    "binaryName": "narrative-graph",
+    "targets": [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --release --features node-api",
+    "build:debug": "napi build --features node-api",
+    "prepublishOnly": "napi prepublish -t npm",
+    "artifacts": "napi artifacts",
+    "version": "napi version",
+    "test": "node --test tests/node/*.test.cjs",
+    "test:types": "tsc --noEmit --strict --target es2022 --module nodenext --moduleResolution nodenext --types node tests/node/types.test.mts"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.7.4",
+    "@types/node": "^22.20.2",
+    "typescript": "^6.0.3"
+  },
+  "optionalDependencies": {
+    "narrative-graph-darwin-arm64": "0.1.0",
+    "narrative-graph-darwin-x64": "0.1.0",
+    "narrative-graph-linux-x64-gnu": "0.1.0",
+    "narrative-graph-win32-x64-msvc": "0.1.0"
+  },
+  "peerDependencies": {
+    "@huggingface/transformers": "^3.8.1 || ^4.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@huggingface/transformers": {
+      "optional": true
+    }
+  },
+  "files": [
+    "index.js",
+    "index.mjs",
+    "index.d.ts",
+    "bindings/*.d.ts",
+    "*.node",
+    "README.md",
+    "LICENSE",
+    "docs/ARCHITECTURE.md",
+    "docs/INTEGRATION.md",
+    "docs/EVALUATION.md"
+  ]
+}
