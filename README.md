@@ -65,7 +65,7 @@ npm install narrative-graph
 
 ```toml
 [dependencies]
-narrative-graph = "1"
+narrative-graph = "0.1"
 ```
 
 ### GitHub
@@ -75,9 +75,9 @@ npm install writerslogic/narrative-graph
 ```
 
 <details>
-<summary><strong>Optional: local ONNX extraction model</strong></summary>
+<summary><strong>Optional: local ONNX extraction model (Node.js only)</strong></summary>
 
-The default pipeline is pure heuristics and needs nothing extra. For higher recall on prose that doesn't fit a recognizable verb-phrase pattern, enable the `onnx-ner` feature (Rust) or install `@huggingface/transformers` (Node) and point narrative-graph at a local model directory:
+The default pipeline is pure heuristics and needs nothing extra. For higher recall on prose that doesn't fit a recognizable verb-phrase pattern, install `@huggingface/transformers` and point narrative-graph at a local model directory (Node.js only):
 
 ```javascript
 const { createLocalExtractor, extractCandidateTriples } = require('narrative-graph');
@@ -94,11 +94,7 @@ await extractor.dispose();
 
 Nothing is downloaded by this factory — supply an existing model directory and an explicit revision. The heuristic pipeline runs unconditionally as a baseline; the model, when supplied, sharpens entity boundaries and relation labels on harder sentences.
 
-```toml
-# Rust
-[dependencies]
-narrative-graph = { version = "1", features = ["onnx-ner"] }
-```
+The Rust core stays heuristics-only by design to keep the default build lightweight and dependency-free — this matches the pattern of the sibling [`holographic-memory`](https://github.com/writerslogic/holographic-memory) project, where local embedding models are similarly Node-only via `@huggingface/transformers`.
 
 </details>
 
