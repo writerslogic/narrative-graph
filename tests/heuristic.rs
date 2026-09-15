@@ -470,3 +470,21 @@ fn test_every_lexicon_noun_yields_a_distinctly_attributed_rule() {
         assert_eq!(candidates[0].rule, format!("possessive-{noun}-pattern"));
     }
 }
+
+#[test]
+fn test_a_noun_and_a_verb_for_one_relation_share_a_label() {
+    // "Elena is Marco's mentor" and "Elena mentors Marco" are the same fact.
+    // Two labels would give a consumer two edge types for one relation.
+    let opts = Options::default();
+    let noun =
+        extract_candidate_triples("Elena is Marco's mentor.", &opts).expect("extraction failed");
+    let verb = extract_candidate_triples("Elena mentors Marco.", &opts).expect("extraction failed");
+
+    assert_eq!(noun.len(), 1);
+    assert_eq!(verb.len(), 1);
+    assert_eq!(noun[0].relation, verb[0].relation);
+    assert_eq!(noun[0].subject, verb[0].subject);
+    assert_eq!(noun[0].object, verb[0].object);
+    // Attribution still distinguishes how each was found.
+    assert_ne!(noun[0].rule, verb[0].rule);
+}

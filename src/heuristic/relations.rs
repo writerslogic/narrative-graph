@@ -98,41 +98,50 @@ impl PatternMatch {
 /// The rule name is derived as `possessive-<noun>-pattern`, so adding a noun
 /// adds a distinctly attributed rule. Matching is whole-word, so entries are
 /// order-independent.
-const POSSESSIVE_NOUNS: &[(&str, f32)] = &[
+/// Relational nouns recognized in a possessive, as (noun, relation, base
+/// confidence). Every entry reads "X is Y's <noun>", giving relation(X, Y).
+///
+/// The relation is named explicitly rather than derived from the noun so a
+/// noun can share a label with a verb rule: "Elena is Marco's mentor" and
+/// "Elena mentors Marco" are the same fact and must not produce two edge
+/// types. The rule name stays `possessive-<noun>-pattern`, so attribution
+/// remains per-noun. Matching is whole-word, so entries are order-independent.
+const POSSESSIVE_NOUNS: &[(&str, &str, f32)] = &[
     // Kinship and role: the possessive states the relation outright.
-    ("sister", base::POSSESSIVE_FACTUAL),
-    ("brother", base::POSSESSIVE_FACTUAL),
-    ("mother", base::POSSESSIVE_FACTUAL),
-    ("father", base::POSSESSIVE_FACTUAL),
-    ("grandmother", base::POSSESSIVE_FACTUAL),
-    ("grandfather", base::POSSESSIVE_FACTUAL),
-    ("daughter", base::POSSESSIVE_FACTUAL),
-    ("son", base::POSSESSIVE_FACTUAL),
-    ("wife", base::POSSESSIVE_FACTUAL),
-    ("husband", base::POSSESSIVE_FACTUAL),
-    ("cousin", base::POSSESSIVE_FACTUAL),
-    ("aunt", base::POSSESSIVE_FACTUAL),
-    ("uncle", base::POSSESSIVE_FACTUAL),
-    ("niece", base::POSSESSIVE_FACTUAL),
-    ("nephew", base::POSSESSIVE_FACTUAL),
-    ("widow", base::POSSESSIVE_FACTUAL),
-    ("guardian", base::POSSESSIVE_FACTUAL),
-    ("employer", base::POSSESSIVE_FACTUAL),
-    ("servant", base::POSSESSIVE_FACTUAL),
-    ("master", base::POSSESSIVE_FACTUAL),
-    ("teacher", base::POSSESSIVE_FACTUAL),
-    ("mentor", base::POSSESSIVE_FACTUAL),
-    ("student", base::POSSESSIVE_FACTUAL),
-    ("pupil", base::POSSESSIVE_FACTUAL),
-    ("apprentice", base::POSSESSIVE_FACTUAL),
+    ("sister", "sister_of", base::POSSESSIVE_FACTUAL),
+    ("brother", "brother_of", base::POSSESSIVE_FACTUAL),
+    ("mother", "mother_of", base::POSSESSIVE_FACTUAL),
+    ("father", "father_of", base::POSSESSIVE_FACTUAL),
+    ("grandmother", "grandmother_of", base::POSSESSIVE_FACTUAL),
+    ("grandfather", "grandfather_of", base::POSSESSIVE_FACTUAL),
+    ("daughter", "daughter_of", base::POSSESSIVE_FACTUAL),
+    ("son", "son_of", base::POSSESSIVE_FACTUAL),
+    ("wife", "wife_of", base::POSSESSIVE_FACTUAL),
+    ("husband", "husband_of", base::POSSESSIVE_FACTUAL),
+    ("cousin", "cousin_of", base::POSSESSIVE_FACTUAL),
+    ("aunt", "aunt_of", base::POSSESSIVE_FACTUAL),
+    ("uncle", "uncle_of", base::POSSESSIVE_FACTUAL),
+    ("niece", "niece_of", base::POSSESSIVE_FACTUAL),
+    ("nephew", "nephew_of", base::POSSESSIVE_FACTUAL),
+    ("widow", "widow_of", base::POSSESSIVE_FACTUAL),
+    ("guardian", "guardian_of", base::POSSESSIVE_FACTUAL),
+    ("employer", "employer_of", base::POSSESSIVE_FACTUAL),
+    ("servant", "servant_of", base::POSSESSIVE_FACTUAL),
+    ("master", "master_of", base::POSSESSIVE_FACTUAL),
+    ("teacher", "teacher_of", base::POSSESSIVE_FACTUAL),
+    ("student", "student_of", base::POSSESSIVE_FACTUAL),
+    ("pupil", "pupil_of", base::POSSESSIVE_FACTUAL),
+    ("apprentice", "apprentice_of", base::POSSESSIVE_FACTUAL),
+    // Shares its label with verb-mentor-pattern: the same fact, said two ways.
+    ("mentor", "mentors", base::POSSESSIVE_FACTUAL),
     // Social stance: same shape, weaker claim.
-    ("friend", base::POSSESSIVE_STANCE),
-    ("enemy", base::POSSESSIVE_STANCE),
-    ("rival", base::POSSESSIVE_STANCE),
-    ("lover", base::POSSESSIVE_STANCE),
-    ("companion", base::POSSESSIVE_STANCE),
-    ("ally", base::POSSESSIVE_STANCE),
-    ("acquaintance", base::POSSESSIVE_STANCE),
+    ("friend", "friend_of", base::POSSESSIVE_STANCE),
+    ("enemy", "enemy_of", base::POSSESSIVE_STANCE),
+    ("rival", "rival_of", base::POSSESSIVE_STANCE),
+    ("lover", "lover_of", base::POSSESSIVE_STANCE),
+    ("companion", "companion_of", base::POSSESSIVE_STANCE),
+    ("ally", "ally_of", base::POSSESSIVE_STANCE),
+    ("acquaintance", "acquaintance_of", base::POSSESSIVE_STANCE),
 ];
 
 /// Byte range of the first ASCII-case-insensitive *whole-word* occurrence of
@@ -229,16 +238,11 @@ fn find_relation_pattern(
         let phrase = &rest[..possessed_noun_phrase_len(rest)];
         let phrase_start = obj.end + "'s".len();
 
-        for (noun, base) in POSSESSIVE_NOUNS {
+        for (noun, relation, base) in POSSESSIVE_NOUNS {
             if let Some((_, noun_end)) = find_ascii_ci_word(phrase, noun) {
                 return Some(
-                    PatternMatch::new(
-                        &format!("{noun}_of"),
-                        &format!("possessive-{noun}-pattern"),
-                        *base,
-                        gap,
-                    )
-                    .span_end(phrase_start + noun_end),
+                    PatternMatch::new(relation, &format!("possessive-{noun}-pattern"), *base, gap)
+                        .span_end(phrase_start + noun_end),
                 );
             }
         }
