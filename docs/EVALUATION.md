@@ -8,19 +8,19 @@ exists is behavioral test coverage over the pattern set documented in
 
 | Suite | Count | What it checks |
 |---|---|---|
-| `src/heuristic/segment.rs` (`cargo test`) | 13 | Sentence segmentation: honorifics, initials, ellipses, decimals, em-dashes, quoted dialogue with attribution, terminator runs, multibyte offsets, and empty input |
+| `src/heuristic/segment.rs` (`cargo test`) | 14 | Sentence segmentation: honorifics, initials, ellipses, decimals, em-dashes, quoted dialogue with attribution, terminator runs, multibyte offsets, empty input, and a 20k-case property test asserting no panic and valid char-boundary offsets |
 | `tests/heuristic.rs` (`cargo test`) | 11 | Each relation pattern fires on a canonical example, confidence ordering, span correctness, `min_confidence` filtering, rule attribution, and multi-relation sentences |
 | `types.rs` binding-export tests (`cargo test --features bindings`) | 3 | `ts-rs` regenerates `bindings/*.ts` from `Options`, `TripleCandidate`, `SpannedTriple` without drift |
 | `tests/node/api.test.cjs` (`npm test`) | 8 | The N-API surface: extraction, empty input, `minConfidence` filtering, `aliases`, `ontology`, and the out-of-range-confidence error |
 | `tests/node/types.test.mts` (`npm run test:types`) | — | `index.d.ts` accepts valid `NapiOptions`/results and rejects invalid ones (`tsc --strict`) |
 
-All pass as of this writing (24 under default features; the 3 binding-export
+All pass as of this writing (25 under default features; the 3 binding-export
 tests require `--features bindings`, which CI covers via `--all-features`).
 Reproduce with:
 
 ```bash
-cargo test                      # 24: segmentation + pipeline
-cargo test --all-features       # 27: adds the binding-export tests
+cargo test                      # 25: segmentation + pipeline
+cargo test --all-features       # 28: adds the binding-export tests
 npm install && npm test
 npm run test:types
 ```
