@@ -29,15 +29,15 @@ pub fn extract_relations(
 
             // Check for verb-phrase patterns between these entities
             // Subject comes before object in text
-            if let Some((rel, rule, gap)) = find_relation_pattern(text, subj, obj) {
-                let normalized_rel = normalize_relation(&rel, ontology);
+            if let Some(m) = find_relation_pattern(text, subj, obj) {
+                let (s, o) = if m.swapped { (obj, subj) } else { (subj, obj) };
                 relations.push(RelationCandidate {
-                    subject: subj.normalized.clone(),
-                    relation: normalized_rel,
-                    object: obj.normalized.clone(),
-                    rule,
+                    subject: s.normalized.clone(),
+                    relation: normalize_relation(&m.relation, ontology),
+                    object: o.normalized.clone(),
+                    rule: m.rule,
                     span: [subj.start, obj.end],
-                    gap,
+                    gap: m.gap,
                 });
             }
         }
@@ -46,11 +46,49 @@ pub fn extract_relations(
     relations
 }
 
+/// A pattern hit. `swapped` means the phrasing puts the relation's subject
+/// second in the text, as passive voice does.
+struct PatternMatch {
+    relation: String,
+    rule: String,
+    gap: usize,
+    swapped: bool,
+}
+
+impl PatternMatch {
+    fn new(relation: &str, rule: &str, gap: usize) -> Self {
+        Self {
+            relation: relation.to_string(),
+            rule: rule.to_string(),
+            gap,
+            swapped: false,
+        }
+    }
+
+    fn swapped(self, swapped: bool) -> Self {
+        Self { swapped, ..self }
+    }
+}
+
+/// The possessed noun phrase introduced by `'s`, cut at the first clause
+/// boundary. IMPORTANT: the phrase bounds the relational-noun search. Scanning
+/// the whole remainder of the sentence matches a noun belonging to a later
+/// clause ("Marco's dog, and she has a sister") and emits the highest
+/// confidence rule in the system on it.
+fn possessed_noun_phrase(after_obj: &str) -> &str {
+    let rest = &after_obj["'s".len()..];
+    let punct = rest
+        .find([',', '.', ';', ':', '!', '?'])
+        .unwrap_or(rest.len());
+    let conjunction = rest.find(" and ").unwrap_or(rest.len());
+    &rest[..punct.min(conjunction)]
+}
+
 fn find_relation_pattern(
     text: &str,
     subj: &EntityCandidate,
     obj: &EntityCandidate,
-) -> Option<(String, String, usize)> {
+) -> Option<PatternMatch> {
     // IMPORTANT: use each mention's own offsets. Re-locating a surface form by
     // substring search finds the first occurrence anywhere in the text, and an
     // offset into a lowercased copy does not address `text`.
@@ -78,51 +116,43 @@ fn find_relation_pattern(
 
     // Possessive pattern: "x is y's [relation]"
     if after_obj.starts_with("'s ") || after_obj.starts_with("'s.") {
-        if after_obj.contains("sister") {
-            return Some((
-                "sister_of".to_string(),
-                "possessive-sister-pattern".to_string(),
+        let possessed = possessed_noun_phrase(after_obj);
+        if possessed.contains("sister") {
+            return Some(PatternMatch::new(
+                "sister_of",
+                "possessive-sister-pattern",
                 gap,
             ));
         }
-        if after_obj.contains("brother") {
-            return Some((
-                "brother_of".to_string(),
-                "possessive-brother-pattern".to_string(),
+        if possessed.contains("brother") {
+            return Some(PatternMatch::new(
+                "brother_of",
+                "possessive-brother-pattern",
                 gap,
             ));
         }
     }
 
-    // Verb patterns with space before to ensure word boundaries
+    // Verb patterns with space before to ensure word boundaries.
+    // IMPORTANT: passive voice ("was mentored by") names the mentor second, so
+    // the relation's subject is the later entity, not the earlier one.
     if between.contains(" mentor") {
-        return Some((
-            "mentors".to_string(),
-            "verb-mentor-pattern".to_string(),
-            gap,
-        ));
+        let passive = between.contains(" by");
+        return Some(PatternMatch::new("mentors", "verb-mentor-pattern", gap).swapped(passive));
     }
     if between.contains(" work") && between.contains(" at") {
-        return Some((
-            "works_at".to_string(),
-            "verb-works-at-pattern".to_string(),
-            gap,
-        ));
+        return Some(PatternMatch::new("works_at", "verb-works-at-pattern", gap));
     }
     if between.contains(", who ") && (between.contains("work") || between.contains("mentor")) {
         if between.contains("work") && between.contains("at") {
-            return Some((
-                "works_at".to_string(),
-                "relative-works-at-pattern".to_string(),
+            return Some(PatternMatch::new(
+                "works_at",
+                "relative-works-at-pattern",
                 gap,
             ));
         }
         if between.contains("mentor") {
-            return Some((
-                "mentors".to_string(),
-                "relative-mentor-pattern".to_string(),
-                gap,
-            ));
+            return Some(PatternMatch::new("mentors", "relative-mentor-pattern", gap));
         }
     }
 

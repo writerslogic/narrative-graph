@@ -306,3 +306,54 @@ fn test_pipeline_never_panics_and_spans_stay_valid() {
             .wrapping_add(1442695040888963407);
     }
 }
+
+#[test]
+fn test_possessive_does_not_reach_into_a_later_clause() {
+    // The relational noun belongs to a different clause and a different
+    // referent; matching it emitted the highest-confidence rule in the system.
+    let text = "Elena is Marco's dog, and she has a sister.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert!(
+        !candidates
+            .iter()
+            .any(|c| c.relation == "sister_of" || c.relation == "brother_of"),
+        "possessive matched past the possessed noun phrase: {candidates:?}"
+    );
+}
+
+#[test]
+fn test_possessive_allows_a_modifier_before_the_noun() {
+    let text = "Elena is Marco's older sister.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].subject, "elena");
+    assert_eq!(candidates[0].relation, "sister_of");
+    assert_eq!(candidates[0].object, "marco");
+}
+
+#[test]
+fn test_passive_voice_orients_the_relation_by_role_not_text_order() {
+    let text = "Elena was mentored by Marco.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].relation, "mentors");
+    assert_eq!(candidates[0].subject, "marco");
+    assert_eq!(candidates[0].object, "elena");
+}
+
+#[test]
+fn test_active_voice_mentor_direction_is_unchanged() {
+    let text = "Marco mentors Elena.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].subject, "marco");
+    assert_eq!(candidates[0].object, "elena");
+}
