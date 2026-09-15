@@ -36,6 +36,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pronoun mentions were collected grouped by pronoun word, leaving the entity
   list out of text order even though relation extraction treats the earlier
   index as the subject. Entities are now ordered by position.
+- Every relation rule matched a substring of the text between the two mentions
+  and never checked the rest of it, so text that denied, hedged, attributed or
+  suspended the relation produced the same triple at the same confidence as a
+  plain statement: "Elena did not mentor Marco", "Elena refused to mentor
+  Marco" and "Did Elena mentor Marco?" all asserted `mentors`. A negator, an
+  open condition, a hedging modal, a suspended `to`-infinitive, or a sentence
+  ending in `?` now blocks the relation outright.
+- The possessive rule never inspected that text at all, firing on nothing but
+  an `'s` after the object. "Elena visited Marco's sister" claimed
+  `sister_of(elena, marco)` at the system's highest confidence, naming the
+  subject as a third person's sister. The rule now requires a bare copula
+  between the mentions, and requires the relational noun to head the possessed
+  phrase, so "Marco's master key" and "Marco's friend's sister" no longer
+  match either.
+- A sentence-initial function word was folded into the mention that followed
+  it, so "But Elena" normalized to `but_elena` and never unified with `elena`
+  elsewhere in the text, splitting one character into two nodes. A closed list
+  of openers is now dropped; it holds no word that can also be a given name,
+  so "May Vance" and "Grace Vance" survive.
 
 ## [0.1.0]
 

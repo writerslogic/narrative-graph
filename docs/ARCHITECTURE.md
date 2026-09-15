@@ -135,6 +135,24 @@ grammar for a weaker claim — stance is routinely negated, hypothetical, or
 narrated from a character's mistaken view — and score lower. Nouns are matched
 whole-word, so "grandmother" is never read as "mother".
 
+The possessive row requires a bare copula (`is`, `was`, `are`, `were`) as the
+entire text between the two mentions, and requires the relational noun to head
+the possessed phrase. Without both, "Elena visited Marco's sister" reads as
+`sister_of(elena, marco)` — a third person's relation claimed for the subject,
+at the highest confidence in the system — and so do "Marco's master key" and
+"Marco's friend's sister". The appositive "Elena, Marco's sister, arrived"
+states a true relation and is deliberately not extracted: it is a distinct
+pattern, and widening the copula set to reach it also admits ", unlike".
+
+Across every row, text between the mentions that denies or suspends the
+relation blocks it entirely: a negator (`not`, `never`, `no`, or an `n't`
+clitic), an open condition (`if`, `unless`, `whether`), a hedging modal
+(`could`, `would`, `might`, `may`, `should`), or a `to`-infinitive suspended
+by a governing verb ("refused to mentor"). A sentence ending in `?` asks the
+relation rather than stating it and is likewise skipped. These are the
+opposite claim, not a weaker one, so no rule fires and no confidence tier
+applies. `will` is absent from that set: a future tense asserts.
+
 This is a fixed pattern list, not a parser — relations outside this table are
 not extracted, regardless of how clearly a human reader would infer them.
 `normalize_relation` then checks the caller-supplied `ontology` map and
@@ -184,9 +202,15 @@ surface as a rejected `napi::Error`.
 These are heuristic-coverage limits, not bugs — the pipeline behaves as
 designed, but the design is narrow:
 
-- **Entity precision**: any capitalized word, including a sentence-initial
-  "The" or a title-cased common noun, is a candidate entity. There is no
-  part-of-speech or named-entity model backing this.
+- **Entity precision**: any capitalized word not on the sentence-opener list
+  is a candidate entity, including a title-cased common noun. There is no
+  part-of-speech or named-entity model backing this. `SENTENCE_OPENERS` in
+  `src/heuristic/entities.rs` drops a closed class of function words when they
+  open a sentence, because a capitalized run becomes one mention and "But
+  Elena" normalizes to `but_elena`, splitting a character into two graph
+  nodes. It holds no word that can also be a given name — "May", "Will",
+  "Grace", "June", "Faith", "Summer" — so a sentence opening "May Vance"
+  keeps `may_vance`, while one opening "Suddenly Vance" yields `vance`.
 - **Relation recall**: only the patterns listed above are recognized, and the
   possessive lexicon covers a fraction of the relational nouns English uses.
   Any other phrasing of the same relationship is invisible to the pipeline.
@@ -198,6 +222,6 @@ designed, but the design is narrow:
   an entity introduced in a previous one.
 - **Segmentation edge cases**: see the two documented limitations in the
   segmentation section above.
-- `src/onnx/` exists as unwired, empty stub files (`mod.rs`, `model.rs`, not
-  declared in `src/lib.rs`), left in place as a placeholder for a future
-  model-backed extraction path. It is not part of the current pipeline.
+- **Assertion gating is lexical**: the negation, condition and modal checks
+  read only the text between the two mentions, so a denial expressed outside
+  that window ("It was a lie. Elena is Marco's sister.") is not caught.

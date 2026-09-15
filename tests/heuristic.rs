@@ -488,3 +488,120 @@ fn test_a_noun_and_a_verb_for_one_relation_share_a_label() {
     // Attribution still distinguishes how each was found.
     assert_ne!(noun[0].rule, verb[0].rule);
 }
+
+#[test]
+fn test_a_possessive_without_a_copula_claims_nothing() {
+    // "X <verb> Y's sister" names a third person. Reading it as sister_of(X, Y)
+    // was the single highest-confidence false positive in the system.
+    let opts = Options::default();
+
+    for text in [
+        "Elena visited Marco's sister.",
+        "Elena killed Marco's brother.",
+        "Elena knew Marco's mother.",
+        "Elena hated Marco's friend.",
+        "Elena is not Marco's sister.",
+        "Elena was never Marco's wife.",
+        "Elena could be Marco's sister.",
+        "Elena might be Marco's daughter.",
+        "Elena, unlike Marco's brother, stayed.",
+    ] {
+        let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+        assert!(candidates.is_empty(), "{text:?} yielded {candidates:?}");
+    }
+}
+
+#[test]
+fn test_a_reported_possessive_does_not_claim_the_reporter() {
+    // Only the pair joined by the copula is a claim; "Dev" merely believes it.
+    let opts = Options::default();
+    let candidates = extract_candidate_triples("Dev believed Elena was Marco's sister.", &opts)
+        .expect("extraction failed");
+
+    assert_eq!(candidates.len(), 1, "{candidates:?}");
+    assert_eq!(candidates[0].subject, "elena");
+    assert_eq!(candidates[0].object, "marco");
+}
+
+#[test]
+fn test_a_relational_noun_must_head_the_possessed_phrase() {
+    // A noun modifying a later one names a thing, and a noun behind a second
+    // possessive belongs to that possessor, not to the object.
+    let opts = Options::default();
+
+    for text in [
+        "Elena is Marco's master key.",
+        "Elena is Marco's student union.",
+        "Elena is Marco's friend's sister.",
+    ] {
+        let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+        assert!(candidates.is_empty(), "{text:?} yielded {candidates:?}");
+    }
+}
+
+#[test]
+fn test_a_denied_or_suspended_relation_is_not_asserted() {
+    // Negation, an open condition and a suspended infinitive are not weaker
+    // claims that the relation holds; they are the opposite claim, or none.
+    let opts = Options::default();
+
+    for text in [
+        "Elena did not mentor Marco.",
+        "Elena never mentored Marco.",
+        "Elena no longer works at the Archive.",
+        "Elena does not work at the Archive.",
+        "Elena refused to mentor Marco.",
+        "Elena hoped to mentor Marco.",
+        "Elena wanted to work at the Archive.",
+    ] {
+        let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+        assert!(candidates.is_empty(), "{text:?} yielded {candidates:?}");
+    }
+}
+
+#[test]
+fn test_a_question_asks_the_relation_rather_than_stating_it() {
+    let opts = Options::default();
+    let asked =
+        extract_candidate_triples("Did Elena mentor Marco?", &opts).expect("extraction failed");
+    let stated =
+        extract_candidate_triples("Elena mentors Marco.", &opts).expect("extraction failed");
+
+    assert!(asked.is_empty(), "{asked:?}");
+    assert_eq!(stated.len(), 1);
+}
+
+#[test]
+fn test_a_sentence_opener_is_not_folded_into_the_mention() {
+    // "But Elena" normalizes to `but_elena` and never unifies with `elena`,
+    // which splits one character into two nodes of the graph.
+    let opts = Options::default();
+
+    for text in [
+        "But Elena mentors Marco.",
+        "And Elena mentors Marco.",
+        "When Elena mentors Marco, things change.",
+        "She left. But Elena mentors Marco.",
+    ] {
+        let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+        assert_eq!(candidates.len(), 1, "{text:?} yielded {candidates:?}");
+        assert_eq!(candidates[0].subject, "elena", "{text:?}");
+    }
+}
+
+#[test]
+fn test_a_given_name_that_reads_as_a_function_word_survives() {
+    // Dropping a real mention costs more than keeping a malformed one, so the
+    // opener list holds no word that can also be a name.
+    let opts = Options::default();
+
+    for (text, subject) in [
+        ("May Vance is Marco's sister.", "may_vance"),
+        ("Will Vance is Marco's sister.", "will_vance"),
+        ("Grace Vance is Marco's sister.", "grace_vance"),
+    ] {
+        let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+        assert_eq!(candidates.len(), 1, "{text:?} yielded {candidates:?}");
+        assert_eq!(candidates[0].subject, subject, "{text:?}");
+    }
+}

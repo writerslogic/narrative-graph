@@ -93,12 +93,6 @@ impl PatternMatch {
 }
 
 /// Relational nouns recognized in a possessive, as (noun, relation, base
-/// confidence). Every entry reads "X is Y's <noun>", giving <noun>_of(X, Y).
-///
-/// The rule name is derived as `possessive-<noun>-pattern`, so adding a noun
-/// adds a distinctly attributed rule. Matching is whole-word, so entries are
-/// order-independent.
-/// Relational nouns recognized in a possessive, as (noun, relation, base
 /// confidence). Every entry reads "X is Y's <noun>", giving relation(X, Y).
 ///
 /// The relation is named explicitly rather than derived from the noun so a
@@ -143,6 +137,15 @@ const POSSESSIVE_NOUNS: &[(&str, &str, f32)] = &[
     ("ally", "ally_of", base::POSSESSIVE_STANCE),
     ("acquaintance", "acquaintance_of", base::POSSESSIVE_STANCE),
 ];
+
+/// Links that let the possessive be read as a statement about the subject.
+///
+/// IMPORTANT: matched against the whole trimmed text between the two mentions,
+/// never as a substring. "Elena visited Marco's sister" names a third person,
+/// and "is not", "was never", "could be" and "believed ... was" each deny,
+/// hedge or attribute the claim rather than making it. Every one of those
+/// contains a copula; none of them is one.
+const POSSESSIVE_COPULAS: &[&str] = &["is", "was", "are", "were"];
 
 /// Byte range of the first ASCII-case-insensitive *whole-word* occurrence of
 /// `needle`. IMPORTANT: whole-word matching is what stops "grandmother" from
@@ -200,6 +203,49 @@ fn possessed_noun_phrase_len(rest: &str) -> usize {
     punct.min(conjunction)
 }
 
+/// Closed-class words that deny the event or hold it open. IMPORTANT: this is
+/// a closed class on purpose. The verbs that suspend a complement (refuse,
+/// hope, intend, pretend) are an open one, and are caught structurally by the
+/// `to`-infinitive instead. "will" is absent because a future tense asserts.
+const SUSPENDING_WORDS: &[&str] = &[
+    "not", "never", "no", "nor", "neither", "if", "unless", "whether", "could", "would", "might",
+    "may", "should",
+];
+
+/// Whether the text between two mentions denies the relation or holds it open
+/// rather than asserting it.
+fn suspends_assertion(between: &str) -> bool {
+    between.split(|c: char| !c.is_ascii_alphanumeric() && c != '\'').any(|word| {
+        // "didn't", "doesn't", "isn't": the negator is a suffix, not a word.
+        word.ends_with("n't") || SUSPENDING_WORDS.contains(&word)
+    })
+        // A complement verb suspends its infinitive: "refused to mentor",
+        // "hoped to mentor", "wanted to work" assert nothing about the event.
+        || between.split_whitespace().any(|word| word == "to")
+}
+
+/// Whether the sentence holding the mentions is a question. IMPORTANT: "Did
+/// Elena mentor Marco?" asks whether the relation holds; it does not state it.
+/// The interrogative auxiliary is not between the mentions, so only the
+/// terminator can tell. An abbreviation's period ends the scan early, which
+/// errs toward reading the sentence as a statement.
+fn ends_in_question(text: &str, from: usize) -> bool {
+    let tail = &text[from..];
+    matches!(tail.find(['.', '!', '?']), Some(i) if tail[i..].starts_with('?'))
+}
+
+/// Whether the relational noun spanning `[start, end)` is the head of the
+/// possessed phrase and is possessed by the object itself.
+///
+/// IMPORTANT: a noun that modifies a later one names a thing, not a relation
+/// ("Marco's master key"), and a noun behind a second possessive belongs to
+/// that possessor ("Marco's friend's sister" is the sister of the friend). The
+/// phrase is already cut at the first clause boundary, so what follows the
+/// noun here is the rest of one noun phrase.
+fn heads_possessed_phrase(phrase: &str, start: usize, end: usize) -> bool {
+    phrase[end..].trim().is_empty() && find_ascii_ci(&phrase[..start], "'s").is_none()
+}
+
 fn find_relation_pattern(
     text: &str,
     subj: &EntityCandidate,
@@ -224,6 +270,13 @@ fn find_relation_pattern(
 
     let between = &text[start..end].to_lowercase();
 
+    // IMPORTANT: every rule below reads the text between the mentions as an
+    // assertion that the relation holds. Text that denies or suspends it is
+    // not a weaker assertion, it is the opposite one, so no rule may fire.
+    if suspends_assertion(between) || ends_in_question(text, obj.end) {
+        return None;
+    }
+
     // Possessive pattern: "x is y's [relation]". Matched against the original
     // text so the noun's offsets can bound the evidence span.
     let after_obj = &text[obj.end..];
@@ -233,18 +286,22 @@ fn find_relation_pattern(
         && bytes[1].eq_ignore_ascii_case(&b's')
         && matches!(bytes[2], b' ' | b'.');
 
-    if possessive {
+    if possessive && POSSESSIVE_COPULAS.contains(&between.trim()) {
         let rest = &after_obj["'s".len()..];
         let phrase = &rest[..possessed_noun_phrase_len(rest)];
         let phrase_start = obj.end + "'s".len();
 
         for (noun, relation, base) in POSSESSIVE_NOUNS {
-            if let Some((_, noun_end)) = find_ascii_ci_word(phrase, noun) {
-                return Some(
-                    PatternMatch::new(relation, &format!("possessive-{noun}-pattern"), *base, gap)
-                        .span_end(phrase_start + noun_end),
-                );
+            let Some((noun_start, noun_end)) = find_ascii_ci_word(phrase, noun) else {
+                continue;
+            };
+            if !heads_possessed_phrase(phrase, noun_start, noun_end) {
+                continue;
             }
+            return Some(
+                PatternMatch::new(relation, &format!("possessive-{noun}-pattern"), *base, gap)
+                    .span_end(phrase_start + noun_end),
+            );
         }
     }
 

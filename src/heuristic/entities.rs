@@ -49,6 +49,50 @@ pub fn extract_entities(text: &str, aliases: &BTreeMap<String, String>) -> Vec<E
     entities
 }
 
+/// Words that are capitalized at the start of a sentence by position alone.
+///
+/// IMPORTANT: a capitalized run becomes one mention, so "But Elena" normalizes
+/// to `but_elena` and never unifies with `elena` elsewhere in the text. That
+/// silently splits a character into two graph nodes, and narrative prose opens
+/// sentences this way constantly.
+///
+/// Membership is restricted to words that cannot also be a given name in that
+/// position: "May", "Will", "Grace", "June", "Faith" and "Summer" are all
+/// names and are deliberately absent, because dropping a real mention costs
+/// more than keeping a malformed one.
+#[rustfmt::skip]
+const SENTENCE_OPENERS: &[&str] = &[
+    "a", "after", "again", "all", "although", "an", "and", "another", "any", "are", "as", "at",
+    "because", "before", "both", "but", "by", "did", "do", "does", "each", "either", "even",
+    "every", "for", "from", "had", "has", "have", "her", "here", "his", "how", "however", "if",
+    "in", "indeed", "instead", "is", "its", "just", "later", "maybe", "meanwhile", "my", "neither",
+    "never", "no", "nor", "not", "now", "of", "often", "on", "once", "only", "or", "our",
+    "perhaps", "since", "so", "some", "sometimes", "soon", "still", "suddenly", "that", "the",
+    "their", "then", "there", "these", "this", "those", "though", "to", "today", "tomorrow",
+    "tonight", "was", "were", "what", "when", "where", "which", "while", "who", "whom", "whose",
+    "why", "with", "yesterday", "yet", "your",
+];
+
+/// Whether `word_start` is the first word of a sentence, looking past any
+/// opening quotation or bracket that precedes it.
+fn is_sentence_start(text: &str, word_start: usize) -> bool {
+    let preceding = text[..word_start]
+        .chars()
+        .rev()
+        .find(|c| !c.is_whitespace() && !"\"'\u{201C}\u{2018}([".contains(*c));
+
+    match preceding {
+        None => true,
+        Some(c) => ".!?\u{2026}".contains(c),
+    }
+}
+
+/// Whether a capitalized word is capitalized only because a sentence starts
+/// there, and so must not open a mention.
+fn opens_sentence_by_position(text: &str, word: &str, word_start: usize) -> bool {
+    SENTENCE_OPENERS.contains(&word.to_lowercase().as_str()) && is_sentence_start(text, word_start)
+}
+
 fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
     let mut entities = Vec::new();
     let mut current_entity = String::new();
@@ -68,7 +112,9 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
                 let is_capitalized = current_word
                     .chars()
                     .next()
-                    .is_some_and(|c| c.is_uppercase());
+                    .is_some_and(|c| c.is_uppercase())
+                    && !(current_entity.is_empty()
+                        && opens_sentence_by_position(text, &current_word, word_start));
 
                 if is_capitalized {
                     if !current_entity.is_empty() {
@@ -103,7 +149,9 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
         let is_capitalized = current_word
             .chars()
             .next()
-            .is_some_and(|c| c.is_uppercase());
+            .is_some_and(|c| c.is_uppercase())
+            && !(current_entity.is_empty()
+                && opens_sentence_by_position(text, &current_word, word_start));
         if is_capitalized {
             if !current_entity.is_empty() {
                 current_entity.push(' ');
