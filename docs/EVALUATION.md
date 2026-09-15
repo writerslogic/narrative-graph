@@ -67,7 +67,7 @@ distance measurement, so identical inputs always produce identical scores.
   someone other than the pattern author — the test suite above confirms the
   code does what it was written to do, not that what it was written to do
   is correct on prose it wasn't designed around.
-- **Coverage of relation phrasing outside the six documented patterns.**
+- **Coverage of relation phrasing outside the documented patterns.**
   Every current test exercises the exact phrasing each pattern was built
   for; none establish a recall floor on the broader space of ways the same
   relations get expressed in real writing.

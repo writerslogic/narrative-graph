@@ -422,3 +422,51 @@ fn test_pronoun_antecedent_strips_the_possessive_clitic() {
         "possessive clitic leaked into an entity name: {candidates:?}"
     );
 }
+
+#[test]
+fn test_a_longer_kinship_noun_is_not_matched_as_the_shorter_one_inside_it() {
+    let text = "Elena is Marco's grandmother.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].relation, "grandmother_of");
+}
+
+#[test]
+fn test_social_stance_scores_below_stated_kinship() {
+    let opts = Options::default();
+    let kin =
+        extract_candidate_triples("Elena is Marco's sister.", &opts).expect("extraction failed");
+    let stance =
+        extract_candidate_triples("Elena is Marco's friend.", &opts).expect("extraction failed");
+
+    assert_eq!(kin.len(), 1);
+    assert_eq!(stance.len(), 1);
+    assert_eq!(stance[0].relation, "friend_of");
+    assert!(
+        stance[0].confidence < kin[0].confidence,
+        "stance {} should score below kinship {}",
+        stance[0].confidence,
+        kin[0].confidence
+    );
+}
+
+#[test]
+fn test_every_lexicon_noun_yields_a_distinctly_attributed_rule() {
+    let opts = Options::default();
+
+    for (noun, relation) in [
+        ("employer", "employer_of"),
+        ("apprentice", "apprentice_of"),
+        ("husband", "husband_of"),
+        ("rival", "rival_of"),
+    ] {
+        let text = format!("Elena is Marco's {noun}.");
+        let candidates = extract_candidate_triples(&text, &opts).expect("extraction failed");
+
+        assert_eq!(candidates.len(), 1, "no candidate for {text:?}");
+        assert_eq!(candidates[0].relation, relation);
+        assert_eq!(candidates[0].rule, format!("possessive-{noun}-pattern"));
+    }
+}

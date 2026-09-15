@@ -120,12 +120,20 @@ fixed set of surface patterns:
 
 | Pattern | Example | Relation | Rule name |
 |---|---|---|---|
-| `<Subj> is <Obj>'s sister` | "Elena is Marco's sister." | `sister_of` | `possessive-sister-pattern` |
-| `<Subj> is <Obj>'s brother` | | `brother_of` | `possessive-brother-pattern` |
+| `<Subj> is <Obj>'s <noun>` | "Elena is Marco's sister." | `<noun>_of` | `possessive-<noun>-pattern` |
 | `<Subj> ... mentor...` | "Marco mentors Dev." | `mentors` | `verb-mentor-pattern` |
 | `<Subj> ... work... at...` | "Dev works at the Archive." | `works_at` | `verb-works-at-pattern` |
 | `<Subj> ... , who ... work... at...` | "Marco mentors Dev, who works at the Archive." | `works_at` | `relative-works-at-pattern` |
 | `<Subj> ... , who ... mentor...` | | `mentors` | `relative-mentor-pattern` |
+
+The possessive row is driven by `POSSESSIVE_NOUNS` in
+`src/heuristic/relations.rs`, a lexicon of relational nouns each yielding
+`<noun>_of` under its own rule name. It carries two confidence tiers: kinship
+and role nouns ("sister", "employer", "apprentice") state the relation
+outright, while social-stance nouns ("friend", "enemy", "rival") use the same
+grammar for a weaker claim — stance is routinely negated, hypothetical, or
+narrated from a character's mistaken view — and score lower. Nouns are matched
+whole-word, so "grandmother" is never read as "mother".
 
 This is a fixed pattern list, not a parser — relations outside this table are
 not extracted, regardless of how clearly a human reader would infer them.
@@ -179,7 +187,8 @@ designed, but the design is narrow:
 - **Entity precision**: any capitalized word, including a sentence-initial
   "The" or a title-cased common noun, is a candidate entity. There is no
   part-of-speech or named-entity model backing this.
-- **Relation recall**: only the six patterns listed above are recognized.
+- **Relation recall**: only the patterns listed above are recognized, and the
+  possessive lexicon covers a fraction of the relational nouns English uses.
   Any other phrasing of the same relationship is invisible to the pipeline.
 - **Pronoun resolution**: "nearest preceding capitalized word," with no
   gender or number agreement — a multi-entity sentence can link a pronoun to

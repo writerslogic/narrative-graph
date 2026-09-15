@@ -1,3 +1,4 @@
+use super::cooccurrence::base;
 use super::entities::EntityCandidate;
 use std::collections::BTreeMap;
 
@@ -9,6 +10,7 @@ pub struct RelationCandidate {
     pub object: String,
     pub rule: String,
     pub span: [usize; 2],
+    pub base: f32,
     pub gap: usize,
 }
 
@@ -43,6 +45,7 @@ pub fn extract_relations(
                     object: o.normalized.clone(),
                     rule: m.rule,
                     span: [subj.start, m.span_end.unwrap_or(obj.end)],
+                    base: m.base,
                     gap: m.gap,
                 });
             }
@@ -59,16 +62,18 @@ pub fn extract_relations(
 struct PatternMatch {
     relation: String,
     rule: String,
+    base: f32,
     gap: usize,
     swapped: bool,
     span_end: Option<usize>,
 }
 
 impl PatternMatch {
-    fn new(relation: &str, rule: &str, gap: usize) -> Self {
+    fn new(relation: &str, rule: &str, base: f32, gap: usize) -> Self {
         Self {
             relation: relation.to_string(),
             rule: rule.to_string(),
+            base,
             gap,
             swapped: false,
             span_end: None,
@@ -87,13 +92,73 @@ impl PatternMatch {
     }
 }
 
-/// Relational nouns recognized in a possessive, as (noun, relation, rule).
-/// Order is match order, so a noun that is a substring of another must follow
-/// it.
-const POSSESSIVE_NOUNS: &[(&str, &str, &str)] = &[
-    ("sister", "sister_of", "possessive-sister-pattern"),
-    ("brother", "brother_of", "possessive-brother-pattern"),
+/// Relational nouns recognized in a possessive, as (noun, relation, base
+/// confidence). Every entry reads "X is Y's <noun>", giving <noun>_of(X, Y).
+///
+/// The rule name is derived as `possessive-<noun>-pattern`, so adding a noun
+/// adds a distinctly attributed rule. Matching is whole-word, so entries are
+/// order-independent.
+const POSSESSIVE_NOUNS: &[(&str, f32)] = &[
+    // Kinship and role: the possessive states the relation outright.
+    ("sister", base::POSSESSIVE_FACTUAL),
+    ("brother", base::POSSESSIVE_FACTUAL),
+    ("mother", base::POSSESSIVE_FACTUAL),
+    ("father", base::POSSESSIVE_FACTUAL),
+    ("grandmother", base::POSSESSIVE_FACTUAL),
+    ("grandfather", base::POSSESSIVE_FACTUAL),
+    ("daughter", base::POSSESSIVE_FACTUAL),
+    ("son", base::POSSESSIVE_FACTUAL),
+    ("wife", base::POSSESSIVE_FACTUAL),
+    ("husband", base::POSSESSIVE_FACTUAL),
+    ("cousin", base::POSSESSIVE_FACTUAL),
+    ("aunt", base::POSSESSIVE_FACTUAL),
+    ("uncle", base::POSSESSIVE_FACTUAL),
+    ("niece", base::POSSESSIVE_FACTUAL),
+    ("nephew", base::POSSESSIVE_FACTUAL),
+    ("widow", base::POSSESSIVE_FACTUAL),
+    ("guardian", base::POSSESSIVE_FACTUAL),
+    ("employer", base::POSSESSIVE_FACTUAL),
+    ("servant", base::POSSESSIVE_FACTUAL),
+    ("master", base::POSSESSIVE_FACTUAL),
+    ("teacher", base::POSSESSIVE_FACTUAL),
+    ("mentor", base::POSSESSIVE_FACTUAL),
+    ("student", base::POSSESSIVE_FACTUAL),
+    ("pupil", base::POSSESSIVE_FACTUAL),
+    ("apprentice", base::POSSESSIVE_FACTUAL),
+    // Social stance: same shape, weaker claim.
+    ("friend", base::POSSESSIVE_STANCE),
+    ("enemy", base::POSSESSIVE_STANCE),
+    ("rival", base::POSSESSIVE_STANCE),
+    ("lover", base::POSSESSIVE_STANCE),
+    ("companion", base::POSSESSIVE_STANCE),
+    ("ally", base::POSSESSIVE_STANCE),
+    ("acquaintance", base::POSSESSIVE_STANCE),
 ];
+
+/// Byte range of the first ASCII-case-insensitive *whole-word* occurrence of
+/// `needle`. IMPORTANT: whole-word matching is what stops "grandmother" from
+/// matching "mother" and labeling it `mother_of`. A substring match would make
+/// the lexicon order-dependent and mislabel silently when a new noun contains
+/// an existing one.
+fn find_ascii_ci_word(haystack: &str, needle: &str) -> Option<(usize, usize)> {
+    debug_assert!(needle.is_ascii() && !needle.is_empty());
+    let (hay, needle) = (haystack.as_bytes(), needle.as_bytes());
+    if hay.len() < needle.len() {
+        return None;
+    }
+
+    (0..=hay.len() - needle.len())
+        .find(|&i| {
+            hay[i..i + needle.len()].eq_ignore_ascii_case(needle)
+                && !hay
+                    .get(i.wrapping_sub(1))
+                    .is_some_and(u8::is_ascii_alphanumeric)
+                && !hay
+                    .get(i + needle.len())
+                    .is_some_and(u8::is_ascii_alphanumeric)
+        })
+        .map(|i| (i, i + needle.len()))
+}
 
 /// Byte range of the first ASCII-case-insensitive occurrence of `needle`.
 /// IMPORTANT: offsets address `haystack` itself. Searching a lowercased copy
@@ -164,10 +229,16 @@ fn find_relation_pattern(
         let phrase = &rest[..possessed_noun_phrase_len(rest)];
         let phrase_start = obj.end + "'s".len();
 
-        for (noun, relation, rule) in POSSESSIVE_NOUNS {
-            if let Some((_, noun_end)) = find_ascii_ci(phrase, noun) {
+        for (noun, base) in POSSESSIVE_NOUNS {
+            if let Some((_, noun_end)) = find_ascii_ci_word(phrase, noun) {
                 return Some(
-                    PatternMatch::new(relation, rule, gap).span_end(phrase_start + noun_end),
+                    PatternMatch::new(
+                        &format!("{noun}_of"),
+                        &format!("possessive-{noun}-pattern"),
+                        *base,
+                        gap,
+                    )
+                    .span_end(phrase_start + noun_end),
                 );
             }
         }
@@ -178,21 +249,34 @@ fn find_relation_pattern(
     // the relation's subject is the later entity, not the earlier one.
     if between.contains(" mentor") {
         let passive = between.contains(" by");
-        return Some(PatternMatch::new("mentors", "verb-mentor-pattern", gap).swapped(passive));
+        return Some(
+            PatternMatch::new("mentors", "verb-mentor-pattern", base::VERB, gap).swapped(passive),
+        );
     }
     if between.contains(" work") && between.contains(" at") {
-        return Some(PatternMatch::new("works_at", "verb-works-at-pattern", gap));
+        return Some(PatternMatch::new(
+            "works_at",
+            "verb-works-at-pattern",
+            base::VERB,
+            gap,
+        ));
     }
     if between.contains(", who ") && (between.contains("work") || between.contains("mentor")) {
         if between.contains("work") && between.contains("at") {
             return Some(PatternMatch::new(
                 "works_at",
                 "relative-works-at-pattern",
+                base::RELATIVE_CLAUSE,
                 gap,
             ));
         }
         if between.contains("mentor") {
-            return Some(PatternMatch::new("mentors", "relative-mentor-pattern", gap));
+            return Some(PatternMatch::new(
+                "mentors",
+                "relative-mentor-pattern",
+                base::RELATIVE_CLAUSE,
+                gap,
+            ));
         }
     }
 

@@ -38,7 +38,7 @@ pub fn extract_candidate_triples(text: &str, opts: &Options) -> Result<Vec<Tripl
 
         // Score by rule strength and entity proximity within the sentence
         for rel in relations {
-            let confidence = cooccurrence::score_confidence(&rel.rule, rel.gap);
+            let confidence = cooccurrence::score_confidence(rel.base, rel.gap);
 
             if confidence >= min_confidence {
                 let span = [sent_start + rel.span[0], sent_start + rel.span[1]];
