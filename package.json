@@ -1,6 +1,6 @@
 {
   "name": "narrative-graph",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "Apache-2.0",
   "author": "WritersLogic, Inc. <david@writerslogic.com>",
   "description": "Turn prose into candidate relational facts — entity detection, relation labeling, confidence scoring, entirely local.",

@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-09-15
+## [0.1.1] - 2026-09-15
+
+First published release. 0.1.0 was tagged, reached neither crates.io nor npm,
+and its tag name cannot be reused, so this is the initial release in practice.
+The release workflow was what failed: it passed `--dir` to `napi artifacts`, an
+option napi 3 removed, and generated no `npm/<platform>/package.json`, leaving
+the four `optionalDependencies` the loader resolves at runtime with no packages
+behind them.
 
 ### Added
 - Initial heuristic extraction pipeline: entity detection, relation labeling,
