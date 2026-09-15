@@ -53,22 +53,30 @@ fn find_relation_pattern(
         let start = subj_pos + subj_lower.len();
         let end = obj_pos;
 
-        // Only process if entities are within reasonable distance
-        if end - start > 60 || end <= start {
+        // Only process if entities are within reasonable distance (30 chars for direct relations)
+        if end - start > 30 || end <= start {
             return None;
         }
 
         let between = &text[start..end].to_lowercase();
 
-        // Possessive pattern: "x's [relation] y"
-        if between.contains("'s") {
-            if between.contains("sister") {
+        // Also check what comes after the object (for possessive patterns like "x is y's sister")
+        let after_obj_start = obj_pos + obj_lower.len();
+        let after_obj = if after_obj_start < text.len() {
+            &text[after_obj_start..].to_lowercase()
+        } else {
+            ""
+        };
+
+        // Possessive pattern: "x is y's [relation]"
+        if after_obj.starts_with("'s ") || after_obj.starts_with("'s.") {
+            if after_obj.contains("sister") {
                 return Some((
                     "sister_of".to_string(),
                     "possessive-sister-pattern".to_string(),
                 ));
             }
-            if between.contains("brother") {
+            if after_obj.contains("brother") {
                 return Some((
                     "brother_of".to_string(),
                     "possessive-brother-pattern".to_string(),

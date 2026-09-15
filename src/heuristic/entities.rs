@@ -37,13 +37,10 @@ pub fn extract_entities(text: &str, aliases: &BTreeMap<String, String>) -> Vec<E
         }
     }
 
-    // Deduplicate and normalize: lowercase, underscores for spaces
-    let mut deduplicated: BTreeMap<String, EntityCandidate> = BTreeMap::new();
-    for entity in entities {
-        deduplicated.insert(entity.normalized.clone(), entity);
-    }
-
-    deduplicated.into_values().collect()
+    // Deduplicate by keeping first occurrence, preserving text order
+    let mut seen = std::collections::HashSet::new();
+    entities.retain(|e| seen.insert(e.normalized.clone()));
+    entities
 }
 
 fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
@@ -52,24 +49,20 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
     let mut start_idx = 0;
     let mut word_byte_start = 0;
 
-    let words: Vec<&str> = text.split_whitespace().collect();
+    // Split on whitespace and handle punctuation specially
+    let words: Vec<&str> = text.split(|c: char| c.is_whitespace() || ",.!?;:—'\"".contains(c)).filter(|s| !s.is_empty()).collect();
 
     for word in words.iter() {
-        // Strip all punctuation from word to check capitalization and extract entity
-        let word_clean: String = word
-            .chars()
-            .filter(|c| c.is_alphanumeric() || c.is_whitespace())
-            .collect();
-        let word_clean = word_clean.trim();
-        let is_capitalized = word_clean.chars().next().map_or(false, |c| c.is_uppercase());
+        // Word should now have punctuation separated out
+        let is_capitalized = word.chars().next().map_or(false, |c| c.is_uppercase());
 
-        if is_capitalized && !word_clean.is_empty() {
+        if is_capitalized {
             if !current_entity.is_empty() {
                 current_entity.push(' ');
             }
-            current_entity.push_str(word_clean);
+            current_entity.push_str(word);
 
-            if current_entity.len() == word_clean.len() {
+            if current_entity.len() == word.len() {
                 start_idx = word_byte_start;
             }
         } else {
@@ -84,7 +77,7 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
             }
         }
 
-        word_byte_start += word.len() + 1; // +1 for space
+        word_byte_start += word.len() + 1; // +1 for space/punctuation
     }
 
     if !current_entity.is_empty() {
