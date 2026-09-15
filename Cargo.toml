@@ -2,7 +2,7 @@
 name = "narrative-graph"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.77"
 license = "Apache-2.0"
 authors = ["WritersLogic, Inc. <david@writerslogic.com>"]
 description = "Turn prose into candidate relational facts — entity detection, relation labeling, confidence scoring, entirely local."

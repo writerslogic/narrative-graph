@@ -1,9 +1,7 @@
-use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use std::collections::BTreeMap;
 
 use crate::heuristic::extract_candidate_triples;
-use crate::types::{Options, TripleCandidate};
+use crate::types::Options;
 
 #[napi]
 pub fn extract_candidate_triples_napi(
@@ -12,17 +10,9 @@ pub fn extract_candidate_triples_napi(
 ) -> napi::Result<Vec<NapiTripleCandidate>> {
     let options = if let Some(napi_opts) = opts {
         Options {
-            aliases: napi_opts
-                .aliases
-                .unwrap_or_default()
-                .into_iter()
-                .collect(),
-            min_confidence: napi_opts.min_confidence,
-            ontology: napi_opts
-                .ontology
-                .unwrap_or_default()
-                .into_iter()
-                .collect(),
+            aliases: napi_opts.aliases.unwrap_or_default().into_iter().collect(),
+            min_confidence: napi_opts.min_confidence.map(|c| c as f32),
+            ontology: napi_opts.ontology.unwrap_or_default().into_iter().collect(),
         }
     } else {
         Options::default()
@@ -35,8 +25,8 @@ pub fn extract_candidate_triples_napi(
                 subject: c.subject,
                 relation: c.relation,
                 object: c.object,
-                confidence: c.confidence,
-                span: c.span.to_vec(),
+                confidence: c.confidence as f64,
+                span: c.span.iter().map(|&s| s as u32).collect(),
                 rule: c.rule,
             })
             .collect()),
@@ -52,14 +42,14 @@ pub struct NapiTripleCandidate {
     pub subject: String,
     pub relation: String,
     pub object: String,
-    pub confidence: f32,
-    pub span: Vec<usize>,
+    pub confidence: f64,
+    pub span: Vec<u32>,
     pub rule: String,
 }
 
 #[napi(object)]
 pub struct NapiOptions {
     pub aliases: Option<std::collections::HashMap<String, String>>,
-    pub min_confidence: Option<f32>,
+    pub min_confidence: Option<f64>,
     pub ontology: Option<std::collections::HashMap<String, String>>,
 }
