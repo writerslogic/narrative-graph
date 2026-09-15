@@ -21,9 +21,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of returning one of four hardcoded constants.
 
 ### Fixed
-- Triple spans came from a first-occurrence substring search and were wrong
-  when an entity repeated earlier in the sentence; they now come from the
-  entity candidates that produced the relation.
+- Relation matching re-located each entity by searching a lowercased copy of
+  the sentence instead of using the offsets the entity candidate already
+  carried. Three consequences, all fixed: nested mentions (`Jane` inside
+  `Mary Jane`) underflowed the subject/object gap and panicked; a surface form
+  that also occurred inside an earlier word (`Dev` inside `Devon`) matched the
+  wrong position and silently dropped the relation; and a character whose
+  lowercase form has a different byte length (`İ`) shifted every offset, which
+  dropped relations and could panic on a non-char-boundary slice.
+- `EntityCandidate.end` pointed at the separator following the next lowercase
+  word rather than at the end of the mention, so `TripleCandidate.span` ran
+  past its object. Spans now bound the subject and object mentions, which
+  changes the reported end offset of every candidate.
+- Pronoun mentions were collected grouped by pronoun word, leaving the entity
+  list out of text order even though relation extraction treats the earlier
+  index as the subject. Entities are now ordered by position.
 
 ## [0.1.0]
 

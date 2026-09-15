@@ -51,94 +51,82 @@ fn find_relation_pattern(
     subj: &EntityCandidate,
     obj: &EntityCandidate,
 ) -> Option<(String, String, usize)> {
-    let text_lower = text.to_lowercase();
-    let subj_lower = subj.text.to_lowercase();
-    let obj_lower = obj.text.to_lowercase();
+    // IMPORTANT: use each mention's own offsets. Re-locating a surface form by
+    // substring search finds the first occurrence anywhere in the text, and an
+    // offset into a lowercased copy does not address `text`.
+    // Mentions can nest ("Jane" inside "Mary Jane"), so this is also the bound
+    // that keeps `obj.start - subj.end` from underflowing.
+    if subj.end > obj.start {
+        return None;
+    }
 
-    // Subject must come before object (forward direction only)
-    if let (Some(subj_pos), Some(obj_pos)) =
-        (text_lower.find(&subj_lower), text_lower.find(&obj_lower))
-    {
-        if subj_pos >= obj_pos {
-            return None; // Object must come after subject
-        }
+    let (start, end) = (subj.end, obj.start);
+    let gap = end - start;
 
-        let start = subj_pos + subj_lower.len();
-        let end = obj_pos;
+    // Only process if entities are within reasonable distance (30 chars for direct relations)
+    if gap > 30 {
+        return None;
+    }
 
-        // Only process if entities are within reasonable distance (30 chars for direct relations)
-        if end - start > 30 || end <= start {
-            return None;
-        }
+    let between = &text[start..end].to_lowercase();
 
-        let between = &text[start..end].to_lowercase();
-        let gap = end - start;
+    // Also check what comes after the object (for possessive patterns like "x is y's sister")
+    // Bound to a named value rather than borrowing a temporary out of the
+    // `if`: temporary lifetime extension there is not accepted on the MSRV.
+    let after_obj_owned = text[obj.end..].to_lowercase();
+    let after_obj = after_obj_owned.as_str();
 
-        // Also check what comes after the object (for possessive patterns like "x is y's sister")
-        let after_obj_start = obj_pos + obj_lower.len();
-        // Bound to a named value rather than borrowing a temporary out of the
-        // `if`: temporary lifetime extension there is not accepted on the MSRV.
-        let after_obj_owned = if after_obj_start < text.len() {
-            text[after_obj_start..].to_lowercase()
-        } else {
-            String::new()
-        };
-        let after_obj = after_obj_owned.as_str();
-
-        // Possessive pattern: "x is y's [relation]"
-        if after_obj.starts_with("'s ") || after_obj.starts_with("'s.") {
-            if after_obj.contains("sister") {
-                return Some((
-                    "sister_of".to_string(),
-                    "possessive-sister-pattern".to_string(),
-                    gap,
-                ));
-            }
-            if after_obj.contains("brother") {
-                return Some((
-                    "brother_of".to_string(),
-                    "possessive-brother-pattern".to_string(),
-                    gap,
-                ));
-            }
-        }
-
-        // Verb patterns with space before to ensure word boundaries
-        if between.contains(" mentor") {
+    // Possessive pattern: "x is y's [relation]"
+    if after_obj.starts_with("'s ") || after_obj.starts_with("'s.") {
+        if after_obj.contains("sister") {
             return Some((
-                "mentors".to_string(),
-                "verb-mentor-pattern".to_string(),
+                "sister_of".to_string(),
+                "possessive-sister-pattern".to_string(),
                 gap,
             ));
         }
-        if between.contains(" work") && between.contains(" at") {
+        if after_obj.contains("brother") {
+            return Some((
+                "brother_of".to_string(),
+                "possessive-brother-pattern".to_string(),
+                gap,
+            ));
+        }
+    }
+
+    // Verb patterns with space before to ensure word boundaries
+    if between.contains(" mentor") {
+        return Some((
+            "mentors".to_string(),
+            "verb-mentor-pattern".to_string(),
+            gap,
+        ));
+    }
+    if between.contains(" work") && between.contains(" at") {
+        return Some((
+            "works_at".to_string(),
+            "verb-works-at-pattern".to_string(),
+            gap,
+        ));
+    }
+    if between.contains(", who ") && (between.contains("work") || between.contains("mentor")) {
+        if between.contains("work") && between.contains("at") {
             return Some((
                 "works_at".to_string(),
-                "verb-works-at-pattern".to_string(),
+                "relative-works-at-pattern".to_string(),
                 gap,
             ));
         }
-        if between.contains(", who ") && (between.contains("work") || between.contains("mentor")) {
-            if between.contains("work") && between.contains("at") {
-                return Some((
-                    "works_at".to_string(),
-                    "relative-works-at-pattern".to_string(),
-                    gap,
-                ));
-            }
-            if between.contains("mentor") {
-                return Some((
-                    "mentors".to_string(),
-                    "relative-mentor-pattern".to_string(),
-                    gap,
-                ));
-            }
+        if between.contains("mentor") {
+            return Some((
+                "mentors".to_string(),
+                "relative-mentor-pattern".to_string(),
+                gap,
+            ));
         }
-
-        None
-    } else {
-        None
     }
+
+    None
 }
 
 /// Normalize a relation type against an optional caller-supplied ontology.

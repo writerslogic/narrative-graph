@@ -46,11 +46,11 @@ narrative-graph reads prose and returns candidate `(subject, relation, object)` 
 > Elena is Marco's sister. Marco mentors Dev, who works at the Archive.
 > ```
 >
-> **Output** (measured, `cargo run --features cli -- extract - --format json`):
+> **Output** (measured, `cargo run --features cli -- extract -`):
 > ```
-> elena --sister_of--> marco   0.85 [0..16]
-> marco --mentors-->    dev    0.78 [25..47]
-> dev   --works_at-->   archive 0.75 [39..69]
+> dev --works_at--> archive 0.75 [39..68]
+> elena --sister_of--> marco 0.85 [0..14]
+> marco --mentors--> dev 0.78 [25..42]
 > ```
 
 Works with Rust 1.77+ and Node.js 18+, on macOS, Linux, and Windows. Pairs naturally with [`holographic-memory`](https://github.com/writerslogic/holographic-memory)'s Meaning Memory — `memorizeTriplet` / `relate_phase` expect exactly this shape — but has no dependency on it and no opinion on what you do with a candidate.

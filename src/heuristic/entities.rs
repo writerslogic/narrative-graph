@@ -37,6 +37,11 @@ pub fn extract_entities(text: &str, aliases: &BTreeMap<String, String>) -> Vec<E
         }
     }
 
+    // IMPORTANT: pronouns are appended grouped by pronoun word, so the vector
+    // is not in text order until sorted. `extract_relations` pairs entities by
+    // index and treats the earlier index as the subject.
+    entities.sort_by_key(|e| e.start);
+
     // Deduplicate by keeping first occurrence, preserving text order
     let mut seen = std::collections::HashSet::new();
     entities.retain(|e| seen.insert(e.normalized.clone()));
@@ -49,6 +54,10 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
     let mut start_idx = 0;
     let mut current_word = String::new();
     let mut word_start = 0;
+    // End of the last capitalized word folded into `current_entity`. The
+    // separator position that flushes the entity sits after the following
+    // lowercase word, so it does not bound the mention.
+    let mut entity_end = 0;
 
     for (byte_pos, c) in text.char_indices() {
         let is_sep = c.is_whitespace() || ",.!?;:—'\"".contains(c);
@@ -67,13 +76,14 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
                         start_idx = word_start;
                     }
                     current_entity.push_str(&current_word);
+                    entity_end = byte_pos;
                 } else {
                     if !current_entity.is_empty() {
                         entities.push(EntityCandidate {
                             text: current_entity.clone(),
                             normalized: normalize_entity(&current_entity),
                             start: start_idx,
-                            end: byte_pos,
+                            end: entity_end,
                         });
                         current_entity.clear();
                     }
@@ -100,12 +110,13 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
                 start_idx = word_start;
             }
             current_entity.push_str(&current_word);
+            entity_end = text.len();
         } else if !current_entity.is_empty() {
             entities.push(EntityCandidate {
                 text: current_entity.clone(),
                 normalized: normalize_entity(&current_entity),
                 start: start_idx,
-                end: text.len(),
+                end: entity_end,
             });
             current_entity.clear();
         }
@@ -116,7 +127,7 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
             text: current_entity.clone(),
             normalized: normalize_entity(&current_entity),
             start: start_idx,
-            end: text.len(),
+            end: entity_end,
         });
     }
 
@@ -136,30 +147,25 @@ fn extract_pronouns(text: &str) -> Vec<Pronoun> {
     ];
     let mut found = Vec::new();
 
-    for pronoun_text in &pronouns {
-        let text_lower = text.to_lowercase();
-        let mut start = 0;
-        while let Some(pos) = text_lower[start..].find(pronoun_text) {
-            let abs_pos = start + pos;
-            // Check word boundary
-            let before_ok =
-                abs_pos == 0 || !text[..abs_pos].chars().last().unwrap().is_alphabetic();
-            let after_ok = abs_pos + pronoun_text.len() >= text.len()
-                || !text[abs_pos + pronoun_text.len()..]
-                    .chars()
-                    .next()
-                    .unwrap()
-                    .is_alphabetic();
-
-            if before_ok && after_ok {
+    // Walk whole words in the source text. Searching a lowercased copy yields
+    // offsets that do not address `text` once a character's lowercase form has
+    // a different byte length, and slicing `text` with one panics.
+    let mut word_start: Option<usize> = None;
+    let sentinel = std::iter::once((text.len(), ' '));
+    for (byte_pos, c) in text.char_indices().chain(sentinel) {
+        if c.is_alphabetic() {
+            word_start.get_or_insert(byte_pos);
+            continue;
+        }
+        if let Some(start) = word_start.take() {
+            let word = &text[start..byte_pos];
+            if let Some(pronoun) = pronouns.iter().find(|p| word.eq_ignore_ascii_case(p)) {
                 found.push(Pronoun {
-                    text: pronoun_text.to_string(),
-                    start: abs_pos,
-                    end: abs_pos + pronoun_text.len(),
+                    text: (*pronoun).to_string(),
+                    start,
+                    end: byte_pos,
                 });
             }
-
-            start = abs_pos + 1;
         }
     }
 

@@ -181,6 +181,11 @@ designed, but the design is narrow:
   part-of-speech or named-entity model backing this.
 - **Relation recall**: only the six patterns listed above are recognized.
   Any other phrasing of the same relationship is invisible to the pipeline.
+- **One mention per entity**: entity candidates are deduplicated by
+  normalized name within a sentence, keeping the first mention, so a relation
+  expressed through a later mention of an entity already seen is invisible.
+  `"Elena is Marco's sister and Marco mentors Elena."` yields only
+  `sister_of`, never `marco mentors elena`.
 - **Pronoun resolution**: "nearest preceding capitalized word," with no
   gender or number agreement — a multi-entity sentence can link a pronoun to
   the wrong antecedent.

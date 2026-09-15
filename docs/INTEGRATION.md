@@ -31,7 +31,7 @@ const { extractCandidateTriplesNapi } = require('narrative-graph')
 
 const candidates = extractCandidateTriplesNapi("Elena is Marco's sister.")
 // [{ subject: 'elena', relation: 'sister_of', object: 'marco',
-//    confidence: 0.85, span: [0, 16], rule: 'possessive-sister-pattern' }]
+//    confidence: 0.85, span: [0, 14], rule: 'possessive-sister-pattern' }]
 ```
 
 ## Node (ESM)

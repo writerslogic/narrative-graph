@@ -9,18 +9,18 @@ exists is behavioral test coverage over the pattern set documented in
 | Suite | Count | What it checks |
 |---|---|---|
 | `src/heuristic/segment.rs` (`cargo test`) | 14 | Sentence segmentation: honorifics, initials, ellipses, decimals, em-dashes, quoted dialogue with attribution, terminator runs, multibyte offsets, empty input, and a 20k-case property test asserting no panic and valid char-boundary offsets |
-| `tests/heuristic.rs` (`cargo test`) | 11 | Each relation pattern fires on a canonical example, confidence ordering, span correctness, `min_confidence` filtering, rule attribution, and multi-relation sentences |
+| `tests/heuristic.rs` (`cargo test`) | 16 | Each relation pattern fires on a canonical example, confidence ordering, span correctness, `min_confidence` filtering, rule attribution, and multi-relation sentences; plus nested mentions (`Jane` inside `Mary Jane`), a surface form recurring inside an earlier word (`Dev` inside `Devon`), an entity whose lowercase form changes byte length (`İ`), spans bounding their subject and object, and a 20k-case property test over the whole pipeline asserting no panic and valid char-boundary spans |
 | `types.rs` binding-export tests (`cargo test --features bindings`) | 3 | `ts-rs` regenerates `bindings/*.ts` from `Options`, `TripleCandidate`, `SpannedTriple` without drift |
 | `tests/node/api.test.cjs` (`npm test`) | 8 | The N-API surface: extraction, empty input, `minConfidence` filtering, `aliases`, `ontology`, and the out-of-range-confidence error |
 | `tests/node/types.test.mts` (`npm run test:types`) | — | `index.d.ts` accepts valid `NapiOptions`/results and rejects invalid ones (`tsc --strict`) |
 
-All pass as of this writing (25 under default features; the 3 binding-export
+All pass as of this writing (30 under default features; the 3 binding-export
 tests require `--features bindings`, which CI covers via `--all-features`).
 Reproduce with:
 
 ```bash
-cargo test                      # 25: segmentation + pipeline
-cargo test --all-features       # 28: adds the binding-export tests
+cargo test                      # 30: segmentation + pipeline
+cargo test --all-features       # 33: adds the binding-export tests
 npm install && npm test
 npm run test:types
 ```
@@ -41,12 +41,12 @@ $ echo "Elena is Marco's sister. Marco mentors Dev, who works at the Archive." \
 
 ```json
 [
-  { "subject": "elena", "relation": "sister_of", "object": "marco",
-    "confidence": 0.85, "span": [0, 16], "rule": "possessive-sister-pattern" },
-  { "subject": "marco", "relation": "mentors", "object": "dev",
-    "confidence": 0.78, "span": [25, 47], "rule": "verb-mentor-pattern" },
   { "subject": "dev", "relation": "works_at", "object": "archive",
-    "confidence": 0.75, "span": [39, 69], "rule": "verb-works-at-pattern" }
+    "confidence": 0.7488, "span": [39, 68], "rule": "verb-works-at-pattern" },
+  { "subject": "elena", "relation": "sister_of", "object": "marco",
+    "confidence": 0.85, "span": [0, 14], "rule": "possessive-sister-pattern" },
+  { "subject": "marco", "relation": "mentors", "object": "dev",
+    "confidence": 0.78, "span": [25, 42], "rule": "verb-mentor-pattern" }
 ]
 ```
 

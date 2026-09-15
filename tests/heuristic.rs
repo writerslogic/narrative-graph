@@ -155,3 +155,147 @@ fn test_deduplication() {
 
     assert_eq!(marco_dev_count, 1, "should deduplicate identical triples");
 }
+
+#[test]
+fn test_overlapping_mentions_do_not_panic() {
+    let text = "Mary Jane mentors Jane.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    for candidate in &candidates {
+        assert!(
+            candidate.span[0] <= candidate.span[1] && candidate.span[1] <= text.len(),
+            "span out of range"
+        );
+    }
+}
+
+#[test]
+fn test_subject_matched_at_its_own_mention_not_an_earlier_substring() {
+    let text = "Devon greeted Dev, who works at the Archive.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    let dev_works_at = candidates
+        .iter()
+        .find(|c| c.subject == "dev" && c.relation == "works_at");
+    assert!(
+        dev_works_at.is_some(),
+        "\"Dev\" must match its own mention, not the \"Dev\" inside \"Devon\": {candidates:?}"
+    );
+}
+
+#[test]
+fn test_entity_whose_lowercase_changes_byte_length() {
+    // "İ" is 2 bytes and lowercases to 3, so offsets taken from a lowercased
+    // copy of the text do not address the original.
+    let text = "İstanbul mentors Dev.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    let mentors = candidates
+        .iter()
+        .find(|c| c.relation == "mentors" && c.object == "dev");
+    assert!(
+        mentors.is_some(),
+        "relation lost to a lowercase byte-length shift: {candidates:?}"
+    );
+}
+
+#[test]
+fn test_span_bounds_the_subject_and_object_mentions() {
+    for text in [
+        "Elena is Marco's sister.",
+        "Marco mentors Dev.",
+        "Dev works at the Archive.",
+    ] {
+        let opts = Options::default();
+        let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+        assert!(!candidates.is_empty(), "no candidates for {text:?}");
+
+        for candidate in &candidates {
+            let [start, end] = candidate.span;
+            assert!(
+                text.is_char_boundary(start) && text.is_char_boundary(end),
+                "non-char-boundary span {:?} for {text:?}",
+                candidate.span
+            );
+            let covered = &text[start..end];
+            assert!(
+                covered
+                    .to_lowercase()
+                    .starts_with(&candidate.subject.replace('_', " ")),
+                "span {covered:?} does not start at the subject {:?}",
+                candidate.subject
+            );
+            assert!(
+                covered
+                    .to_lowercase()
+                    .ends_with(&candidate.object.replace('_', " ")),
+                "span {covered:?} does not end at the object {:?}",
+                candidate.object
+            );
+        }
+    }
+}
+
+#[test]
+fn test_pipeline_never_panics_and_spans_stay_valid() {
+    let alphabet = [
+        "Elena",
+        "Marco",
+        "Dev",
+        "Jane",
+        "Mary Jane",
+        "Devon",
+        "İstanbul",
+        "the Archive",
+        "is",
+        "mentors",
+        "works",
+        "at",
+        "who",
+        "'s",
+        "sister",
+        "brother",
+        " ",
+        ",",
+        ".",
+        "!",
+        "she",
+        "her",
+        "they",
+        "—",
+        "é",
+        "\u{1F600}",
+    ];
+    // Deterministic pseudo-random walk over the alphabet.
+    let mut state: u64 = 0x2545F4914F6CDD1D;
+    for _ in 0..20000 {
+        let mut s = String::new();
+        let len = (state % 16) as usize;
+        for _ in 0..len {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            s.push_str(alphabet[(state >> 33) as usize % alphabet.len()]);
+            s.push(' ');
+        }
+        let opts = Options::default();
+        let candidates = extract_candidate_triples(&s, &opts).expect("extraction failed");
+        for candidate in &candidates {
+            let [start, end] = candidate.span;
+            assert!(
+                start <= end && end <= s.len(),
+                "span out of range for {s:?}"
+            );
+            assert!(
+                s.is_char_boundary(start) && s.is_char_boundary(end),
+                "non-char-boundary span for {s:?}"
+            );
+        }
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+    }
+}
