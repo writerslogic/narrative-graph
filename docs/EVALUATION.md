@@ -9,18 +9,18 @@ exists is behavioral test coverage over the pattern set documented in
 | Suite | Count | What it checks |
 |---|---|---|
 | `src/heuristic/segment.rs` (`cargo test`) | 14 | Sentence segmentation: honorifics, initials, ellipses, decimals, em-dashes, quoted dialogue with attribution, terminator runs, multibyte offsets, empty input, and a 20k-case property test asserting no panic and valid char-boundary offsets |
-| `tests/heuristic.rs` (`cargo test`) | 16 | Each relation pattern fires on a canonical example, confidence ordering, span correctness, `min_confidence` filtering, rule attribution, and multi-relation sentences; plus nested mentions (`Jane` inside `Mary Jane`), a surface form recurring inside an earlier word (`Dev` inside `Devon`), an entity whose lowercase form changes byte length (`İ`), spans bounding their subject and object, and a 20k-case property test over the whole pipeline asserting no panic and valid char-boundary spans |
+| `tests/heuristic.rs` (`cargo test`) | 28 | Each relation pattern fires on a canonical example, confidence ordering, span correctness, `min_confidence` filtering, rule attribution, and multi-relation sentences; plus nested mentions (`Jane` inside `Mary Jane`), a surface form recurring inside an earlier word (`Dev` inside `Devon`), an entity whose lowercase form changes byte length (`İ`), a possessive bounded to its noun phrase, passive-voice role orientation, spans covering the token that licensed the relation, a referent mentioned twice yielding both relations, no self-relations, whole-word lexicon matching (`grandmother` is not `mother`), stance nouns scoring below stated kinship, one label shared between a noun rule and a verb rule, and a 20k-case property test over the whole pipeline asserting no panic and valid char-boundary spans |
 | `types.rs` binding-export tests (`cargo test --features bindings`) | 3 | `ts-rs` regenerates `bindings/*.ts` from `Options`, `TripleCandidate`, `SpannedTriple` without drift |
 | `tests/node/api.test.cjs` (`npm test`) | 8 | The N-API surface: extraction, empty input, `minConfidence` filtering, `aliases`, `ontology`, and the out-of-range-confidence error |
 | `tests/node/types.test.mts` (`npm run test:types`) | — | `index.d.ts` accepts valid `NapiOptions`/results and rejects invalid ones (`tsc --strict`) |
 
-All pass as of this writing (30 under default features; the 3 binding-export
+All pass as of this writing (42 under default features; the 3 binding-export
 tests require `--features bindings`, which CI covers via `--all-features`).
 Reproduce with:
 
 ```bash
-cargo test                      # 30: segmentation + pipeline
-cargo test --all-features       # 33: adds the binding-export tests
+cargo test                      # 42: segmentation + pipeline
+cargo test --all-features       # 45: adds the binding-export tests
 npm install && npm test
 npm run test:types
 ```
@@ -50,13 +50,14 @@ $ echo "Elena is Marco's sister. Marco mentors Dev, who works at the Archive." \
 ]
 ```
 
-Confidence is `score_confidence(rule, gap)` (`src/heuristic/cooccurrence.rs`):
-a base score per rule family (possessive highest, then direct verb patterns,
-then relative-clause patterns), reduced by up to 15% as the character gap
-between subject and object approaches the 30-character cutoff enforced in
+Confidence is `score_confidence(base, gap)` (`src/heuristic/cooccurrence.rs`):
+a base score carried by the pattern that matched — stated kinship and role
+highest, then direct verb patterns, then social stance and relative-clause
+patterns — reduced by up to 15% as the character gap between subject and
+object approaches the 30-character cutoff enforced in
 `find_relation_pattern`. It is not derived from a trained model or a
-corpus-wide statistic — it is a fixed formula over the rule name and a
-distance measurement, so identical inputs always produce identical scores.
+corpus-wide statistic — it is a fixed formula over a per-pattern constant and
+a distance measurement, so identical inputs always produce identical scores.
 
 ## What is not measured
 
@@ -67,6 +68,20 @@ distance measurement, so identical inputs always produce identical scores.
   someone other than the pattern author — the test suite above confirms the
   code does what it was written to do, not that what it was written to do
   is correct on prose it wasn't designed around.
+
+  No such corpus appears to be published. A survey of the citation cluster in
+  [Artificial Relationships in Fiction](https://aclanthology.org/2025.latechclfl-1.13.pdf)
+  (LaTeCH-CLfL 2025), the most recent work to need one, turns up only speaker
+  identification, character detection, spatial annotation, and unsupervised
+  work with no gold release. [LitBank](https://github.com/dbamman/litbank) is
+  the right domain under a usable license but annotates entities, events,
+  coreference and quotations, with no relation layer.
+  [Massey et al. 2015](https://arxiv.org/abs/1512.00728) has the right
+  relation inventory but annotates third-party plot summaries rather than the
+  prose, and ships no license. ARF itself is GPT-4o output that its authors
+  state is unvalidated. Precision is the cheaper half to establish and needs
+  no corpus: sample real prose, extract, and have someone who did not write
+  the patterns judge each emitted triple against its sentence.
 - **Coverage of relation phrasing outside the documented patterns.**
   Every current test exercises the exact phrasing each pattern was built
   for; none establish a recall floor on the broader space of ways the same
