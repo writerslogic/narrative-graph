@@ -145,7 +145,12 @@ const POSSESSIVE_NOUNS: &[(&str, &str, f32)] = &[
 /// and "is not", "was never", "could be" and "believed ... was" each deny,
 /// hedge or attribute the claim rather than making it. Every one of those
 /// contains a copula; none of them is one.
-const POSSESSIVE_COPULAS: &[&str] = &["is", "was", "are", "were"];
+///
+/// The plural copulas are absent. "Dev and Elena are Marco's cousins" has two
+/// subjects and the pair loop sees one of them, so extracting it would be half
+/// right by construction; the lexicon also matches whole-word and would have
+/// to carry "cousins" to reach the phrase at all.
+const POSSESSIVE_COPULAS: &[&str] = &["is", "was"];
 
 /// Byte range of the first ASCII-case-insensitive *whole-word* occurrence of
 /// `needle`. IMPORTANT: whole-word matching is what stops "grandmother" from

@@ -82,15 +82,24 @@ const SENTENCE_OPENERS: &[&str] = &[
 /// Whether `word_start` is the first word of a sentence, looking past any
 /// opening quotation or bracket that precedes it.
 fn is_sentence_start(text: &str, word_start: usize) -> bool {
-    let preceding = text[..word_start]
-        .chars()
-        .rev()
-        .find(|c| !c.is_whitespace() && !"\"'\u{201C}\u{2018}([".contains(*c));
+    let mut quoted = false;
 
-    match preceding {
-        None => true,
-        Some(c) => ".!?\u{2026}".contains(c),
+    for c in text[..word_start].chars().rev() {
+        if c.is_whitespace() {
+            continue;
+        }
+        if "\"'\u{201C}\u{2018}([".contains(c) {
+            quoted = true;
+            continue;
+        }
+        // IMPORTANT: a quotation opening after the attribution comma starts a
+        // sentence too. `Elena said, "She is Marco's student."` is where a
+        // capitalized pronoun actually occurs in fiction, and the comma is the
+        // only thing before it.
+        return ".!?\u{2026}".contains(c) || (quoted && c == ',');
     }
+
+    true
 }
 
 /// Whether a capitalized word is capitalized only because a sentence starts

@@ -620,3 +620,43 @@ fn test_a_capitalized_pronoun_is_not_a_second_mention() {
         "{candidates:?}"
     );
 }
+
+#[test]
+fn test_every_copula_the_possessive_accepts_is_reachable() {
+    // The whitelist is the gate; an entry nothing exercises can be narrowed
+    // away without a test failing.
+    let opts = Options::default();
+
+    for (text, subject) in [
+        ("Elena is Marco's sister.", "elena"),
+        ("Elena was Marco's sister.", "elena"),
+    ] {
+        let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+        assert!(
+            candidates
+                .iter()
+                .any(|c| c.subject == subject && c.object == "marco"),
+            "{text:?} yielded {candidates:?}"
+        );
+    }
+
+    // A plural copula is deliberately not on the whitelist: the sentence has
+    // two subjects and the pair loop would claim the relation for one.
+    let plural = extract_candidate_triples("Dev and Elena are Marco's cousins.", &opts)
+        .expect("extraction failed");
+    assert!(plural.is_empty(), "{plural:?}");
+}
+
+#[test]
+fn test_a_quoted_sentence_after_the_attribution_comma_starts_a_sentence() {
+    // Fiction puts capitalized pronouns inside dialogue, where the only thing
+    // before the opening quote is the comma of the attribution.
+    let opts = Options::default();
+    let candidates = extract_candidate_triples("Elena said, \"She is Marco's student.\"", &opts)
+        .expect("extraction failed");
+
+    assert!(
+        candidates.iter().all(|c| c.subject != "she"),
+        "{candidates:?}"
+    );
+}

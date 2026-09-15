@@ -9,18 +9,18 @@ exists is behavioral test coverage over the pattern set documented in
 | Suite | Count | What it checks |
 |---|---|---|
 | `src/heuristic/segment.rs` (`cargo test`) | 14 | Sentence segmentation: honorifics, initials, ellipses, decimals, em-dashes, quoted dialogue with attribution, terminator runs, multibyte offsets, empty input, and a 20k-case property test asserting no panic and valid char-boundary offsets |
-| `tests/heuristic.rs` (`cargo test`) | 36 | Each relation pattern fires on a canonical example, confidence ordering, span correctness, `min_confidence` filtering, rule attribution, and multi-relation sentences; plus nested mentions (`Jane` inside `Mary Jane`), a surface form recurring inside an earlier word (`Dev` inside `Devon`), an entity whose lowercase form changes byte length (`İ`), a possessive bounded to its noun phrase, passive-voice role orientation, spans covering the token that licensed the relation, a referent mentioned twice yielding both relations, no self-relations, whole-word lexicon matching (`grandmother` is not `mother`), stance nouns scoring below stated kinship, one label shared between a noun rule and a verb rule, and a 20k-case property test over the whole pipeline asserting no panic and valid char-boundary spans. Eight of these are negative: a possessive without a copula, a reported possessive, a non-head relational noun, a denied or suspended relation, a question, a sentence opener folded into a mention, a capitalized pronoun becoming a second mention, and a given name that reads as a function word |
+| `tests/heuristic.rs` (`cargo test`) | 38 | Each relation pattern fires on a canonical example, confidence ordering, span correctness, `min_confidence` filtering, rule attribution, and multi-relation sentences; plus nested mentions (`Jane` inside `Mary Jane`), a surface form recurring inside an earlier word (`Dev` inside `Devon`), an entity whose lowercase form changes byte length (`İ`), a possessive bounded to its noun phrase, passive-voice role orientation, spans covering the token that licensed the relation, a referent mentioned twice yielding both relations, no self-relations, whole-word lexicon matching (`grandmother` is not `mother`), stance nouns scoring below stated kinship, one label shared between a noun rule and a verb rule, and a 20k-case property test over the whole pipeline asserting no panic and valid char-boundary spans. Ten of these came out of the near-miss probing below: seven assert that nothing is emitted (a possessive without a copula, a reported possessive, a non-head relational noun, a denied or suspended relation, a question, a plural copula, and a capitalized pronoun inside dialogue), and three guard against over-correcting (a sentence opener dropped without losing the mention after it, a given name that reads as a function word, and each copula the possessive still accepts) |
 | `types.rs` binding-export tests (`cargo test --features bindings`) | 3 | `ts-rs` regenerates `bindings/*.ts` from `Options`, `TripleCandidate`, `SpannedTriple` without drift |
 | `tests/node/api.test.cjs` (`npm test`) | 8 | The N-API surface: extraction, empty input, `minConfidence` filtering, `aliases`, `ontology`, and the out-of-range-confidence error |
 | `tests/node/types.test.mts` (`npm run test:types`) | — | `index.d.ts` accepts valid `NapiOptions`/results and rejects invalid ones (`tsc --strict`) |
 
-All pass as of this writing (50 under default features; the 3 binding-export
+All pass as of this writing (52 under default features; the 3 binding-export
 tests require `--features bindings`, which CI covers via `--all-features`).
 Reproduce with:
 
 ```bash
-cargo test                      # 50: segmentation + pipeline
-cargo test --all-features       # 53: adds the binding-export tests
+cargo test                      # 52: segmentation + pipeline
+cargo test --all-features       # 55: adds the binding-export tests
 npm install && npm test
 npm run test:types
 ```
@@ -63,10 +63,12 @@ a distance measurement, so identical inputs always produce identical scores.
 
 The open question this replaces was per-noun precision for the possessive
 lexicon: whether "sister" is a safer trigger than "friend". Probing it found
-the variance is not per-noun at all. Fifteen sentences built around the
-documented shapes — the same nouns, varied only in what joined the two
-mentions — produced thirteen false positives, every one of them at the
-pattern's full confidence, and the noun was never the reason:
+the variance is not per-noun at all. Three batches of sentences built around
+the documented shapes — the same nouns and verbs, varied only in what joined
+the two mentions or opened the sentence — produced 13 false positives out of
+15 possessive probes, 8 out of 13 verb probes, and 6 out of 9 sentence-opener
+probes. Every one fired at the pattern's full confidence, and the noun was
+never the reason:
 
 | Probe | Emitted before | Why it was wrong |
 |---|---|---|
@@ -81,8 +83,9 @@ pattern's full confidence, and the noun was never the reason:
 | "But Elena mentors Marco." | `mentors(but_elena, marco)` @ 0.78 | Splits the character |
 
 One root cause covered most of it: each rule matched a substring of the text
-between the mentions and never checked the rest of it. All fifteen probes are
-now assertions in `tests/heuristic.rs`; the gating is documented in
+between the mentions and never checked the rest of it. Every probe listed
+above is now an assertion in `tests/heuristic.rs`, alongside the true
+positives that pin each gate open; the gating is documented in
 [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 This is adversarial probing by the pattern author, which is weaker evidence

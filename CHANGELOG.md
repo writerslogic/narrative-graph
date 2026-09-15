@@ -46,10 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The possessive rule never inspected that text at all, firing on nothing but
   an `'s` after the object. "Elena visited Marco's sister" claimed
   `sister_of(elena, marco)` at the system's highest confidence, naming the
-  subject as a third person's sister. The rule now requires a bare copula
-  between the mentions, and requires the relational noun to head the possessed
-  phrase, so "Marco's master key" and "Marco's friend's sister" no longer
-  match either.
+  subject as a third person's sister. The rule now requires a bare singular
+  copula between the mentions, and requires the relational noun to head the
+  possessed phrase, so "Marco's master key" and "Marco's friend's sister" no
+  longer match either.
 - A sentence-initial function word was folded into the mention that followed
   it, so "But Elena" normalized to `but_elena` and never unified with `elena`
   elsewhere in the text, splitting one character into two nodes. A closed list
