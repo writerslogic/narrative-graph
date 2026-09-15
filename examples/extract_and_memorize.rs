@@ -1,6 +1,6 @@
-use narrative_graph::{extract_candidate_triples, Options};
+use narrative_graph::{extract_candidate_triples, Options, Result};
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     // Test simple cases first
     println!("=== Test 1: Simple possessive ===");
     let text1 = "Elena is Marco's sister.";

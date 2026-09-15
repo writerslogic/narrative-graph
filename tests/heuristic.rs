@@ -55,15 +55,22 @@ fn test_relative_clause_pattern() {
     let opts = Options::default();
     let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
 
-    let dev_works_at = candidates.iter().find(|c| c.subject == "dev" && c.relation == "works_at");
-    assert!(dev_works_at.is_some(), "relative clause pattern should extract works_at");
+    let dev_works_at = candidates
+        .iter()
+        .find(|c| c.subject == "dev" && c.relation == "works_at");
+    assert!(
+        dev_works_at.is_some(),
+        "relative clause pattern should extract works_at"
+    );
 }
 
 #[test]
 fn test_confidence_threshold() {
     let text = "Elena is Marco's sister. Marco mentors Dev.";
-    let mut opts = Options::default();
-    opts.min_confidence = Some(0.8);
+    let opts = Options {
+        min_confidence: Some(0.8),
+        ..Default::default()
+    };
 
     let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
 
@@ -80,9 +87,15 @@ fn test_multiple_relations_same_sentence() {
 
     assert!(candidates.len() >= 3, "should extract at least 3 relations");
 
-    let has_elena_marco = candidates.iter().any(|c| c.subject == "elena" && c.object == "marco");
-    let has_marco_dev = candidates.iter().any(|c| c.subject == "marco" && c.object == "dev");
-    let has_dev_archive = candidates.iter().any(|c| c.subject == "dev" && c.object == "archive");
+    let has_elena_marco = candidates
+        .iter()
+        .any(|c| c.subject == "elena" && c.object == "marco");
+    let has_marco_dev = candidates
+        .iter()
+        .any(|c| c.subject == "marco" && c.object == "dev");
+    let has_dev_archive = candidates
+        .iter()
+        .any(|c| c.subject == "dev" && c.object == "archive");
 
     assert!(has_elena_marco, "missing elena-marco relation");
     assert!(has_marco_dev, "missing marco-dev relation");
@@ -98,9 +111,18 @@ fn test_span_coverage() {
     assert_eq!(candidates.len(), 1);
     let candidate = &candidates[0];
 
-    assert!(candidate.span[0] < candidate.span[1], "span end must be after start");
-    assert!(candidate.span[1] <= text.len(), "span must not exceed text length");
-    assert_eq!(candidate.span[0], 0, "span should start at beginning of text");
+    assert!(
+        candidate.span[0] < candidate.span[1],
+        "span end must be after start"
+    );
+    assert!(
+        candidate.span[1] <= text.len(),
+        "span must not exceed text length"
+    );
+    assert_eq!(
+        candidate.span[0], 0,
+        "span should start at beginning of text"
+    );
 }
 
 #[test]

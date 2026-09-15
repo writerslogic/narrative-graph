@@ -37,21 +37,23 @@
 
 ---
 
-narrative-graph reads prose and returns candidate `(subject, relation, object)` facts with a confidence score and the exact source span each one came from. No API key, no network call, no model download by default. It stores nothing and queries nothing — it's a producer you point at any store, or at no store at all.
+narrative-graph reads prose and returns candidate `(subject, relation, object)` facts with a confidence score and the exact source span each one came from. No API key, no network call, no model download. It stores nothing and queries nothing — it's a producer you point at any store, or at no store at all.
+
+**The default build has zero dependencies.** `cargo tree` prints the crate and nothing else; the extraction core compiles against the standard library alone, and CI fails if that ever stops being true. Serde, TypeScript bindings, the Node addon, and the CLI are each opt-in features that serve a boundary, never the core.
 
 > **Input:**
 > ```
 > Elena is Marco's sister. Marco mentors Dev, who works at the Archive.
 > ```
 >
-> **Output:**
+> **Output** (measured, `cargo run --features cli -- extract - --format json`):
 > ```
-> elena  --sister_of--> marco  0.81   [0..14]
-> marco  --mentors-->   dev    0.81   [25..42]
-> dev    --works_at-->  archive 0.74   [39..68]
+> elena --sister_of--> marco   0.85 [0..16]
+> marco --mentors-->    dev    0.78 [25..47]
+> dev   --works_at-->   archive 0.75 [39..69]
 > ```
 
-Works with Rust 1.75+ and Node.js 18+, on macOS, Linux, and Windows. Pairs naturally with [`holographic-memory`](https://github.com/writerslogic/holographic-memory)'s Meaning Memory — `memorizeTriplet` / `relate_phase` expect exactly this shape — but has no dependency on it and no opinion on what you do with a candidate.
+Works with Rust 1.77+ and Node.js 18+, on macOS, Linux, and Windows. Pairs naturally with [`holographic-memory`](https://github.com/writerslogic/holographic-memory)'s Meaning Memory — `memorizeTriplet` / `relate_phase` expect exactly this shape — but has no dependency on it and no opinion on what you do with a candidate.
 
 ## Install
 
@@ -74,31 +76,22 @@ narrative-graph = "0.1"
 npm install writerslogic/narrative-graph
 ```
 
-<details>
-<summary><strong>Optional: local ONNX extraction model (Node.js only)</strong></summary>
+### Cargo features
 
-The default pipeline is pure heuristics and needs nothing extra. For higher recall on prose that doesn't fit a recognizable verb-phrase pattern, install `@huggingface/transformers` and point narrative-graph at a local model directory (Node.js only):
-
-```javascript
-const { createLocalExtractor, extractCandidateTriples } = require('narrative-graph');
-
-const extractor = await createLocalExtractor({
-  modelPath: process.env.NG_MODEL_DIR,
-  modelId: 'Xenova/bert-base-NER',
-  revision: process.env.NG_MODEL_REVISION,
-  dtype: 'q8',
-});
-const candidates = extractCandidateTriples(text, { extractor });
-await extractor.dispose();
-```
-
-Nothing is downloaded by this factory — supply an existing model directory and an explicit revision. The heuristic pipeline runs unconditionally as a baseline; the model, when supplied, sharpens entity boundaries and relation labels on harder sentences.
-
-The Rust core stays heuristics-only by design to keep the default build lightweight and dependency-free — this matches the pattern of the sibling [`holographic-memory`](https://github.com/writerslogic/holographic-memory) project, where local embedding models are similarly Node-only via `@huggingface/transformers`.
-
-</details>
+| Feature | Adds | Dependencies |
+|---|---|---|
+| *(default)* | The heuristic extraction pipeline | none |
+| `serde` | `Serialize`/`Deserialize` on the public types | `serde` |
+| `json` | JSON output | `serde`, `serde_json` |
+| `bindings` | TypeScript declarations via `ts-rs` | `serde`, `ts-rs` |
+| `node-api` | The Node addon | `napi`, `napi-derive`, `napi-build` |
+| `cli` | The `narrative-graph` binary | `clap`, `anyhow` |
 
 ## What It Extracts
+
+### Sentences
+
+Segmentation is hand-rolled rather than a naive split on `.`/`!`/`?`, because narrative prose is made of exactly the constructs a naive splitter breaks on: honorifics (`Dr. Smith went home.`), initials (`J. R. R. Tolkien`), ellipses (`She paused... then left.`), and quoted dialogue with attribution (`"Who are you?" she asked.` is one sentence, not two). Sentences are returned as borrowed slices of the input, so segmentation allocates nothing per sentence.
 
 ### Entities
 
@@ -113,33 +106,22 @@ Verb-phrase heuristics between two entity candidates in the same clause — fami
 
 ### Explainability
 
-Every candidate reports the rule that produced it, not just a score — `possessive-sister-pattern`, `verb-mentor-pattern`, `cooccurrence-fallback`. A confidence number alone tells you nothing about *why* the pipeline believes something; the rule name does.
+Every candidate reports the rule that produced it, not just a score — `possessive-sister-pattern`, `verb-mentor-pattern`, `verb-works-at-pattern`, `relative-mentor-pattern`, `relative-works-at-pattern`. A confidence number alone tells you nothing about *why* the pipeline believes something; the rule name does.
 
 ### Confidence and Span
 
-Every candidate carries a confidence score from sentence-window co-occurrence strength and pattern specificity, plus the byte offset of its extracted span — a range covering the subject and object in the source text. Gate on a threshold, route low-confidence candidates to human review, or fetch source context for display.
-
-> **You:** Extract relations from Chapter 3 above confidence 0.7.
->
-> **narrative-graph:** 12 candidates found, 8 above threshold. Filtered: "elena --knows--> stranger" (0.41) — the co-occurrence window spans a paragraph break, weak evidence for a direct relation.
-
-### Local ONNX Mode
-
-Swap the heuristic entity/relation steps for a local ONNX model when default recall isn't enough — same "bring your own model, no download" contract as `holographic-memory`'s local embedder. See [Install](#install).
+Every candidate carries a confidence score from the extraction rule's pattern strength and how close the subject and object are in the source text, plus the byte offset of its extracted span — a range covering the subject and object in the source text. Gate on a threshold, route low-confidence candidates to human review, or fetch source context for display.
 
 ## API
 
-Two surfaces, one behavior. To keep the default build light, the ONNX path is feature-gated in Rust and an optional peer dependency in Node.
-
 <details>
-<summary><strong>Rust</strong> -- core extraction, types, feature flags</summary>
+<summary><strong>Rust</strong> -- core extraction and types</summary>
 
 | Item | What it does |
 |------|-------------|
-| `extract_candidate_triples(text, &Options)` | Run the heuristic pipeline (and the ONNX path, if configured) over a passage |
-| `Options { aliases, min_confidence, extractor, ontology }` | Alias map, confidence floor, optional local extractor handle, relation-vocabulary overrides |
+| `extract_candidate_triples(text, &Options)` | Run the heuristic pipeline over a passage |
+| `Options { aliases, min_confidence, ontology }` | Alias map, confidence floor, relation-vocabulary overrides |
 | `TripleCandidate { subject, relation, object, confidence, span, rule }` | One candidate fact; `span` is a byte range into the input, `rule` names the pattern that produced it |
-| `create_local_extractor(config)` | *(feature `onnx-ner`)* Load a local ONNX model by path and revision; no download |
 
 </details>
 
@@ -150,33 +132,31 @@ Two surfaces, one behavior. To keep the default build light, the ONNX path is fe
 narrative-graph extract chapter.txt --min-confidence 0.6 --format json
 ```
 
-Installed alongside the crate (`cargo install narrative-graph` provides the `narrative-graph` binary), the same way `holographic-memory` ships `hms-admin` and `hms-eval` as bins in its own crate rather than separate packages. Useful for shell pipelines, CI checks, and inspecting output before wiring the library into an application.
+Installed alongside the crate (`cargo install narrative-graph --features cli` provides the `narrative-graph` binary), the same way `holographic-memory` ships `hms-admin` and `hms-eval` as bins in its own crate rather than separate packages. Useful for shell pipelines, CI checks, and inspecting output before wiring the library into an application.
 
 </details>
 
 <details>
-<summary><strong>Node.js</strong> -- extraction, local models, types</summary>
+<summary><strong>Node.js</strong> -- extraction and types</summary>
 
 | Function | What it does |
 |----------|-------------|
-| `extractCandidateTriples(text, options?)` | Run the heuristic pipeline (and the ONNX path, if an extractor is passed) |
-| `createLocalExtractor(config)` | Load a local ONNX model by path and revision; requires `@huggingface/transformers` |
+| `extractCandidateTriplesNapi(text, opts?)` | Run the heuristic pipeline over a passage |
 
-`options` accepts `aliases`, `minConfidence`, and `extractor`. Full TypeScript definitions ship in the package (`index.d.ts`), generated from the Rust types via `ts-rs` — treat them as the source of truth over this table.
+`opts` accepts `aliases`, `minConfidence`, and `ontology`. Full TypeScript definitions ship in the package (`index.d.ts`), generated from the Rust types via `ts-rs` — treat them as the source of truth over this table.
 
 </details>
 
 ## Guides
 
-- **[Architecture](./docs/ARCHITECTURE.md)** -- the extraction pipeline, confidence scoring, and the ONNX path
+- **[Architecture](./docs/ARCHITECTURE.md)** -- the extraction pipeline and confidence scoring
 - **[Integration with holographic-memory](./docs/INTEGRATION.md)** -- extracting, thresholding, and feeding a Meaning Memory store
 - **[Evaluation](./docs/EVALUATION.md)** -- methodology and results against the fixtures in `tests/fixtures/`
 - **[Contributing](./CONTRIBUTING.md)** -- development setup and conventions
 
 ## Requirements
 
-- **Rust 1.75+** or **Node.js 18+**
-- Optional: `@huggingface/transformers` (Node) or the `onnx-ner` feature (Rust) for local-model extraction
+- **Rust 1.77+** or **Node.js 18+**
 - No API key, no network access, no external service of any kind
 
 ## Development
@@ -184,10 +164,11 @@ Installed alongside the crate (`cargo install narrative-graph` provides the `nar
 ```bash
 git clone https://github.com/writerslogic/narrative-graph.git
 cd narrative-graph
-cargo test                          # heuristic pipeline, Rust side
+cargo test                          # segmentation + heuristic pipeline
+cargo test --all-features           # adds the ts-rs binding-export tests
+cargo tree                          # should print this crate and nothing else
 npm install && npm test             # node --test tests/node
 npm run test:types                  # strict TS check against generated bindings
-cargo test --features onnx-ner      # local-model path
 ```
 
 TypeScript definitions in `bindings/` are generated from the Rust types via `ts-rs` — don't hand-edit them.

@@ -18,7 +18,7 @@ relation: string,
  */
 object: string, 
 /**
- * Confidence score from 0.0 to 1.0, derived from co-occurrence strength and pattern specificity.
+ * Confidence score from 0.0 to 1.0, derived from rule strength and entity proximity.
  */
 confidence: number, 
 /**
@@ -27,6 +27,6 @@ confidence: number,
 span: [number, number], 
 /**
  * The name of the extraction rule that produced this candidate.
- * Examples: "possessive-sister-pattern", "verb-mentor-pattern", "cooccurrence-fallback".
+ * Examples: "possessive-sister-pattern", "verb-mentor-pattern".
  */
 rule: string, };

@@ -3,7 +3,6 @@ import type { TripleCandidate } from "./TripleCandidate";
 
 /**
  * A reference span into the input text with its corresponding surface text.
- * Returned from `extract_candidate_triples_with_text`.
  */
 export type SpannedTriple = { candidate: TripleCandidate, 
 /**

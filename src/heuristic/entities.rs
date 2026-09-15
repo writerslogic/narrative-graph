@@ -55,7 +55,10 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
 
         if is_sep {
             if !current_word.is_empty() {
-                let is_capitalized = current_word.chars().next().map_or(false, |c| c.is_uppercase());
+                let is_capitalized = current_word
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_uppercase());
 
                 if is_capitalized {
                     if !current_entity.is_empty() {
@@ -86,7 +89,10 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
     }
 
     if !current_word.is_empty() {
-        let is_capitalized = current_word.chars().next().map_or(false, |c| c.is_uppercase());
+        let is_capitalized = current_word
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_uppercase());
         if is_capitalized {
             if !current_entity.is_empty() {
                 current_entity.push(' ');
@@ -125,7 +131,9 @@ struct Pronoun {
 }
 
 fn extract_pronouns(text: &str) -> Vec<Pronoun> {
-    let pronouns = ["he", "she", "they", "him", "her", "them", "his", "their", "it"];
+    let pronouns = [
+        "he", "she", "they", "him", "her", "them", "his", "their", "it",
+    ];
     let mut found = Vec::new();
 
     for pronoun_text in &pronouns {
@@ -134,9 +142,14 @@ fn extract_pronouns(text: &str) -> Vec<Pronoun> {
         while let Some(pos) = text_lower[start..].find(pronoun_text) {
             let abs_pos = start + pos;
             // Check word boundary
-            let before_ok = abs_pos == 0 || !text[..abs_pos].chars().last().unwrap().is_alphabetic();
+            let before_ok =
+                abs_pos == 0 || !text[..abs_pos].chars().last().unwrap().is_alphabetic();
             let after_ok = abs_pos + pronoun_text.len() >= text.len()
-                || !text[abs_pos + pronoun_text.len()..].chars().next().unwrap().is_alphabetic();
+                || !text[abs_pos + pronoun_text.len()..]
+                    .chars()
+                    .next()
+                    .unwrap()
+                    .is_alphabetic();
 
             if before_ok && after_ok {
                 found.push(Pronoun {
@@ -159,7 +172,7 @@ fn find_pronoun_antecedent(text: &str, pronoun: &Pronoun) -> Option<String> {
     let words: Vec<&str> = before_pronoun.split_whitespace().collect();
 
     for word in words.iter().rev() {
-        if word.chars().next().map_or(false, |c| c.is_uppercase()) && word.len() > 1 {
+        if word.chars().next().is_some_and(|c| c.is_uppercase()) && word.len() > 1 {
             return Some(normalize_entity(word));
         }
     }
