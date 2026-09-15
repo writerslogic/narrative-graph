@@ -13,6 +13,11 @@ keywords = ["nlp", "relation-extraction", "entity-extraction", "heuristics", "se
 categories = ["text-processing", "science"]
 readme = "README.md"
 
+# Every public surface beyond the heuristic core sits behind an opt-in feature,
+# so the default build docs.rs would otherwise render omits it.
+[package.metadata.docs.rs]
+features = ["json", "bindings"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

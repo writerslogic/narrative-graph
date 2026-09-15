@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-15
+
 ### Added
+- Initial heuristic extraction pipeline: entity detection, relation labeling,
+  confidence scoring, and span provenance, for Rust and Node.
 - Hand-rolled sentence segmenter handling honorifics, initials, ellipses,
   terminator runs, and quoted dialogue with attribution. Sentences are returned
   as borrowed slices, so segmentation allocates nothing per sentence.
@@ -57,8 +61,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so "May Vance" and "Grace Vance" survive. The list also covers the pronouns
   the pronoun pass owns, which were otherwise emitted a second time as a
   capitalized mention normalized to `she`, a graph node naming nobody.
-
-## [0.1.0]
-
-- Initial heuristic extraction pipeline: entity detection, relation labeling,
-  confidence scoring, and span provenance, for Rust and Node.
