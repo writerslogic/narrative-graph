@@ -71,8 +71,14 @@ jobs:
       with:
         path: artifacts
 
+    # The per-platform package dirs are generated rather than committed, so they
+    # have to exist before `napi artifacts` fills them and `napi prepublish`
+    # (run by prepublishOnly) publishes them as optionalDependencies.
+    - name: Create npm package dirs
+      run: npx napi create-npm-dirs
+
     - name: Move artifacts
-      run: npm run artifacts -- --dir artifacts
+      run: npm run artifacts
 
     - name: Generate attestations
       uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
