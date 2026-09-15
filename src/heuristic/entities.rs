@@ -47,37 +47,62 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
     let mut entities = Vec::new();
     let mut current_entity = String::new();
     let mut start_idx = 0;
-    let mut word_byte_start = 0;
+    let mut current_word = String::new();
+    let mut word_start = 0;
 
-    // Split on whitespace and handle punctuation specially
-    let words: Vec<&str> = text.split(|c: char| c.is_whitespace() || ",.!?;:—'\"".contains(c)).filter(|s| !s.is_empty()).collect();
+    for (byte_pos, c) in text.char_indices() {
+        let is_sep = c.is_whitespace() || ",.!?;:—'\"".contains(c);
 
-    for word in words.iter() {
-        // Word should now have punctuation separated out
-        let is_capitalized = word.chars().next().map_or(false, |c| c.is_uppercase());
+        if is_sep {
+            if !current_word.is_empty() {
+                let is_capitalized = current_word.chars().next().map_or(false, |c| c.is_uppercase());
 
+                if is_capitalized {
+                    if !current_entity.is_empty() {
+                        current_entity.push(' ');
+                    } else {
+                        start_idx = word_start;
+                    }
+                    current_entity.push_str(&current_word);
+                } else {
+                    if !current_entity.is_empty() {
+                        entities.push(EntityCandidate {
+                            text: current_entity.clone(),
+                            normalized: normalize_entity(&current_entity),
+                            start: start_idx,
+                            end: byte_pos,
+                        });
+                        current_entity.clear();
+                    }
+                }
+                current_word.clear();
+            }
+        } else {
+            if current_word.is_empty() {
+                word_start = byte_pos;
+            }
+            current_word.push(c);
+        }
+    }
+
+    if !current_word.is_empty() {
+        let is_capitalized = current_word.chars().next().map_or(false, |c| c.is_uppercase());
         if is_capitalized {
             if !current_entity.is_empty() {
                 current_entity.push(' ');
+            } else {
+                start_idx = word_start;
             }
-            current_entity.push_str(word);
-
-            if current_entity.len() == word.len() {
-                start_idx = word_byte_start;
-            }
-        } else {
-            if !current_entity.is_empty() {
-                entities.push(EntityCandidate {
-                    text: current_entity.clone(),
-                    normalized: normalize_entity(&current_entity),
-                    start: start_idx,
-                    end: word_byte_start,
-                });
-                current_entity.clear();
-            }
+            current_entity.push_str(&current_word);
+        } else if !current_entity.is_empty() {
+            entities.push(EntityCandidate {
+                text: current_entity.clone(),
+                normalized: normalize_entity(&current_entity),
+                start: start_idx,
+                end: text.len(),
+            });
+            current_entity.clear();
         }
-
-        word_byte_start += word.len() + 1; // +1 for space/punctuation
     }
 
     if !current_entity.is_empty() {

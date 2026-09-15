@@ -115,24 +115,22 @@ fn find_span_in_text(text: &str, subj: &str, obj: &str) -> [usize; 2] {
 }
 
 fn dedup_candidates(candidates: &mut Vec<TripleCandidate>) {
-    let mut seen: BTreeMap<(String, String, String), f32> = BTreeMap::new();
+    let mut best: BTreeMap<(String, String, String), TripleCandidate> = BTreeMap::new();
 
-    for candidate in candidates.iter() {
+    for candidate in candidates.drain(..) {
         let key = (
             candidate.subject.clone(),
             candidate.relation.clone(),
             candidate.object.clone(),
         );
-        let entry = seen.entry(key).or_insert(0.0);
-        *entry = entry.max(candidate.confidence);
+        best.entry(key)
+            .and_modify(|best_cand| {
+                if candidate.confidence > best_cand.confidence {
+                    *best_cand = candidate.clone();
+                }
+            })
+            .or_insert(candidate);
     }
 
-    candidates.retain(|c| {
-        let key = (
-            c.subject.clone(),
-            c.relation.clone(),
-            c.object.clone(),
-        );
-        seen.get(&key).map_or(false, |&conf| (conf - c.confidence).abs() < 0.001)
-    });
+    *candidates = best.into_values().collect();
 }

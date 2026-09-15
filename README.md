@@ -46,9 +46,9 @@ narrative-graph reads prose and returns candidate `(subject, relation, object)` 
 >
 > **Output:**
 > ```
-> elena  --sister_of--> marco       0.81   [0..24]
-> marco  --mentors-->   dev         0.74   [25..46]
-> dev    --works_at-->  the_archive 0.69   [46..70]
+> elena  --sister_of--> marco  0.81   [0..14]
+> marco  --mentors-->   dev    0.81   [25..42]
+> dev    --works_at-->  archive 0.74   [39..68]
 > ```
 
 Works with Rust 1.75+ and Node.js 18+, on macOS, Linux, and Windows. Pairs naturally with [`holographic-memory`](https://github.com/writerslogic/holographic-memory)'s Meaning Memory — `memorizeTriplet` / `relate_phase` expect exactly this shape — but has no dependency on it and no opinion on what you do with a candidate.
@@ -117,11 +117,11 @@ Every candidate reports the rule that produced it, not just a score — `possess
 
 ### Confidence and Span
 
-Every candidate carries a confidence score from sentence-window co-occurrence strength and pattern specificity, plus the exact byte offset it was extracted from — so a caller can show the source sentence, gate on a threshold, or route low-confidence candidates to human review instead of a store.
+Every candidate carries a confidence score from sentence-window co-occurrence strength and pattern specificity, plus the byte offset of its extracted span — a range covering the subject and object in the source text. Gate on a threshold, route low-confidence candidates to human review, or fetch source context for display.
 
 > **You:** Extract relations from Chapter 3 above confidence 0.7.
 >
-> **narrative-graph:** 12 candidates found, 8 above threshold. Filtered: "elena --knows--> the stranger" (0.41) — the co-occurrence window spans a paragraph break, weak evidence for a direct relation.
+> **narrative-graph:** 12 candidates found, 8 above threshold. Filtered: "elena --knows--> stranger" (0.41) — the co-occurrence window spans a paragraph break, weak evidence for a direct relation.
 
 ### Local ONNX Mode
 
