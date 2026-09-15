@@ -255,3 +255,58 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod fuzz {
+    #[test]
+    fn never_panics_and_offsets_stay_valid() {
+        let alphabet = [
+            "a",
+            "A",
+            ".",
+            "!",
+            "?",
+            " ",
+            "\"",
+            "'",
+            ")",
+            "]",
+            "\u{201D}",
+            "\u{2019}",
+            "é",
+            "—",
+            "…",
+            "\n",
+            "Dr",
+            "1",
+            "\u{1F600}",
+        ];
+        // Deterministic pseudo-random walk over the alphabet.
+        let mut state: u64 = 0x2545F4914F6CDD1D;
+        for _ in 0..20000 {
+            let mut s = String::new();
+            let len = (state % 24) as usize;
+            for _ in 0..len {
+                state = state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                s.push_str(alphabet[(state >> 33) as usize % alphabet.len()]);
+            }
+            for (sentence, offset) in super::split_sentences(&s) {
+                assert!(offset <= s.len(), "offset out of range for {s:?}");
+                assert!(
+                    s.is_char_boundary(offset) && s.is_char_boundary(offset + sentence.len()),
+                    "non-char-boundary span for {s:?}"
+                );
+                assert_eq!(
+                    &s[offset..offset + sentence.len()],
+                    sentence,
+                    "offset does not point at sentence for {s:?}"
+                );
+            }
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+        }
+    }
+}
