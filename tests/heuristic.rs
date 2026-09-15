@@ -204,10 +204,21 @@ fn test_entity_whose_lowercase_changes_byte_length() {
 
 #[test]
 fn test_span_bounds_the_subject_and_object_mentions() {
+    // A multi-word entity's `text` is rebuilt with single spaces, so compare
+    // against the source with its own whitespace collapsed.
+    fn collapse(s: &str) -> String {
+        s.to_lowercase()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     for text in [
         "Elena is Marco's sister.",
         "Marco mentors Dev.",
         "Dev works at the Archive.",
+        "Mary\nJane mentors Dev.",
+        "Mary  Jane mentors Dev.",
     ] {
         let opts = Options::default();
         let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
@@ -220,18 +231,14 @@ fn test_span_bounds_the_subject_and_object_mentions() {
                 "non-char-boundary span {:?} for {text:?}",
                 candidate.span
             );
-            let covered = &text[start..end];
+            let covered = collapse(&text[start..end]);
             assert!(
-                covered
-                    .to_lowercase()
-                    .starts_with(&candidate.subject.replace('_', " ")),
+                covered.starts_with(&candidate.subject.replace('_', " ")),
                 "span {covered:?} does not start at the subject {:?}",
                 candidate.subject
             );
             assert!(
-                covered
-                    .to_lowercase()
-                    .ends_with(&candidate.object.replace('_', " ")),
+                covered.ends_with(&candidate.object.replace('_', " ")),
                 "span {covered:?} does not end at the object {:?}",
                 candidate.object
             );
