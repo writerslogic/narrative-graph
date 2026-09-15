@@ -76,11 +76,14 @@ fn find_relation_pattern(
 
         // Also check what comes after the object (for possessive patterns like "x is y's sister")
         let after_obj_start = obj_pos + obj_lower.len();
-        let after_obj = if after_obj_start < text.len() {
-            &text[after_obj_start..].to_lowercase()
+        // Bound to a named value rather than borrowing a temporary out of the
+        // `if`: temporary lifetime extension there is not accepted on the MSRV.
+        let after_obj_owned = if after_obj_start < text.len() {
+            text[after_obj_start..].to_lowercase()
         } else {
-            ""
+            String::new()
         };
+        let after_obj = after_obj_owned.as_str();
 
         // Possessive pattern: "x is y's [relation]"
         if after_obj.starts_with("'s ") || after_obj.starts_with("'s.") {
