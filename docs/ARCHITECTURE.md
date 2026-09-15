@@ -135,14 +135,17 @@ grammar for a weaker claim — stance is routinely negated, hypothetical, or
 narrated from a character's mistaken view — and score lower. Nouns are matched
 whole-word, so "grandmother" is never read as "mother".
 
-The possessive row requires a bare copula (`is`, `was`, `are`, `were`) as the
+The possessive row requires a bare singular copula (`is`, `was`) as the
 entire text between the two mentions, and requires the relational noun to head
 the possessed phrase. Without both, "Elena visited Marco's sister" reads as
 `sister_of(elena, marco)` — a third person's relation claimed for the subject,
 at the highest confidence in the system — and so do "Marco's master key" and
 "Marco's friend's sister". The appositive "Elena, Marco's sister, arrived"
 states a true relation and is deliberately not extracted: it is a distinct
-pattern, and widening the copula set to reach it also admits ", unlike".
+pattern, and widening the copula set to reach it also admits ", unlike". The
+plural copulas are absent for a different reason: "Dev and Elena are Marco's
+cousins" has two subjects where the pair loop sees one, so the relation would
+be claimed for whichever mention the loop reached.
 
 Across every row, text between the mentions that denies or suspends the
 relation blocks it entirely: a negator (`not`, `never`, `no`, or an `n't`
