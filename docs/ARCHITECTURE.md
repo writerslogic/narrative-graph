@@ -210,7 +210,9 @@ designed, but the design is narrow:
   Elena" normalizes to `but_elena`, splitting a character into two graph
   nodes. It holds no word that can also be a given name — "May", "Will",
   "Grace", "June", "Faith", "Summer" — so a sentence opening "May Vance"
-  keeps `may_vance`, while one opening "Suddenly Vance" yields `vance`.
+  keeps `may_vance`, while one opening "Suddenly Vance" yields `vance`. The
+  pronouns the pronoun pass owns are on the list too, so a capitalized "She"
+  does not also become a mention normalized to `she`.
 - **Relation recall**: only the patterns listed above are recognized, and the
   possessive lexicon covers a fraction of the relational nouns English uses.
   Any other phrasing of the same relationship is invisible to the pipeline.

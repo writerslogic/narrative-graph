@@ -605,3 +605,18 @@ fn test_a_given_name_that_reads_as_a_function_word_survives() {
         assert_eq!(candidates[0].subject, subject, "{text:?}");
     }
 }
+
+#[test]
+fn test_a_capitalized_pronoun_is_not_a_second_mention() {
+    // `extract_pronouns` owns pronouns. A capitalized one otherwise becomes a
+    // rival mention at the same offsets whose normalized name, `she`, is a
+    // graph node naming nobody.
+    let opts = Options::default();
+    let candidates = extract_candidate_triples("Elena arrived. She is Marco's student.", &opts)
+        .expect("extraction failed");
+
+    assert!(
+        candidates.iter().all(|c| c.subject != "she"),
+        "{candidates:?}"
+    );
+}

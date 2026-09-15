@@ -60,15 +60,21 @@ pub fn extract_entities(text: &str, aliases: &BTreeMap<String, String>) -> Vec<E
 /// position: "May", "Will", "Grace", "June", "Faith" and "Summer" are all
 /// names and are deliberately absent, because dropping a real mention costs
 /// more than keeping a malformed one.
+///
+/// The pronouns `extract_pronouns` owns are listed here too. A capitalized
+/// pronoun otherwise becomes a second mention at the same offsets as the
+/// resolved one, and `she` as a graph node names nobody.
 #[rustfmt::skip]
 const SENTENCE_OPENERS: &[&str] = &[
     "a", "after", "again", "all", "although", "an", "and", "another", "any", "are", "as", "at",
     "because", "before", "both", "but", "by", "did", "do", "does", "each", "either", "even",
-    "every", "for", "from", "had", "has", "have", "her", "here", "his", "how", "however", "if",
+    "every", "for", "from", "had", "has", "have", "he", "her", "here", "him", "his", "how",
+    "however", "if",
     "in", "indeed", "instead", "is", "its", "just", "later", "maybe", "meanwhile", "my", "neither",
     "never", "no", "nor", "not", "now", "of", "often", "on", "once", "only", "or", "our",
     "perhaps", "since", "so", "some", "sometimes", "soon", "still", "suddenly", "that", "the",
-    "their", "then", "there", "these", "this", "those", "though", "to", "today", "tomorrow",
+    "she", "their", "them", "then", "there", "these", "they", "this", "those", "though", "to",
+    "today", "tomorrow",
     "tonight", "was", "were", "what", "when", "where", "which", "while", "who", "whom", "whose",
     "why", "with", "yesterday", "yet", "your",
 ];

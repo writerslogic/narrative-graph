@@ -54,7 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it, so "But Elena" normalized to `but_elena` and never unified with `elena`
   elsewhere in the text, splitting one character into two nodes. A closed list
   of openers is now dropped; it holds no word that can also be a given name,
-  so "May Vance" and "Grace Vance" survive.
+  so "May Vance" and "Grace Vance" survive. The list also covers the pronouns
+  the pronoun pass owns, which were otherwise emitted a second time as a
+  capitalized mention normalized to `she`, a graph node naming nobody.
 
 ## [0.1.0]
 
