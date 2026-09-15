@@ -44,7 +44,7 @@ $ echo "Elena is Marco's sister. Marco mentors Dev, who works at the Archive." \
   { "subject": "dev", "relation": "works_at", "object": "archive",
     "confidence": 0.7488, "span": [39, 68], "rule": "verb-works-at-pattern" },
   { "subject": "elena", "relation": "sister_of", "object": "marco",
-    "confidence": 0.85, "span": [0, 14], "rule": "possessive-sister-pattern" },
+    "confidence": 0.85, "span": [0, 23], "rule": "possessive-sister-pattern" },
   { "subject": "marco", "relation": "mentors", "object": "dev",
     "confidence": 0.78, "span": [25, 42], "rule": "verb-mentor-pattern" }
 ]

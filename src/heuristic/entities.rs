@@ -42,9 +42,10 @@ pub fn extract_entities(text: &str, aliases: &BTreeMap<String, String>) -> Vec<E
     // index and treats the earlier index as the subject.
     entities.sort_by_key(|e| e.start);
 
-    // Deduplicate by keeping first occurrence, preserving text order
-    let mut seen = std::collections::HashSet::new();
-    entities.retain(|e| seen.insert(e.normalized.clone()));
+    // IMPORTANT: every mention is kept. Collapsing repeated mentions of one
+    // referent hides the second relation in "Elena is Marco's sister and Marco
+    // mentors Elena." `extract_relations` skips pairs that share a referent,
+    // and `dedup_candidates` collapses triples that repeat.
     entities
 }
 
@@ -178,6 +179,13 @@ fn find_pronoun_antecedent(text: &str, pronoun: &Pronoun) -> Option<String> {
     let words: Vec<&str> = before_pronoun.split_whitespace().collect();
 
     for word in words.iter().rev() {
+        // IMPORTANT: strip the possessive clitic and surrounding punctuation.
+        // `extract_capitalized_entities` treats them as separators, so leaving
+        // them here yields a second, misspelled referent ("marco's") that
+        // never unifies with the mention it came from.
+        let word = word.split(['\'', '\u{2019}']).next().unwrap_or(word);
+        let word = word.trim_matches(|c: char| !c.is_alphanumeric());
+
         if word.chars().next().is_some_and(|c| c.is_uppercase()) && word.len() > 1 {
             return Some(normalize_entity(word));
         }

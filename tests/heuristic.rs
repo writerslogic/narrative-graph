@@ -203,7 +203,7 @@ fn test_entity_whose_lowercase_changes_byte_length() {
 }
 
 #[test]
-fn test_span_bounds_the_subject_and_object_mentions() {
+fn test_span_covers_both_mentions_and_opens_on_the_first() {
     // A multi-word entity's `text` is rebuilt with single spaces, so compare
     // against the source with its own whitespace collapsed.
     fn collapse(s: &str) -> String {
@@ -233,14 +233,21 @@ fn test_span_bounds_the_subject_and_object_mentions() {
             );
             let covered = collapse(&text[start..end]);
             assert!(
-                covered.starts_with(&candidate.subject.replace('_', " ")),
-                "span {covered:?} does not start at the subject {:?}",
+                covered.contains(&candidate.subject.replace('_', " ")),
+                "span {covered:?} does not cover the subject {:?}",
                 candidate.subject
             );
             assert!(
-                covered.ends_with(&candidate.object.replace('_', " ")),
-                "span {covered:?} does not end at the object {:?}",
+                covered.contains(&candidate.object.replace('_', " ")),
+                "span {covered:?} does not cover the object {:?}",
                 candidate.object
+            );
+            // The span opens on whichever mention comes first in the text;
+            // passive voice puts the relation's object there.
+            assert!(
+                covered.starts_with(&candidate.subject.replace('_', " "))
+                    || covered.starts_with(&candidate.object.replace('_', " ")),
+                "span {covered:?} does not open on either mention"
             );
         }
     }
@@ -356,4 +363,62 @@ fn test_active_voice_mentor_direction_is_unchanged() {
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].subject, "marco");
     assert_eq!(candidates[0].object, "elena");
+}
+
+#[test]
+fn test_span_covers_the_token_that_licensed_the_relation() {
+    // The possessed noun sits past the object, so a span ending at the object
+    // excludes the only evidence for the relation.
+    let text = "Elena is Marco's sister.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(
+        &text[candidates[0].span[0]..candidates[0].span[1]],
+        "Elena is Marco's sister"
+    );
+}
+
+#[test]
+fn test_a_referent_mentioned_twice_yields_both_relations() {
+    let text = "Elena is Marco's sister and Marco mentors Elena.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert_eq!(candidates.len(), 2);
+    assert!(candidates
+        .iter()
+        .any(|c| c.subject == "elena" && c.relation == "sister_of" && c.object == "marco"));
+    assert!(candidates
+        .iter()
+        .any(|c| c.subject == "marco" && c.relation == "mentors" && c.object == "elena"));
+}
+
+#[test]
+fn test_no_relation_holds_between_a_referent_and_itself() {
+    let text = "Elena is Marco's sister and she mentors Dev.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert!(
+        candidates.iter().all(|c| c.subject != c.object),
+        "self-relation emitted: {candidates:?}"
+    );
+}
+
+#[test]
+fn test_pronoun_antecedent_strips_the_possessive_clitic() {
+    // "Marco's" as an antecedent yields a second referent that never unifies
+    // with the mention it came from.
+    let text = "Elena is Marco's sister and she mentors Dev.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert!(
+        candidates
+            .iter()
+            .all(|c| !c.subject.contains('\'') && !c.object.contains('\'')),
+        "possessive clitic leaked into an entity name: {candidates:?}"
+    );
 }

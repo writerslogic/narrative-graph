@@ -14,9 +14,9 @@ test('extracts a possessive-sister relation with a confident score', () => {
   assert.equal(candidate.object, 'marco')
   assert.equal(candidate.rule, 'possessive-sister-pattern')
   assert.ok(candidate.confidence > 0.7)
-  assert.deepEqual(candidate.span, [0, 14])
+  assert.deepEqual(candidate.span, [0, 23])
   const text = "Elena is Marco's sister."
-  assert.equal(text.slice(candidate.span[0], candidate.span[1]), 'Elena is Marco')
+  assert.equal(text.slice(candidate.span[0], candidate.span[1]), "Elena is Marco's sister")
 })
 
 test('extracts a verb-mentor relation', () => {

@@ -110,7 +110,7 @@ Every candidate reports the rule that produced it, not just a score — `possess
 
 ### Confidence and Span
 
-Every candidate carries a confidence score from the extraction rule's pattern strength and how close the subject and object are in the source text, plus the byte offset of its extracted span — a range covering the subject and object in the source text. Gate on a threshold, route low-confidence candidates to human review, or fetch source context for display.
+Every candidate carries a confidence score from the extraction rule's pattern strength and how close the subject and object are in the source text, plus the byte offset of its extracted span — a range covering the subject, the object, and the token that licensed the relation. Gate on a threshold, route low-confidence candidates to human review, or fetch source context for display.
 
 ## API
 

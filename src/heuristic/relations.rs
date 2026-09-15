@@ -29,6 +29,12 @@ pub fn extract_relations(
 
             // Check for verb-phrase patterns between these entities
             // Subject comes before object in text
+            // A pronoun carries its antecedent's normalized name, so the same
+            // referent can appear twice in the pair loop.
+            if subj.normalized == obj.normalized {
+                continue;
+            }
+
             if let Some(m) = find_relation_pattern(text, subj, obj) {
                 let (s, o) = if m.swapped { (obj, subj) } else { (subj, obj) };
                 relations.push(RelationCandidate {
@@ -36,7 +42,7 @@ pub fn extract_relations(
                     relation: normalize_relation(&m.relation, ontology),
                     object: o.normalized.clone(),
                     rule: m.rule,
-                    span: [subj.start, obj.end],
+                    span: [subj.start, m.span_end.unwrap_or(obj.end)],
                     gap: m.gap,
                 });
             }
@@ -47,12 +53,15 @@ pub fn extract_relations(
 }
 
 /// A pattern hit. `swapped` means the phrasing puts the relation's subject
-/// second in the text, as passive voice does.
+/// second in the text, as passive voice does. `span_end` overrides the end of
+/// the evidence span when the token licensing the relation sits past the
+/// object, as the noun does in a possessive.
 struct PatternMatch {
     relation: String,
     rule: String,
     gap: usize,
     swapped: bool,
+    span_end: Option<usize>,
 }
 
 impl PatternMatch {
@@ -62,26 +71,59 @@ impl PatternMatch {
             rule: rule.to_string(),
             gap,
             swapped: false,
+            span_end: None,
         }
     }
 
     fn swapped(self, swapped: bool) -> Self {
         Self { swapped, ..self }
     }
+
+    fn span_end(self, span_end: usize) -> Self {
+        Self {
+            span_end: Some(span_end),
+            ..self
+        }
+    }
 }
 
-/// The possessed noun phrase introduced by `'s`, cut at the first clause
-/// boundary. IMPORTANT: the phrase bounds the relational-noun search. Scanning
-/// the whole remainder of the sentence matches a noun belonging to a later
-/// clause ("Marco's dog, and she has a sister") and emits the highest
-/// confidence rule in the system on it.
-fn possessed_noun_phrase(after_obj: &str) -> &str {
-    let rest = &after_obj["'s".len()..];
+/// Relational nouns recognized in a possessive, as (noun, relation, rule).
+/// Order is match order, so a noun that is a substring of another must follow
+/// it.
+const POSSESSIVE_NOUNS: &[(&str, &str, &str)] = &[
+    ("sister", "sister_of", "possessive-sister-pattern"),
+    ("brother", "brother_of", "possessive-brother-pattern"),
+];
+
+/// Byte range of the first ASCII-case-insensitive occurrence of `needle`.
+/// IMPORTANT: offsets address `haystack` itself. Searching a lowercased copy
+/// yields offsets that do not address the original once a character's
+/// lowercase form has a different byte length. A match is always on a char
+/// boundary because a UTF-8 continuation or lead byte cannot equal an ASCII
+/// byte under `eq_ignore_ascii_case`.
+fn find_ascii_ci(haystack: &str, needle: &str) -> Option<(usize, usize)> {
+    debug_assert!(needle.is_ascii() && !needle.is_empty());
+    let needle = needle.as_bytes();
+    haystack
+        .as_bytes()
+        .windows(needle.len())
+        .position(|w| w.eq_ignore_ascii_case(needle))
+        .map(|start| (start, start + needle.len()))
+}
+
+/// Length of the possessed noun phrase introduced by `'s`, measured from the
+/// end of that `'s` and cut at the first clause boundary. IMPORTANT: the
+/// phrase bounds the relational-noun search. Scanning the whole remainder of
+/// the sentence matches a noun belonging to a later clause ("Marco's dog, and
+/// she has a sister") and emits the highest confidence rule in the system.
+fn possessed_noun_phrase_len(rest: &str) -> usize {
     let punct = rest
         .find([',', '.', ';', ':', '!', '?'])
         .unwrap_or(rest.len());
-    let conjunction = rest.find(" and ").unwrap_or(rest.len());
-    &rest[..punct.min(conjunction)]
+    let conjunction = find_ascii_ci(rest, " and ")
+        .map(|(start, _)| start)
+        .unwrap_or(rest.len());
+    punct.min(conjunction)
 }
 
 fn find_relation_pattern(
@@ -108,28 +150,26 @@ fn find_relation_pattern(
 
     let between = &text[start..end].to_lowercase();
 
-    // Also check what comes after the object (for possessive patterns like "x is y's sister")
-    // Bound to a named value rather than borrowing a temporary out of the
-    // `if`: temporary lifetime extension there is not accepted on the MSRV.
-    let after_obj_owned = text[obj.end..].to_lowercase();
-    let after_obj = after_obj_owned.as_str();
+    // Possessive pattern: "x is y's [relation]". Matched against the original
+    // text so the noun's offsets can bound the evidence span.
+    let after_obj = &text[obj.end..];
+    let bytes = after_obj.as_bytes();
+    let possessive = bytes.len() >= 3
+        && bytes[0] == b'\''
+        && bytes[1].eq_ignore_ascii_case(&b's')
+        && matches!(bytes[2], b' ' | b'.');
 
-    // Possessive pattern: "x is y's [relation]"
-    if after_obj.starts_with("'s ") || after_obj.starts_with("'s.") {
-        let possessed = possessed_noun_phrase(after_obj);
-        if possessed.contains("sister") {
-            return Some(PatternMatch::new(
-                "sister_of",
-                "possessive-sister-pattern",
-                gap,
-            ));
-        }
-        if possessed.contains("brother") {
-            return Some(PatternMatch::new(
-                "brother_of",
-                "possessive-brother-pattern",
-                gap,
-            ));
+    if possessive {
+        let rest = &after_obj["'s".len()..];
+        let phrase = &rest[..possessed_noun_phrase_len(rest)];
+        let phrase_start = obj.end + "'s".len();
+
+        for (noun, relation, rule) in POSSESSIVE_NOUNS {
+            if let Some((_, noun_end)) = find_ascii_ci(phrase, noun) {
+                return Some(
+                    PatternMatch::new(relation, rule, gap).span_end(phrase_start + noun_end),
+                );
+            }
         }
     }
 
