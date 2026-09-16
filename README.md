@@ -1,8 +1,8 @@
 <img src="https://raw.githubusercontent.com/writerslogic/narrative-graph/main/assets/logo-black.svg" alt="narrative-graph logo" width="120" align="left">
 
-<h1>narrative-graph</h1>
+<h3>narrative-graph</h3>
 
-<p><strong>Turn prose into candidate relational facts — entirely local, no LLM, no network. Entity detection, relation labeling, confidence scoring, and span provenance on every candidate, for Rust and Node.</strong></p>
+<p><strong>Turn prose into candidate relational facts, entirely local. No LLM, no network. Entities, relations, confidence scores and spans, for Rust and Node.</strong></p>
 
 <br clear="left">
 
@@ -31,7 +31,6 @@
   <a href="#what-it-extracts">What It Extracts</a> &middot;
   <a href="#api">API</a> &middot;
   <a href="#guides">Guides</a> &middot;
-  <a href="#roadmap">Roadmap</a> &middot;
   <a href="#contributing">Contributing</a>
 </p>
 
@@ -186,27 +185,14 @@ TypeScript definitions in `bindings/` are generated from the Rust types via `ts-
 
 narrative-graph isn't trying to out-perform an LLM at open-domain relation extraction — it's trying to be the thing you reach for when a manuscript's characters and relationships need to become structured facts, offline, cheaply, and repeatably, with enough provenance on each candidate that a human or a downstream store can decide what to trust.
 
-## Roadmap
-
-The current pipeline works sentence-by-sentence. The next stage of this project is document-level: taking a whole manuscript's worth of sentence-level candidates and turning them into a coherent, trustworthy picture of the story world.
-
-- **Whole-document aggregation** -- merge and deduplicate candidates across a chapter or manuscript instead of emitting a fresh candidate every time a fact is restated; accumulate every supporting span and mention under one fact.
-- **Contradiction detection** -- once candidates accumulate across a document, flag conflicts a single sentence can't see: "only child" in Chapter 1 against "my sister" in Chapter 9.
-- **Cross-sentence coreference** -- extend pronoun linking past the sentence boundary to follow pronoun chains across paragraphs, the way real prose actually reads.
-- **Temporal and event extraction** -- relations that change over the course of a story (enemies becoming allies) need a "when," not just a static fact, to support a timeline rather than a single snapshot graph.
-- **Correction feedback** -- let a caller reject a wrong candidate once and suppress that false positive on the next extraction pass over the same manuscript.
-- **Multi-language pattern packs** -- the heuristic pipeline is English-only today; additional verb-phrase and capitalization pattern sets per language are the path to broader use.
-
-None of the above is required to use narrative-graph today — the sentence-level pipeline is complete and useful on its own. This is where contributions and design discussion are most valuable.
-
 ## Contributing
 
 We welcome contributions of all sizes. Check the [issue tracker](https://github.com/writerslogic/narrative-graph/issues) for `good first issue` labels, or see [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup.
 
+The sentence-level pipeline is complete and useful on its own. Where the project goes next is tracked as [enhancement issues](https://github.com/writerslogic/narrative-graph/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement) — [whole-document aggregation](https://github.com/writerslogic/narrative-graph/issues/1) and [contradiction detection](https://github.com/writerslogic/narrative-graph/issues/3) are the highest-leverage next steps, and each issue states what needs deciding before any code. Design discussion on those is as valuable as a patch.
+
 **Areas where help is especially welcome:**
-- Any [Roadmap](#roadmap) item above -- document-level aggregation and contradiction detection are the highest-leverage next steps
 - Additional relation-verb patterns for non-English narrative conventions
-- ONNX model recommendations and evaluation against `tests/fixtures/`
 - Integration examples for stores other than `holographic-memory`
 
 ## Security

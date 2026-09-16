@@ -126,4 +126,5 @@ on phrasing nobody thought to probe.
   resolution across a full chapter or document.
 
 A precision/recall benchmark against a genuinely independent labeled corpus
-is tracked as future work — see the Roadmap in [README.md](../README.md).
+remains future work; see "What is not measured" above for why no
+redistributable corpus has been adopted.
