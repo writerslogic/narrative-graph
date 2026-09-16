@@ -56,6 +56,7 @@ fn main() -> anyhow::Result<()> {
                 } else {
                     None
                 },
+                rejections: Default::default(),
                 ontology: Default::default(),
             };
 

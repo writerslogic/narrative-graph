@@ -1,5 +1,5 @@
 use narrative_graph::heuristic::extract_entities;
-use narrative_graph::{extract_candidate_triples, Options};
+use narrative_graph::{extract_candidate_triples, Options, Rejection};
 
 #[test]
 fn test_simple_possessive_pattern() {
@@ -1117,4 +1117,86 @@ fn test_a_lexicon_mention_is_the_antecedent_when_nothing_else_precedes() {
         .find(|m| m.text == "she")
         .expect("the pronoun was dropped");
     assert_eq!(pronoun.normalized, "marcus");
+}
+
+#[test]
+fn a_rejection_suppresses_only_the_triple_it_names() {
+    let text = "Elena is Marco's sister. Marco mentors Dev.";
+    let opts = Options {
+        rejections: vec![Rejection {
+            subject: "elena".into(),
+            relation: "sister_of".into(),
+            object: "marco".into(),
+        }],
+        ..Default::default()
+    };
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].relation, "mentors");
+}
+
+#[test]
+fn a_rejection_is_directional_and_exact() {
+    let text = "Elena is Marco's sister.";
+    // The same pair the other way round, and the same pair under another
+    // relation, are different claims and must still be emitted.
+    for wrong in [
+        Rejection {
+            subject: "marco".into(),
+            relation: "sister_of".into(),
+            object: "elena".into(),
+        },
+        Rejection {
+            subject: "elena".into(),
+            relation: "brother_of".into(),
+            object: "marco".into(),
+        },
+    ] {
+        let opts = Options {
+            rejections: vec![wrong],
+            ..Default::default()
+        };
+        let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+        assert_eq!(
+            candidates.len(),
+            1,
+            "a near-miss rejection suppressed a claim it does not name"
+        );
+    }
+}
+
+#[test]
+fn a_rejection_keys_on_the_relation_the_caller_saw() {
+    // The candidate carries the ontology-mapped relation, so that is what a
+    // caller has to reject. Rejecting the pre-mapping name must not work.
+    let text = "Elena is Marco's sister.";
+    let with_ontology = || Options {
+        ontology: [("sister_of".to_string(), "sibling".to_string())]
+            .into_iter()
+            .collect(),
+        ..Default::default()
+    };
+    let rejected = |relation: &str| Options {
+        rejections: vec![Rejection {
+            subject: "elena".into(),
+            relation: relation.into(),
+            object: "marco".into(),
+        }],
+        ..with_ontology()
+    };
+    let mapped = with_ontology();
+    assert_eq!(
+        extract_candidate_triples(text, &mapped).unwrap()[0].relation,
+        "sibling"
+    );
+    assert!(extract_candidate_triples(text, &rejected("sibling"))
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        extract_candidate_triples(text, &rejected("sister_of"))
+            .unwrap()
+            .len(),
+        1
+    );
 }

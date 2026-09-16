@@ -90,3 +90,16 @@ test('rejects an out-of-range minConfidence', () => {
     extractCandidateTriplesNapi('Marco mentors Dev.', { minConfidence: 1.5 })
   }, /confidence threshold/i)
 })
+
+test('suppresses a rejected triple and leaves every other one', () => {
+  const text = "Elena is Marco's sister. Marco mentors Dev."
+  const all = extractCandidateTriplesNapi(text)
+  assert.equal(all.length, 2)
+
+  const kept = extractCandidateTriplesNapi(text, {
+    rejections: [{ subject: 'elena', relation: 'sister_of', object: 'marco' }],
+  })
+
+  assert.equal(kept.length, 1)
+  assert.equal(kept[0].relation, 'mentors')
+})

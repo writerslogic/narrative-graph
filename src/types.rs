@@ -21,6 +21,28 @@ pub struct TripleCandidate {
     pub rule: String,
 }
 
+/// A candidate the caller has judged wrong, named by the triple it emitted.
+///
+/// IMPORTANT: the three fields are the *normalized* values as they appeared on
+/// the `TripleCandidate`, which for `relation` means after any `ontology`
+/// mapping. What the caller saw is what the caller rejects; nothing here is
+/// re-derived from the source text.
+///
+/// Keying on the triple rather than the span is deliberate. A span does not
+/// survive an edit to the manuscript, so a span-keyed rejection would come back
+/// on the next save; a triple survives every edit that does not restate the
+/// fact. The cost is that the rejection is document-wide: a caller who meant
+/// "not in this passage" suppresses the claim everywhere, which is the blunter
+/// and more inspectable of the two errors.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "bindings", derive(ts_rs::TS), ts(export))]
+pub struct Rejection {
+    pub subject: String,
+    pub relation: String,
+    pub object: String,
+}
+
 /// Configuration for entity and relation extraction.
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -49,6 +71,22 @@ pub struct Options {
     /// Default: 0.0 (all candidates returned).
     #[cfg_attr(feature = "serde", serde(default))]
     pub min_confidence: Option<f32>,
+
+    /// Candidates the caller has already judged wrong. A candidate whose
+    /// (subject, relation, object) matches one of these is not emitted.
+    ///
+    /// IMPORTANT: the crate persists nothing. This set is caller-owned state
+    /// handed in per call, so where it is stored between runs, and for how
+    /// long, stays the caller's decision.
+    ///
+    /// A rejection suppresses and does nothing else: it does not lower the
+    /// confidence of a sibling candidate, and it does not weaken the rule that
+    /// produced it. Feeding rejections back into scoring would make the output
+    /// depend on a history the caller cannot see in the result, and the span
+    /// and rule name are on every candidate precisely so a caller can audit
+    /// why it fired.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub rejections: Vec<Rejection>,
 
     /// Optional mapping from recognized relation patterns to a caller-supplied controlled vocabulary.
     /// Example: { "loves": "romantic_interest", "is_married_to": "spouse" }

@@ -7,7 +7,7 @@ mod segment;
 use crate::types::{Options, TripleCandidate};
 use crate::Result;
 use pack::LanguagePack;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub use entities::extract_entities;
 pub use relations::normalize_relation;
@@ -37,6 +37,14 @@ fn extract_with_pack(
         ));
     }
 
+    // Consulted per candidate, so it is built once rather than scanned linearly
+    // per emission. Borrowed: a rejection set is caller-owned and not cloned.
+    let rejected: BTreeSet<(&str, &str, &str)> = opts
+        .rejections
+        .iter()
+        .map(|r| (r.subject.as_str(), r.relation.as_str(), r.object.as_str()))
+        .collect();
+
     let mut candidates = Vec::new();
 
     for (sent_text, sent_start) in segment::split_sentences(text, pack) {
@@ -53,7 +61,12 @@ fn extract_with_pack(
         for rel in relations {
             let confidence = cooccurrence::score_confidence(rel.base, rel.gap);
 
-            if confidence >= min_confidence {
+            let key = (
+                rel.subject.as_str(),
+                rel.relation.as_str(),
+                rel.object.as_str(),
+            );
+            if confidence >= min_confidence && !rejected.contains(&key) {
                 let span = [sent_start + rel.span[0], sent_start + rel.span[1]];
 
                 candidates.push(TripleCandidate {

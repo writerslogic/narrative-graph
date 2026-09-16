@@ -6,7 +6,14 @@ export declare function extractCandidateTriplesNapi(text: string, opts?: NapiOpt
 export interface NapiOptions {
   aliases?: Record<string, string>
   minConfidence?: number
+  rejections?: Array<NapiRejection>
   ontology?: Record<string, string>
+}
+
+export interface NapiRejection {
+  subject: string
+  relation: string
+  object: string
 }
 
 export interface NapiTripleCandidate {

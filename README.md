@@ -123,7 +123,7 @@ Every candidate carries a confidence score from the extraction rule's pattern st
 | Item | What it does |
 |------|-------------|
 | `extract_candidate_triples(text, &Options)` | Run the heuristic pipeline over a passage |
-| `Options { aliases, min_confidence, ontology }` | Alias map, confidence floor, relation-vocabulary overrides |
+| `Options { aliases, min_confidence, rejections, ontology }` | Alias map, confidence floor, rejected triples, relation-vocabulary overrides |
 | `TripleCandidate { subject, relation, object, confidence, span, rule }` | One candidate fact; `span` is a byte range into the input, `rule` names the pattern that produced it |
 
 </details>
@@ -146,7 +146,7 @@ Installed alongside the crate (`cargo install narrative-graph --features cli` pr
 |----------|-------------|
 | `extractCandidateTriplesNapi(text, opts?)` | Run the heuristic pipeline over a passage |
 
-`opts` accepts `aliases`, `minConfidence`, and `ontology`. Full TypeScript definitions ship in the package (`index.d.ts`), generated from the Rust types via `ts-rs` — treat them as the source of truth over this table.
+`opts` accepts `aliases`, `minConfidence`, `rejections`, and `ontology`. Full TypeScript definitions ship in the package (`index.d.ts`), generated from the Rust types via `ts-rs` — treat them as the source of truth over this table.
 
 </details>
 

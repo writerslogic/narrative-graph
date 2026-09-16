@@ -1,7 +1,7 @@
 use napi_derive::napi;
 
 use crate::heuristic::extract_candidate_triples;
-use crate::types::Options;
+use crate::types::{Options, Rejection};
 
 #[napi]
 pub fn extract_candidate_triples_napi(
@@ -12,6 +12,16 @@ pub fn extract_candidate_triples_napi(
         Options {
             aliases: napi_opts.aliases.unwrap_or_default().into_iter().collect(),
             min_confidence: napi_opts.min_confidence.map(|c| c as f32),
+            rejections: napi_opts
+                .rejections
+                .unwrap_or_default()
+                .into_iter()
+                .map(|r| Rejection {
+                    subject: r.subject,
+                    relation: r.relation,
+                    object: r.object,
+                })
+                .collect(),
             ontology: napi_opts.ontology.unwrap_or_default().into_iter().collect(),
         }
     } else {
@@ -51,5 +61,13 @@ pub struct NapiTripleCandidate {
 pub struct NapiOptions {
     pub aliases: Option<std::collections::HashMap<String, String>>,
     pub min_confidence: Option<f64>,
+    pub rejections: Option<Vec<NapiRejection>>,
     pub ontology: Option<std::collections::HashMap<String, String>>,
+}
+
+#[napi(object)]
+pub struct NapiRejection {
+    pub subject: String,
+    pub relation: String,
+    pub object: String,
 }
