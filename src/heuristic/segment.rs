@@ -5,25 +5,14 @@
 //! ellipses, and quoted dialogue with attribution — so each of those is
 //! handled explicitly here and covered by the tests at the bottom of this file.
 
-/// Words that end in a period without ending a sentence.
-const ABBREVIATIONS: &[&str] = &[
-    // Personal and professional titles
-    "mr", "mrs", "ms", "dr", "prof", "rev", "fr", "sr", "jr", "st", "hon", "msgr",
-    // Military and civil ranks
-    "lt", "capt", "col", "gen", "sgt", "maj", "adm", "cmdr", "gov", "sen", "rep", "det", "insp",
-    "supt", // Common Latin and editorial abbreviations
-    "etc", "vs", "viz", "cf", "al", "ibid", "approx", "est", "min", "max",
-    // Organizational and address abbreviations
-    "inc", "ltd", "co", "corp", "dept", "univ", "mt", "ft", "ave", "blvd", "no", "vol", "ed", "pp",
-    "fig",
-];
+use super::pack::LanguagePack;
 
 /// Split prose into sentences, returning each as a borrowed slice of the input
 /// paired with its byte offset in `text`.
 ///
 /// Borrowing rather than allocating keeps this allocation-free per sentence;
 /// the returned offsets let candidate spans map back to the original text.
-pub fn split_sentences(text: &str) -> Vec<(&str, usize)> {
+pub fn split_sentences<'t>(text: &'t str, pack: &LanguagePack) -> Vec<(&'t str, usize)> {
     let bytes = text.as_bytes();
     let mut sentences = Vec::new();
     let mut start = 0usize;
@@ -58,7 +47,9 @@ pub fn split_sentences(text: &str) -> Vec<(&str, usize)> {
         let at_end = j >= text.len();
         let next_is_space = !at_end && text[j..].starts_with(char::is_whitespace);
 
-        if (at_end || next_is_space) && is_boundary(text, run_start, run, closed_quote, j, at_end) {
+        if (at_end || next_is_space)
+            && is_boundary(text, run_start, run, closed_quote, j, at_end, pack)
+        {
             push_sentence(&mut sentences, text, start, j);
             start = j;
             while start < text.len() && text[start..].starts_with(char::is_whitespace) {
@@ -95,6 +86,7 @@ fn is_boundary(
     closed_quote: bool,
     next: usize,
     at_end: bool,
+    pack: &LanguagePack,
 ) -> bool {
     if at_end {
         return true;
@@ -105,7 +97,7 @@ fn is_boundary(
     // belongs to the quote, not to an abbreviation.
     if run == "." && !closed_quote {
         let preceding = preceding_word(text, run_start);
-        if is_abbreviation(preceding) {
+        if is_abbreviation(preceding, pack) {
             return false;
         }
     }
@@ -127,7 +119,7 @@ fn preceding_word(text: &str, end: usize) -> &str {
     &text[start..end]
 }
 
-fn is_abbreviation(word: &str) -> bool {
+fn is_abbreviation(word: &str, pack: &LanguagePack) -> bool {
     if word.is_empty() {
         return false;
     }
@@ -138,7 +130,7 @@ fn is_abbreviation(word: &str) -> bool {
             return true;
         }
     }
-    ABBREVIATIONS
+    pack.abbreviations
         .iter()
         .any(|abbr| abbr.eq_ignore_ascii_case(word))
 }
@@ -151,10 +143,14 @@ fn next_word_start(text: &str, from: usize) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::pack::ENGLISH;
     use super::split_sentences;
 
     fn texts(input: &str) -> Vec<&str> {
-        split_sentences(input).into_iter().map(|(s, _)| s).collect()
+        split_sentences(input, &ENGLISH)
+            .into_iter()
+            .map(|(s, _)| s)
+            .collect()
     }
 
     #[test]
@@ -168,7 +164,7 @@ mod tests {
     #[test]
     fn offsets_point_at_the_sentence_in_the_source() {
         let text = "Elena went home. Marco stayed.";
-        for (sentence, offset) in split_sentences(text) {
+        for (sentence, offset) in split_sentences(text, &ENGLISH) {
             assert_eq!(&text[offset..offset + sentence.len()], sentence);
         }
     }
@@ -250,7 +246,7 @@ mod tests {
     #[test]
     fn preserves_offsets_through_multibyte_text() {
         let text = "Élena went home. Marco—her brother—stayed.";
-        for (sentence, offset) in split_sentences(text) {
+        for (sentence, offset) in split_sentences(text, &ENGLISH) {
             assert_eq!(&text[offset..offset + sentence.len()], sentence);
         }
     }
@@ -292,7 +288,7 @@ mod fuzz {
                     .wrapping_add(1442695040888963407);
                 s.push_str(alphabet[(state >> 33) as usize % alphabet.len()]);
             }
-            for (sentence, offset) in super::split_sentences(&s) {
+            for (sentence, offset) in super::split_sentences(&s, &super::super::pack::ENGLISH) {
                 assert!(offset <= s.len(), "offset out of range for {s:?}");
                 assert!(
                     s.is_char_boundary(offset) && s.is_char_boundary(offset + sentence.len()),

@@ -1,5 +1,5 @@
-use super::cooccurrence::base;
 use super::entities::EntityCandidate;
+use super::pack::{LanguagePack, VerbRule};
 use std::collections::BTreeMap;
 
 /// A relation found between two entities, with the span it was found in and
@@ -19,6 +19,7 @@ pub fn extract_relations(
     text: &str,
     entities: &[EntityCandidate],
     ontology: &BTreeMap<String, String>,
+    pack: &LanguagePack,
 ) -> Vec<RelationCandidate> {
     let mut relations = Vec::new();
 
@@ -37,7 +38,7 @@ pub fn extract_relations(
                 continue;
             }
 
-            if let Some(m) = find_relation_pattern(text, subj, obj) {
+            if let Some(m) = find_relation_pattern(text, subj, obj, pack) {
                 let (s, o) = if m.swapped { (obj, subj) } else { (subj, obj) };
                 relations.push(RelationCandidate {
                     subject: s.normalized.clone(),
@@ -92,80 +93,6 @@ impl PatternMatch {
     }
 }
 
-/// Relational nouns recognized in a possessive, as (noun, relation, base
-/// confidence). Every entry reads "X is Y's <noun>", giving relation(X, Y).
-///
-/// The relation is named explicitly rather than derived from the noun so a
-/// noun can share a label with a verb rule: "Elena is Marco's mentor" and
-/// "Elena mentors Marco" are the same fact and must not produce two edge
-/// types. The rule name stays `possessive-<noun>-pattern`, so attribution
-/// remains per-noun. Matching is whole-word, so entries are order-independent.
-const POSSESSIVE_NOUNS: &[(&str, &str, f32)] = &[
-    // Kinship and role: the possessive states the relation outright.
-    ("sister", "sister_of", base::POSSESSIVE_FACTUAL),
-    ("brother", "brother_of", base::POSSESSIVE_FACTUAL),
-    ("mother", "mother_of", base::POSSESSIVE_FACTUAL),
-    ("father", "father_of", base::POSSESSIVE_FACTUAL),
-    ("grandmother", "grandmother_of", base::POSSESSIVE_FACTUAL),
-    ("grandfather", "grandfather_of", base::POSSESSIVE_FACTUAL),
-    ("daughter", "daughter_of", base::POSSESSIVE_FACTUAL),
-    ("son", "son_of", base::POSSESSIVE_FACTUAL),
-    ("wife", "wife_of", base::POSSESSIVE_FACTUAL),
-    ("husband", "husband_of", base::POSSESSIVE_FACTUAL),
-    ("cousin", "cousin_of", base::POSSESSIVE_FACTUAL),
-    ("aunt", "aunt_of", base::POSSESSIVE_FACTUAL),
-    ("uncle", "uncle_of", base::POSSESSIVE_FACTUAL),
-    ("niece", "niece_of", base::POSSESSIVE_FACTUAL),
-    ("nephew", "nephew_of", base::POSSESSIVE_FACTUAL),
-    ("widow", "widow_of", base::POSSESSIVE_FACTUAL),
-    ("guardian", "guardian_of", base::POSSESSIVE_FACTUAL),
-    ("employer", "employer_of", base::POSSESSIVE_FACTUAL),
-    ("servant", "servant_of", base::POSSESSIVE_FACTUAL),
-    ("master", "master_of", base::POSSESSIVE_FACTUAL),
-    ("teacher", "teacher_of", base::POSSESSIVE_FACTUAL),
-    ("student", "student_of", base::POSSESSIVE_FACTUAL),
-    ("pupil", "pupil_of", base::POSSESSIVE_FACTUAL),
-    ("apprentice", "apprentice_of", base::POSSESSIVE_FACTUAL),
-    // Shares its label with verb-mentor-pattern: the same fact, said two ways.
-    ("mentor", "mentors", base::POSSESSIVE_FACTUAL),
-    // Social stance: same shape, weaker claim.
-    ("friend", "friend_of", base::POSSESSIVE_STANCE),
-    ("enemy", "enemy_of", base::POSSESSIVE_STANCE),
-    ("rival", "rival_of", base::POSSESSIVE_STANCE),
-    ("lover", "lover_of", base::POSSESSIVE_STANCE),
-    ("companion", "companion_of", base::POSSESSIVE_STANCE),
-    ("ally", "ally_of", base::POSSESSIVE_STANCE),
-    ("acquaintance", "acquaintance_of", base::POSSESSIVE_STANCE),
-];
-
-/// Links that let the possessive be read as a statement about the subject.
-///
-/// IMPORTANT: matched against the whole trimmed text between the two mentions,
-/// never as a substring. "Elena visited Marco's sister" names a third person,
-/// and "is not", "was never", "could be" and "believed ... was" each deny,
-/// hedge or attribute the claim rather than making it. Every one of those
-/// contains a copula; none of them is one.
-///
-/// The plural copulas are absent. "Dev and Elena are Marco's cousins" has two
-/// subjects and the pair loop sees one of them, so extracting it would be half
-/// right by construction; the lexicon also matches whole-word and would have
-/// to carry "cousins" to reach the phrase at all.
-const POSSESSIVE_COPULAS: &[&str] = &["is", "was"];
-
-/// Pre-nominal modifiers that may stand between an appositive comma and the
-/// possessor, as in "Bob Spicer, old Mrs. Mingott's father".
-///
-/// IMPORTANT: closed class, and it holds no verb, no conjunction and no
-/// relative pronoun. "Elena, who visited Marco's sister" and "Dev, and Marco's
-/// sister" are not appositions, and admitting "who" or "and" here would read
-/// both as one.
-#[rustfmt::skip]
-const APPOSITIVE_MODIFIERS: &[&str] = &[
-    "the", "a", "an", "this", "that",
-    "his", "her", "their", "its", "my", "our", "your",
-    "old", "young", "little", "poor", "dear", "late", "good",
-];
-
 /// Byte range of the first ASCII-case-insensitive *whole-word* occurrence of
 /// `needle`. IMPORTANT: whole-word matching is what stops "grandmother" from
 /// matching "mother" and labeling it `mother_of`. A substring match would make
@@ -212,35 +139,28 @@ fn find_ascii_ci(haystack: &str, needle: &str) -> Option<(usize, usize)> {
 /// phrase bounds the relational-noun search. Scanning the whole remainder of
 /// the sentence matches a noun belonging to a later clause ("Marco's dog, and
 /// she has a sister") and emits the highest confidence rule in the system.
-fn possessed_noun_phrase_len(rest: &str) -> usize {
+fn possessed_noun_phrase_len(rest: &str, pack: &LanguagePack) -> usize {
     let punct = rest
         .find([',', '.', ';', ':', '!', '?'])
         .unwrap_or(rest.len());
-    let conjunction = find_ascii_ci(rest, " and ")
+    let conjunction = find_ascii_ci(rest, pack.phrase_conjunction)
         .map(|(start, _)| start)
         .unwrap_or(rest.len());
     punct.min(conjunction)
 }
 
-/// Closed-class words that deny the event or hold it open. IMPORTANT: this is
-/// a closed class on purpose. The verbs that suspend a complement (refuse,
-/// hope, intend, pretend) are an open one, and are caught structurally by the
-/// `to`-infinitive instead. "will" is absent because a future tense asserts.
-const SUSPENDING_WORDS: &[&str] = &[
-    "not", "never", "no", "nor", "neither", "if", "unless", "whether", "could", "would", "might",
-    "may", "should",
-];
-
 /// Whether the text between two mentions denies the relation or holds it open
 /// rather than asserting it.
-fn suspends_assertion(between: &str) -> bool {
+fn suspends_assertion(between: &str, pack: &LanguagePack) -> bool {
     between.split(|c: char| !c.is_ascii_alphanumeric() && c != '\'').any(|word| {
         // "didn't", "doesn't", "isn't": the negator is a suffix, not a word.
-        word.ends_with("n't") || SUSPENDING_WORDS.contains(&word)
+        word.ends_with(pack.negation_clitic) || pack.suspending_words.contains(&word)
     })
         // A complement verb suspends its infinitive: "refused to mentor",
         // "hoped to mentor", "wanted to work" assert nothing about the event.
-        || between.split_whitespace().any(|word| word == "to")
+        || between
+            .split_whitespace()
+            .any(|word| word == pack.infinitive_marker)
 }
 
 /// Whether the sentence holding the mentions is a question. IMPORTANT: "Did
@@ -261,8 +181,9 @@ fn ends_in_question(text: &str, from: usize) -> bool {
 /// that possessor ("Marco's friend's sister" is the sister of the friend). The
 /// phrase is already cut at the first clause boundary, so what follows the
 /// noun here is the rest of one noun phrase.
-fn heads_possessed_phrase(phrase: &str, start: usize, end: usize) -> bool {
-    phrase[end..].trim().is_empty() && find_ascii_ci(&phrase[..start], "'s").is_none()
+fn heads_possessed_phrase(phrase: &str, start: usize, end: usize, pack: &LanguagePack) -> bool {
+    phrase[end..].trim().is_empty()
+        && find_ascii_ci(&phrase[..start], pack.possessive_clitic).is_none()
 }
 
 /// The possessed phrase in "y's <phrase> <copula> x", where the possessive sits
@@ -273,13 +194,13 @@ fn heads_possessed_phrase(phrase: &str, start: usize, end: usize) -> bool {
 /// object, so "Mingott's father was once Bob Spicer" does not match; the same
 /// closed set of copulas applies, and the assertion gate has already rejected
 /// anything that denies or suspends the claim.
-fn reversed_possessive_phrase(between: &str) -> Option<&str> {
-    let rest = between.strip_prefix("'s")?;
+fn reversed_possessive_phrase<'a>(between: &'a str, pack: &LanguagePack) -> Option<&'a str> {
+    let rest = between.strip_prefix(pack.possessive_clitic)?;
     if !rest.starts_with(' ') {
         return None;
     }
     let (phrase, copula) = rest.trim().rsplit_once(' ')?;
-    POSSESSIVE_COPULAS
+    pack.possessive_copulas
         .contains(&copula)
         .then(|| phrase.trim_end())
 }
@@ -290,12 +211,12 @@ fn reversed_possessive_phrase(between: &str) -> Option<&str> {
 /// IMPORTANT: everything after the comma must be a pre-nominal modifier. A verb
 /// or a relative pronoun there means the possessive belongs to a clause about x
 /// rather than a renaming of it, and the relation would name the wrong person.
-fn is_appositive_link(between: &str) -> bool {
+fn is_appositive_link(between: &str, pack: &LanguagePack) -> bool {
     let Some(rest) = between.trim_start().strip_prefix(',') else {
         return false;
     };
     rest.split_whitespace()
-        .all(|word| APPOSITIVE_MODIFIERS.contains(&word))
+        .all(|word| pack.appositive_modifiers.contains(&word))
 }
 
 /// The relational noun in an "of" genitive: "x, the <noun> of y", or the same
@@ -305,38 +226,47 @@ fn is_appositive_link(between: &str) -> bool {
 /// a possessive-only rule set reads almost nothing. Measured over three novels
 /// in `docs/EVALUATION.md`, "x is y's <noun>" occurs zero times and the "of"
 /// genitive nineteen.
-fn of_genitive_noun(between: &str) -> Option<&str> {
+fn of_genitive_noun<'a>(between: &'a str, pack: &LanguagePack) -> Option<&'a str> {
     let trimmed = between.trim();
     let rest = match trimmed.strip_prefix(',') {
         Some(rest) => rest,
         None => {
             let (link, rest) = trimmed.split_once(' ')?;
-            POSSESSIVE_COPULAS.contains(&link).then_some(rest)?
+            pack.possessive_copulas.contains(&link).then_some(rest)?
         }
     };
 
     let mut words: Vec<&str> = rest.split_whitespace().collect();
-    if words.pop()? != "of" {
+    if words.pop()? != pack.genitive_link {
         return None;
     }
     let noun = words.pop()?;
     words
         .iter()
-        .all(|word| APPOSITIVE_MODIFIERS.contains(word))
+        .all(|word| pack.appositive_modifiers.contains(word))
         .then_some(noun)
 }
 
 /// Whether an apostrophe-s opens at `from`, marking the mention before it as a
 /// possessor.
-fn opens_possessive(text: &str, from: usize) -> bool {
-    let bytes = &text.as_bytes()[from..];
-    bytes.len() >= 2 && bytes[0] == b'\'' && bytes[1].eq_ignore_ascii_case(&b's')
+fn opens_possessive(text: &str, from: usize, pack: &LanguagePack) -> bool {
+    starts_with_clitic(&text.as_bytes()[from..], pack)
+}
+
+/// Whether `bytes` opens with the pack's possessive clitic, matched
+/// case-insensitively as the rest of the relation rules match.
+fn starts_with_clitic(bytes: &[u8], pack: &LanguagePack) -> bool {
+    let clitic = pack.possessive_clitic.as_bytes();
+    bytes
+        .get(..clitic.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(clitic))
 }
 
 fn find_relation_pattern(
     text: &str,
     subj: &EntityCandidate,
     obj: &EntityCandidate,
+    pack: &LanguagePack,
 ) -> Option<PatternMatch> {
     // IMPORTANT: use each mention's own offsets. Re-locating a surface form by
     // substring search finds the first occurrence anywhere in the text, and an
@@ -360,32 +290,31 @@ fn find_relation_pattern(
     // IMPORTANT: every rule below reads the text between the mentions as an
     // assertion that the relation holds. Text that denies or suspends it is
     // not a weaker assertion, it is the opposite one, so no rule may fire.
-    if suspends_assertion(between) || ends_in_question(text, obj.end) {
+    if suspends_assertion(between, pack) || ends_in_question(text, obj.end) {
         return None;
     }
 
     // Possessive pattern: "x is y's [relation]". Matched against the original
     // text so the noun's offsets can bound the evidence span.
     let after_obj = &text[obj.end..];
+    let clitic_len = pack.possessive_clitic.len();
     let bytes = after_obj.as_bytes();
-    let possessive = bytes.len() >= 3
-        && bytes[0] == b'\''
-        && bytes[1].eq_ignore_ascii_case(&b's')
-        && matches!(bytes[2], b' ' | b'.');
+    let possessive =
+        starts_with_clitic(bytes, pack) && matches!(bytes.get(clitic_len), Some(b' ') | Some(b'.'));
 
     let asserts_possessive =
-        POSSESSIVE_COPULAS.contains(&between.trim()) || is_appositive_link(between);
+        pack.possessive_copulas.contains(&between.trim()) || is_appositive_link(between, pack);
 
     if possessive && asserts_possessive {
-        let rest = &after_obj["'s".len()..];
-        let phrase = &rest[..possessed_noun_phrase_len(rest)];
-        let phrase_start = obj.end + "'s".len();
+        let rest = &after_obj[clitic_len..];
+        let phrase = &rest[..possessed_noun_phrase_len(rest, pack)];
+        let phrase_start = obj.end + clitic_len;
 
-        for (noun, relation, base) in POSSESSIVE_NOUNS {
+        for (noun, relation, base) in pack.possessive_nouns {
             let Some((noun_start, noun_end)) = find_ascii_ci_word(phrase, noun) else {
                 continue;
             };
-            if !heads_possessed_phrase(phrase, noun_start, noun_end) {
+            if !heads_possessed_phrase(phrase, noun_start, noun_end, pack) {
                 continue;
             }
             return Some(
@@ -398,9 +327,10 @@ fn find_relation_pattern(
     // "of" genitive: "x, the [relation] of y". IMPORTANT: same guard as the
     // reversed possessive — "Elena, the sister of Marco's wife" names the wife,
     // not Marco.
-    if let Some(noun) = of_genitive_noun(between) {
-        if !opens_possessive(text, obj.end) {
-            if let Some((_, relation, base)) = POSSESSIVE_NOUNS.iter().find(|(n, _, _)| *n == noun)
+    if let Some(noun) = of_genitive_noun(between, pack) {
+        if !opens_possessive(text, obj.end, pack) {
+            if let Some((_, relation, base)) =
+                pack.possessive_nouns.iter().find(|(n, _, _)| *n == noun)
             {
                 return Some(PatternMatch::new(
                     relation,
@@ -416,13 +346,13 @@ fn find_relation_pattern(
     // open a possessive of its own. In "Elena's mother was Marco's sister" the
     // sister belongs to Marco, and reading the copula as linking Elena's mother
     // to Marco states a relation the sentence never makes.
-    if let Some(phrase) = reversed_possessive_phrase(between) {
-        if !opens_possessive(text, obj.end) {
-            for (noun, relation, base) in POSSESSIVE_NOUNS {
+    if let Some(phrase) = reversed_possessive_phrase(between, pack) {
+        if !opens_possessive(text, obj.end, pack) {
+            for (noun, relation, base) in pack.possessive_nouns {
                 let Some((noun_start, noun_end)) = find_ascii_ci_word(phrase, noun) else {
                     continue;
                 };
-                if !heads_possessed_phrase(phrase, noun_start, noun_end) {
+                if !heads_possessed_phrase(phrase, noun_start, noun_end, pack) {
                     continue;
                 }
                 return Some(
@@ -433,43 +363,36 @@ fn find_relation_pattern(
         }
     }
 
-    // Verb patterns with space before to ensure word boundaries.
-    // IMPORTANT: passive voice ("was mentored by") names the mentor second, so
-    // the relation's subject is the later entity, not the earlier one.
-    if between.contains(" mentor") {
-        let passive = between.contains(" by");
-        return Some(
-            PatternMatch::new("mentors", "verb-mentor-pattern", base::VERB, gap).swapped(passive),
-        );
+    // Verb patterns. The markers carry their own word boundary, so the table is
+    // walked in order and the first rule whose tokens are all present wins.
+    if let Some(m) = match_verb_rules(between, pack.verb_rules, gap) {
+        return Some(m);
     }
-    if between.contains(" work") && between.contains(" at") {
-        return Some(PatternMatch::new(
-            "works_at",
-            "verb-works-at-pattern",
-            base::VERB,
-            gap,
-        ));
-    }
-    if between.contains(", who ") && (between.contains("work") || between.contains("mentor")) {
-        if between.contains("work") && between.contains("at") {
-            return Some(PatternMatch::new(
-                "works_at",
-                "relative-works-at-pattern",
-                base::RELATIVE_CLAUSE,
-                gap,
-            ));
-        }
-        if between.contains("mentor") {
-            return Some(PatternMatch::new(
-                "mentors",
-                "relative-mentor-pattern",
-                base::RELATIVE_CLAUSE,
-                gap,
-            ));
+    if between.contains(pack.relative_opener) {
+        if let Some(m) = match_verb_rules(between, pack.relative_rules, gap) {
+            return Some(m);
         }
     }
 
     None
+}
+
+/// The first rule in `rules` whose marker, and second marker where it has one,
+/// both appear in the text between the mentions.
+fn match_verb_rules(between: &str, rules: &[VerbRule], gap: usize) -> Option<PatternMatch> {
+    rules
+        .iter()
+        .find(|rule| {
+            between.contains(rule.marker) && rule.also.map_or(true, |also| between.contains(also))
+        })
+        .map(|rule| {
+            // IMPORTANT: passive voice ("was mentored by") names the mentor
+            // second, so the relation's subject is the later entity.
+            let passive = rule
+                .passive_marker
+                .is_some_and(|marker| between.contains(marker));
+            PatternMatch::new(rule.relation, rule.rule, rule.base, gap).swapped(passive)
+        })
 }
 
 /// Normalize a relation type against an optional caller-supplied ontology.

@@ -1,3 +1,4 @@
+use super::pack::LanguagePack;
 use std::collections::BTreeMap;
 
 /// Entity candidate with start and end positions in the text.
@@ -9,12 +10,21 @@ pub struct EntityCandidate {
     pub end: usize,
 }
 
-/// Extract entities from a sentence using capitalization + pronoun linking + alias resolution.
+/// Extract entities from a sentence with the pipeline's own language pack.
 pub fn extract_entities(text: &str, aliases: &BTreeMap<String, String>) -> Vec<EntityCandidate> {
+    extract_entities_with(text, aliases, &super::pack::ENGLISH)
+}
+
+/// Extract entities from a sentence using capitalization + pronoun linking + alias resolution.
+pub fn extract_entities_with(
+    text: &str,
+    aliases: &BTreeMap<String, String>,
+    pack: &LanguagePack,
+) -> Vec<EntityCandidate> {
     let mut entities = Vec::new();
 
     // Find capitalized sequences (multi-word proper nouns and single capitalized words)
-    let entities_from_capitalization = extract_capitalized_entities(text);
+    let entities_from_capitalization = extract_capitalized_entities(text, pack);
     entities.extend(entities_from_capitalization);
 
     // Resolve aliases: any mention in the aliases map becomes the mapped canonical name
@@ -32,7 +42,7 @@ pub fn extract_entities(text: &str, aliases: &BTreeMap<String, String>) -> Vec<E
     // Find pronouns that can be linked to previously mentioned entities in the
     // sentence. A lexicon mention covering the pronoun's own offsets replaces
     // it: the caller named that referent outright, which beats resolving one.
-    let pronouns = extract_pronouns(text);
+    let pronouns = extract_pronouns(text, pack);
     for pronoun in pronouns {
         let covered = from_lexicon
             .iter()
@@ -64,93 +74,12 @@ pub fn extract_entities(text: &str, aliases: &BTreeMap<String, String>) -> Vec<E
     entities
 }
 
-/// Words that are capitalized at the start of a sentence by position alone.
-///
-/// IMPORTANT: a capitalized run becomes one mention, so "But Elena" normalizes
-/// to `but_elena` and never unifies with `elena` elsewhere in the text. That
-/// silently splits a character into two graph nodes, and narrative prose opens
-/// sentences this way constantly.
-///
-/// Membership is restricted to words that cannot also be a given name in that
-/// position: "May", "Will", "Grace", "June", "Faith" and "Summer" are all
-/// names and are deliberately absent, because dropping a real mention costs
-/// more than keeping a malformed one.
-///
-/// The pronouns `extract_pronouns` owns are listed here too. A capitalized
-/// pronoun otherwise becomes a second mention at the same offsets as the
-/// resolved one, and `she` as a graph node names nobody.
-#[rustfmt::skip]
-const SENTENCE_OPENERS: &[&str] = &[
-    "a", "after", "again", "all", "although", "an", "and", "another", "any", "are", "as", "at",
-    "because", "before", "both", "but", "by", "did", "do", "does", "each", "either", "even",
-    "every", "for", "from", "had", "has", "have", "he", "her", "here", "him", "his", "how",
-    "however", "if",
-    "in", "indeed", "instead", "is", "its", "just", "later", "maybe", "meanwhile", "my", "neither",
-    "never", "no", "nor", "not", "now", "of", "often", "on", "once", "only", "or", "our",
-    "perhaps", "since", "so", "some", "sometimes", "soon", "still", "suddenly", "that", "the",
-    "she", "their", "them", "then", "there", "these", "they", "this", "those", "though", "to",
-    "today", "tomorrow",
-    "tonight", "was", "were", "what", "when", "where", "which", "while", "who", "whom", "whose",
-    "why", "with", "yesterday", "yet", "your",
-];
-
-/// Lowercase particles that belong to the name they sit inside.
-///
-/// IMPORTANT: a particle only continues a run already open. "Bourgh" is what
-/// "Lady Catherine de Bourgh" normalized to before this list existed, which
-/// names a surname shared with "Sir Lewis de Bourgh" rather than either person.
-/// A particle may not open a mention, because the same words open ordinary
-/// clauses ("van" rarely, "bin" and "af" never, but "du" and "della" occur in
-/// quoted French and Italian).
-///
-/// English "of" is deliberately absent. It is the only candidate that also
-/// appears in `SENTENCE_OPENERS` and as the link text `of_genitive_noun`
-/// matches, so admitting it would fold "the Duchess of Devonshire" into one
-/// mention and change the shape of mentions already measured in
-/// `docs/EVALUATION.md`, while doing nothing for a title whose noun is
-/// lowercase and therefore closes the run before "of" is reached.
-const NAME_PARTICLES: &[&str] = &[
-    "de", "del", "della", "der", "des", "di", "du", "la", "le", "van", "von", "af", "ter", "bin",
-    "ibn", "al", "da", "dos", "das", "y",
-];
-
-/// Titles and ranks that precede a name and are not part of the identity.
-///
-/// IMPORTANT: this cuts differently from both lists above. A particle joins a
-/// run, an opener is dropped at position 0 only, and a title is capitalized,
-/// real, and correctly part of the surface form; it just must not be part of
-/// the identity, or "the Right Honourable Lady Catherine de Bourgh" can never
-/// unify with any shorter mention of her.
-///
-/// Entries are bare: `.` is a separator in `extract_capitalized_entities`, so
-/// the run already reads "Mrs Bennet" and a "mrs." entry would never match.
-///
-/// Membership is restricted to words that do not also do relational or naming
-/// work. "Father", "Mother", "Sister" and "Master" are titles in address but
-/// heads of the relational lexicon `find_relation_pattern` matches; "Major",
-/// "General" and "President" are common nouns. "Grace" is excluded for the
-/// reason "May" and "June" are excluded above: it is a given name, and "His
-/// Grace" needs no entry, since `strip_honorifics` keeps a title standing in
-/// front of a single name word.
-#[rustfmt::skip]
-const HONORIFICS: &[&str] = &[
-    "mr", "mrs", "ms", "miss", "mister", "dr", "doctor", "sir", "dame", "lady", "lord",
-    "captain", "capt", "colonel", "col", "reverend", "rev", "professor", "prof",
-    "sergeant", "sgt", "lieutenant", "admiral", "bishop", "cardinal",
-    "hon", "honourable", "honorable",
-];
-
-/// Words that form a compounded style only in front of another title. Alone
-/// they are ordinary adjectives, so they are stripped only when an entry of
-/// `HONORIFICS` follows.
-const HONORIFIC_QUALIFIERS: &[&str] = &["right", "most", "very"];
-
-fn is_title_word(word: &str, next: Option<&str>) -> bool {
+fn is_title_word(word: &str, next: Option<&str>, pack: &LanguagePack) -> bool {
     let word = word.to_lowercase();
-    if HONORIFIC_QUALIFIERS.contains(&word.as_str()) {
-        return next.is_some_and(|n| HONORIFICS.contains(&n.to_lowercase().as_str()));
+    if pack.honorific_qualifiers.contains(&word.as_str()) {
+        return next.is_some_and(|n| pack.honorifics.contains(&n.to_lowercase().as_str()));
     }
-    HONORIFICS.contains(&word.as_str())
+    pack.honorifics.contains(&word.as_str())
 }
 
 /// Drop the titles leading a mention, keeping the last one when only a single
@@ -162,7 +91,7 @@ fn is_title_word(word: &str, next: Option<&str>) -> bool {
 /// appear in one sentence, turns a real relation into a self-relation that
 /// `extract_relations` then drops. A title in front of two or more name words
 /// distinguishes nothing the name does not.
-fn strip_honorifics(entity: &str) -> &str {
+fn strip_honorifics<'a>(entity: &'a str, pack: &LanguagePack) -> &'a str {
     let mut rest = entity;
 
     while let Some((head, tail)) = rest.split_once(' ') {
@@ -171,7 +100,7 @@ fn strip_honorifics(entity: &str) -> &str {
         // everyone else who shares it. A particle is not one of those words —
         // "Lady de Bourgh" reduced to `de_bourgh` names the surname two people
         // share, which is the error the particle list exists to prevent.
-        if name_word_count(tail) < 2 || !is_title_word(head, tail.split(' ').next()) {
+        if name_word_count(tail, pack) < 2 || !is_title_word(head, tail.split(' ').next(), pack) {
             break;
         }
         rest = tail;
@@ -180,9 +109,9 @@ fn strip_honorifics(entity: &str) -> &str {
     rest
 }
 
-fn name_word_count(run: &str) -> usize {
+fn name_word_count(run: &str, pack: &LanguagePack) -> usize {
     run.split(' ')
-        .filter(|w| !NAME_PARTICLES.contains(&w.to_lowercase().as_str()))
+        .filter(|w| !pack.name_particles.contains(&w.to_lowercase().as_str()))
         .count()
 }
 
@@ -211,22 +140,35 @@ fn is_sentence_start(text: &str, word_start: usize) -> bool {
 
 /// Whether a capitalized word is capitalized only because a sentence starts
 /// there, and so must not open a mention.
-fn opens_sentence_by_position(text: &str, word: &str, word_start: usize) -> bool {
-    SENTENCE_OPENERS.contains(&word.to_lowercase().as_str()) && is_sentence_start(text, word_start)
+fn opens_sentence_by_position(
+    text: &str,
+    word: &str,
+    word_start: usize,
+    pack: &LanguagePack,
+) -> bool {
+    pack.sentence_openers
+        .contains(&word.to_lowercase().as_str())
+        && is_sentence_start(text, word_start)
 }
 
 /// The one place a completed capitalized run becomes a candidate, so that the
 /// title rule is applied once rather than at each of the flush sites.
-fn push_entity(entities: &mut Vec<EntityCandidate>, run: &str, start: usize, end: usize) {
+fn push_entity(
+    entities: &mut Vec<EntityCandidate>,
+    run: &str,
+    start: usize,
+    end: usize,
+    pack: &LanguagePack,
+) {
     entities.push(EntityCandidate {
         text: run.to_string(),
-        normalized: normalize_entity(strip_honorifics(run)),
+        normalized: normalize_entity(strip_honorifics(run, pack)),
         start,
         end,
     });
 }
 
-fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
+fn extract_capitalized_entities(text: &str, pack: &LanguagePack) -> Vec<EntityCandidate> {
     let mut entities = Vec::new();
     let mut current_entity = String::new();
     let mut start_idx = 0;
@@ -252,7 +194,7 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
                     .next()
                     .is_some_and(|c| c.is_uppercase())
                     && !(current_entity.is_empty()
-                        && opens_sentence_by_position(text, &current_word, word_start));
+                        && opens_sentence_by_position(text, &current_word, word_start, pack));
 
                 if is_capitalized {
                     if !current_entity.is_empty() {
@@ -266,7 +208,9 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
                     entity_end = byte_pos;
                 } else if !current_entity.is_empty()
                     && c.is_whitespace()
-                    && NAME_PARTICLES.contains(&current_word.to_lowercase().as_str())
+                    && pack
+                        .name_particles
+                        .contains(&current_word.to_lowercase().as_str())
                 {
                     // Held, not folded: only a capitalized word after it proves
                     // the particle sits inside the name. Punctuation ends the
@@ -275,7 +219,7 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
                     pending_particles.push(' ');
                 } else {
                     if !current_entity.is_empty() {
-                        push_entity(&mut entities, &current_entity, start_idx, entity_end);
+                        push_entity(&mut entities, &current_entity, start_idx, entity_end, pack);
                         current_entity.clear();
                     }
                     pending_particles.clear();
@@ -296,7 +240,7 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
             .next()
             .is_some_and(|c| c.is_uppercase())
             && !(current_entity.is_empty()
-                && opens_sentence_by_position(text, &current_word, word_start));
+                && opens_sentence_by_position(text, &current_word, word_start, pack));
         if is_capitalized {
             if !current_entity.is_empty() {
                 current_entity.push(' ');
@@ -307,13 +251,13 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
             current_entity.push_str(&current_word);
             entity_end = text.len();
         } else if !current_entity.is_empty() {
-            push_entity(&mut entities, &current_entity, start_idx, entity_end);
+            push_entity(&mut entities, &current_entity, start_idx, entity_end, pack);
             current_entity.clear();
         }
     }
 
     if !current_entity.is_empty() {
-        push_entity(&mut entities, &current_entity, start_idx, entity_end);
+        push_entity(&mut entities, &current_entity, start_idx, entity_end, pack);
     }
 
     entities
@@ -425,10 +369,8 @@ struct Pronoun {
     end: usize,
 }
 
-fn extract_pronouns(text: &str) -> Vec<Pronoun> {
-    let pronouns = [
-        "he", "she", "they", "him", "her", "them", "his", "their", "it",
-    ];
+fn extract_pronouns(text: &str, pack: &LanguagePack) -> Vec<Pronoun> {
+    let pronouns = pack.pronouns;
     let mut found = Vec::new();
 
     // Walk whole words in the source text. Searching a lowercased copy yields

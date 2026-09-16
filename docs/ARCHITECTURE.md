@@ -55,6 +55,23 @@ dedup_candidates            (src/heuristic/mod.rs)
 Vec<TripleCandidate>
 ```
 
+## Language pack (`src/heuristic/pack.rs`)
+
+Every closed vocabulary the pipeline reads — sentence openers, name particles,
+honorifics, pronouns, abbreviations, the relational-noun lexicon, copulas,
+appositive modifiers, suspending words, and the verb rules — lives in one
+`LanguagePack`, and `ENGLISH` is the only value of it today. Each stage takes
+the pack as a parameter rather than reaching for a `const` of its own, so what
+a second language must supply is exactly that struct and nothing else.
+
+A pack is vocabulary, not strategy. Three assumptions stay in the code that
+reads one and cannot be moved into it: capitalization is the entity signal, a
+possessive is a clitic on the possessor read left to right, and a sentence-final
+`.`/`!`/`?` terminates while a lowercase continuation does not. A second pack is
+therefore enough only for a language sharing all three; deciding otherwise is
+what the second pack is for. Selecting a pack is not yet caller-facing, since
+there is nothing to select.
+
 ## Sentence segmentation (`src/heuristic/segment.rs`)
 
 Segmentation runs before anything else, and it is the one part of this
@@ -157,8 +174,8 @@ fixed set of surface patterns:
 | `<Subj> ... , who ... work... at...` | "Marco mentors Dev, who works at the Archive." | `works_at` | `relative-works-at-pattern` |
 | `<Subj> ... , who ... mentor...` | | `mentors` | `relative-mentor-pattern` |
 
-The possessive row is driven by `POSSESSIVE_NOUNS` in
-`src/heuristic/relations.rs`, a lexicon of relational nouns each yielding
+The possessive row is driven by `possessive_nouns` in
+`src/heuristic/pack.rs`, a lexicon of relational nouns each yielding
 `<noun>_of` under its own rule name. It carries two confidence tiers: kinship
 and role nouns ("sister", "employer", "apprentice") state the relation
 outright, while social-stance nouns ("friend", "enemy", "rival") use the same
@@ -249,8 +266,8 @@ designed, but the design is narrow:
 
 - **Entity precision**: any capitalized word not on the sentence-opener list
   is a candidate entity, including a title-cased common noun. There is no
-  part-of-speech or named-entity model backing this. `SENTENCE_OPENERS` in
-  `src/heuristic/entities.rs` drops a closed class of function words when they
+  part-of-speech or named-entity model backing this. `sentence_openers` in
+  `src/heuristic/pack.rs` drops a closed class of function words when they
   open a sentence, because a capitalized run becomes one mention and "But
   Elena" normalizes to `but_elena`, splitting a character into two graph
   nodes. It holds no word that can also be a given name — "May", "Will",
