@@ -115,8 +115,8 @@ const NAME_PARTICLES: &[&str] = &[
 /// heads of the relational lexicon `find_relation_pattern` matches; "Major",
 /// "General" and "President" are common nouns. "Grace" is excluded for the
 /// reason "May" and "June" are excluded above: it is a given name, and "His
-/// Grace" needs no entry because stripping it would leave nothing and
-/// `strip_honorifics` keeps the mention whole in that case.
+/// Grace" needs no entry, since `strip_honorifics` keeps a title standing in
+/// front of a single name word.
 #[rustfmt::skip]
 const HONORIFICS: &[&str] = &[
     "mr", "mrs", "ms", "miss", "mister", "dr", "doctor", "sir", "dame", "lady", "lord",

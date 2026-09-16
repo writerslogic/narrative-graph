@@ -912,7 +912,8 @@ fn test_a_title_in_front_of_one_name_word_is_kept() {
         // A particle is not a name word. Stripping here would leave the
         // surname shared with every other de Bourgh.
         ("Lady de Bourgh spoke", "lady_de_bourgh"),
-        // Nothing would remain at all, and a mention has to name something.
+        // A run that is only a title is left alone: a mention has to name
+        // something, and there is no name here to reduce it to.
         ("the Colonel spoke", "colonel"),
     ] {
         let mentions = extract_entities(text, &aliases);

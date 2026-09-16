@@ -59,6 +59,23 @@ test('resolves aliases to a canonical entity name', () => {
   assert.equal(candidates[0].object, 'marco_reyes')
 })
 
+test('drops a leading title from the identity but keys aliases on the surface form', () => {
+  const [styled] = extractCandidateTriplesNapi(
+    'Lady Catherine de Bourgh, widow of Sir Lewis de Bourgh, said nothing.',
+  )
+
+  assert.equal(styled.subject, 'catherine_de_bourgh')
+  assert.equal(styled.object, 'lewis_de_bourgh')
+
+  // The alias key is the surface form, titles and all, with `.` dropped as a
+  // separator. This is the form README and docs/INTEGRATION.md document.
+  const [aliased] = extractCandidateTriplesNapi("Mr. Marcus Hale is Elena's brother.", {
+    aliases: { 'Mr Marcus Hale': 'marcus_hale' },
+  })
+
+  assert.equal(aliased.subject, 'marcus_hale')
+})
+
 test('maps a recognized relation through a caller-supplied ontology', () => {
   const candidates = extractCandidateTriplesNapi('Marco mentors Dev.', {
     ontology: { mentors: 'mentorship' },
