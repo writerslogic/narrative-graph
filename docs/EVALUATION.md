@@ -9,18 +9,18 @@ exists is behavioral test coverage over the pattern set documented in
 | Suite | Count | What it checks |
 |---|---|---|
 | `src/heuristic/segment.rs` (`cargo test`) | 14 | Sentence segmentation: honorifics, initials, ellipses, decimals, em-dashes, quoted dialogue with attribution, terminator runs, multibyte offsets, empty input, and a 20k-case property test asserting no panic and valid char-boundary offsets |
-| `tests/heuristic.rs` (`cargo test`) | 63 | Each relation pattern fires on a canonical example, confidence ordering, span correctness, `min_confidence` filtering, rule attribution, and multi-relation sentences; plus nested mentions (`Jane` inside `Mary Jane`), a surface form recurring inside an earlier word (`Dev` inside `Devon`), an entity whose lowercase form changes byte length (`İ`), a possessive bounded to its noun phrase, passive-voice role orientation, spans covering the token that licensed the relation, a referent mentioned twice yielding both relations, no self-relations, whole-word lexicon matching (`grandmother` is not `mother`), stance nouns scoring below stated kinship, one label shared between a noun rule and a verb rule, and a 20k-case property test over the whole pipeline asserting no panic and valid char-boundary spans. Ten of them came out of the near-miss probing below. Seven assert that nothing is emitted: a possessive without a copula, a reported possessive, a non-head relational noun, a denied or suspended relation, a question, a plural copula, and a capitalized pronoun inside dialogue. Three guard the other direction, so the gates cannot be tightened into silence: a sentence opener dropped without losing the mention after it, a given name that reads as a function word, and each copula the possessive still accepts. Entity boundaries have their own group: a name particle inside a run, a trailing particle that must not be folded in, a leading title dropped from the identity, a title in front of one name word kept because it is doing the distinguishing work, and a style qualifier that is only a title in front of another title. Ten more cover the alias lexicon: a lowercase key becoming a mention, case-insensitive matching alongside an exact uppercase key, an overlapping key that must not replace the run it spans, longest key first, no match inside a longer word, offsets that address the source text past a multi-byte character, a lexicon mention resolving a pronoun, a nearer capitalized run keeping that pronoun instead, a key covering a pronoun replacing it, and a lexicon mention taken outright where no capitalized word precedes the pronoun |
-| `types.rs` binding-export tests (`cargo test --features bindings`) | 3 | `ts-rs` regenerates `bindings/*.ts` from `Options`, `TripleCandidate`, `SpannedTriple` without drift |
-| `tests/node/api.test.cjs` (`npm test`) | 9 | The N-API surface: extraction, empty input, `minConfidence` filtering, `aliases` (including a titled surface form as the key), `ontology`, the title rule reaching the binding, and the out-of-range-confidence error |
+| `tests/heuristic.rs` (`cargo test`) | 80 | Each relation pattern fires on a canonical example, confidence ordering, span correctness, `min_confidence` filtering, rule attribution, and multi-relation sentences; plus nested mentions (`Jane` inside `Mary Jane`), a surface form recurring inside an earlier word (`Dev` inside `Devon`), an entity whose lowercase form changes byte length (`İ`), a possessive bounded to its noun phrase, passive-voice role orientation, spans covering the token that licensed the relation, a referent mentioned twice yielding both relations, no self-relations, whole-word lexicon matching (`grandmother` is not `mother`), stance nouns scoring below stated kinship, one label shared between a noun rule and a verb rule, and a 20k-case property test over the whole pipeline asserting no panic and valid char-boundary spans. Ten of them came out of the near-miss probing below. Seven assert that nothing is emitted: a possessive without a copula, a reported possessive, a non-head relational noun, a denied or suspended relation, a question, a plural copula, and a capitalized pronoun inside dialogue. Three guard the other direction, so the gates cannot be tightened into silence: a sentence opener dropped without losing the mention after it, a given name that reads as a function word, and each copula the possessive still accepts. Entity boundaries have their own group: a name particle inside a run, a trailing particle that must not be folded in, a leading title dropped from the identity, a title in front of one name word kept because it is doing the distinguishing work, and a style qualifier that is only a title in front of another title. Ten more cover the alias lexicon: a lowercase key becoming a mention, case-insensitive matching alongside an exact uppercase key, an overlapping key that must not replace the run it spans, longest key first, no match inside a longer word, offsets that address the source text past a multi-byte character, a lexicon mention resolving a pronoun, a nearer capitalized run keeping that pronoun instead, a key covering a pronoun replacing it, and a lexicon mention taken outright where no capitalized word precedes the pronoun. Document-level behaviour has its own group: one fact stated three ways yielding one aggregate with three spans, repetition not raising an aggregate's confidence, aggregates ordered by where the story states them while the per-sentence output keeps its own order, a rejection suppressing only the triple it names and keying on the relation the caller saw, a denial recorded as the opposite claim in three phrasings, a conditional denial settling nothing, an assertion and its denial flagged with both spans, two compatible facts about one pair flagged as nothing, the cardinality constraint binding the object rather than the subject, a pronoun taking the previous sentence's referent only when asked, a chain stopping at a paragraph break, two pronouns in one sentence never sharing a referent, a capitalized pronoun never becoming a graph node, and the typographic apostrophe separating a mention as the straight one does |
+| `types.rs` binding-export tests (`cargo test --features bindings`) | 8 | `ts-rs` regenerates `bindings/*.ts` from `Options`, `TripleCandidate`, `SpannedTriple`, `Rejection`, `AggregateTriple`, `Polarity`, `Conflict` and `ConflictKind` without drift |
+| `tests/node/api.test.cjs` (`npm test`) | 13 | The N-API surface: extraction, empty input, `minConfidence` filtering, `aliases` (including a titled surface form as the key), `ontology`, the title rule reaching the binding, the out-of-range-confidence error, a suppressed rejection, aggregation with its order and spans, a denial flagged against its assertion, and cross-sentence pronoun linking behind its flag |
 | `tests/node/types.test.mts` (`npm run test:types`) | — | `index.d.ts` accepts valid `NapiOptions`/results and rejects invalid ones (`tsc --strict`) |
 
-All pass as of this writing (73 under default features; the 3 binding-export
+All pass as of this writing (94 under default features; the 8 binding-export
 tests require `--features bindings`, which CI covers via `--all-features`).
 Reproduce with:
 
 ```bash
-cargo test                      # 73: segmentation + pipeline
-cargo test --all-features       # 76: adds the binding-export tests
+cargo test                      # 94: segmentation + pipeline
+cargo test --all-features       # 102: adds the binding-export tests
 npm install && npm test
 npm run test:types
 ```
@@ -120,6 +120,26 @@ sentence-opening function word (`but`, `if`, `this`), a pronoun (`it`, `they`,
 `his`, `he`), or a place standing in for a person (`new_york`). So the
 precision work removed a large body of nonsense, and what the measurement then
 showed is that almost nothing correct was there to keep.
+
+### Cross-sentence pronoun linking, measured before it was shipped
+
+`Options.cross_sentence_pronouns` defaults to **off**, and the same corpus is
+why. With it on, the 5,014 paragraphs yield exactly **one** additional triple,
+and that triple is wrong: in *Howards End* the sentence "He had wanted work
+keenly at Oniton" resolves "He" to the woman named in the previous sentence,
+where the man it refers to was named three sentences earlier.
+
+The failure is not the window. No one-sentence lookback could have reached the
+right antecedent, and a wider one would have had more wrong candidates to
+choose from, because the pipeline has no gender or number agreement and the
+fallback picks by position alone. Agreement is the prerequisite, not a longer
+reach. Until it exists, the flag buys recall on prose with few characters per
+scene and costs precision everywhere else, which is a caller's trade to make
+and not a default to impose.
+
+With the flag off the output over this corpus is byte-identical to the run
+before the feature existed, and that is checked the same way: the four files
+`precision_sample` writes, diffed.
 
 ### Why: the rules matched a form prose does not use
 
