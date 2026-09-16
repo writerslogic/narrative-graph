@@ -49,17 +49,19 @@ for each sentence:
   TripleCandidate { subject, relation, object, confidence, span, rule }
   |
   v
-dedup_candidates            (src/heuristic/mod.rs)
-  |  keep the highest-confidence candidate per (subject, relation, object)
+one of two collapses      (src/heuristic/mod.rs, src/heuristic/aggregate.rs)
+  |  dedup_candidates: highest confidence per (subject, relation, object)
+  |  aggregate:        every span per (subject, relation, object, polarity)
   v
-Vec<TripleCandidate>
+Vec<TripleCandidate>  /  Vec<AggregateTriple>  ->  find_conflicts
 ```
 
 ## Language pack (`src/heuristic/pack.rs`)
 
 Every closed vocabulary the pipeline reads — sentence openers, name particles,
 honorifics, pronouns, abbreviations, the relational-noun lexicon, copulas,
-appositive modifiers, suspending words, and the verb rules — lives in one
+appositive modifiers, suspending words, negators, the single-filler relations,
+and the verb rules — lives in one
 `LanguagePack`, and `ENGLISH` is the only value of it today. Each stage takes
 the pack as a parameter rather than reaching for a `const` of its own, so what
 a second language must supply is exactly that struct and nothing else.
@@ -111,10 +113,11 @@ inherent to abbreviation handling rather than fixable by another rule:
 Two independent sources of entity mentions, merged per sentence:
 
 1. **Capitalized-token runs.** `extract_capitalized_entities` scans the
-   sentence char by char, treats whitespace and `,.!?;:—'"` as separators,
+   sentence char by char, treats whitespace and `,.!?;:—'’"` as separators
+   (both apostrophes, since narrative prose is typeset with the curly one),
    and joins consecutive capitalized words into one entity ("Marco",
    "the Archive" is *not* joined since "the" is lowercase, but "New York"
-   would be). A lowercase word on the closed `NAME_PARTICLES` list ("de",
+   would be). A lowercase word on the closed `name_particles` list ("de",
    "van", "von", …) continues a run that is already open, so "Lady Catherine
    de Bourgh" is one mention; it is held until a capitalized word follows, so
    a particle before a lowercase word or a comma is not folded in and never
@@ -124,13 +127,23 @@ Two independent sources of entity mentions, merged per sentence:
 2. **Pronoun-antecedent linking.** `extract_pronouns` finds word-bounded
    occurrences of `he/she/they/him/her/them/his/their/it`; for each one,
    `find_pronoun_antecedent` walks backward from the pronoun and picks the
-   nearest preceding capitalized word as the antecedent. This is a
-   same-sentence-only heuristic — it does not look at prior sentences.
+   nearest preceding capitalized word as the antecedent. A capitalized pronoun
+   is never an antecedent and never a mention of its own: `she` as a graph node
+   names nobody.
+
+   By default this looks no further than the sentence it is in, so a pronoun
+   opening a sentence resolves to nothing and the relation it takes part in is
+   lost. `Options.cross_sentence_pronouns` lets such a pronoun fall back to a
+   referent the previous sentence named, within the same paragraph, consuming
+   them in the order that sentence named them and once each. It is off by
+   default and `docs/EVALUATION.md` has the measurement that says why: with no
+   gender or number agreement the fallback picks by position, and over three
+   novels it adds one triple, which is wrong.
 
 Every mention is normalized (`normalize_entity`: lowercased, spaces replaced
 with underscores) and, if the caller supplied an `aliases` map, remapped to
 its canonical form. Normalization also drops the titles leading the run
-(`HONORIFICS`, plus `right`/`most`/`very` in front of another title), because
+(`honorifics`, plus `right`/`most`/`very` in front of another title), because
 a title is capitalized and correctly part of the surface form but not part of
 the identity: without this, "the Right Honourable Lady Catherine de Bourgh"
 cannot unify with any shorter mention of her. The last title is kept when only
@@ -207,13 +220,21 @@ occurs nineteen. Adding these forms took recall over that corpus from one
 candidate to six.
 
 Across every row, text between the mentions that denies or suspends the
-relation blocks it entirely: a negator (`not`, `never`, `no`, or an `n't`
-clitic), an open condition (`if`, `unless`, `whether`), a hedging modal
-(`could`, `would`, `might`, `may`, `should`), or a `to`-infinitive suspended
-by a governing verb ("refused to mentor"). A sentence ending in `?` asks the
-relation rather than stating it and is likewise skipped. These are the
-opposite claim, not a weaker one, so no rule fires and no confidence tier
-applies. `will` is absent from that set: a future tense asserts.
+relation is read as a stance on it rather than ignored. An open condition
+(`if`, `unless`, `whether`), a hedging modal (`could`, `would`, `might`, `may`,
+`should`), a `to`-infinitive suspended by a governing verb ("refused to
+mentor"), or a sentence ending in `?` **suspends** the relation: the text
+settles nothing and no candidate is emitted. A negator (`not`, `never`, `no`,
+or an `n't` clitic) **denies** it, which is the opposite claim rather than a
+weaker one, and is emitted as such by `extract_aggregates` and dropped by
+`extract_candidate_triples`, whose type has nowhere to say so. `will` is absent
+from both sets: a future tense asserts.
+
+A suspender outranks a negator, and a denial is read from a wider window than
+an assertion — the suspender in "If Elena is not Marco's sister" sits before
+the subject, outside the text between the mentions. An assertion keeps the
+narrow window deliberately: widening it would drop claims the extractor has
+always made.
 
 This is a fixed pattern list, not a parser — relations outside this table are
 not extracted, regardless of how clearly a human reader would infer them.
@@ -241,12 +262,30 @@ produce the final `TripleCandidate.span`. No candidate is emitted without a
 `rule`; there is no generic co-occurrence fallback path in this pipeline —
 every candidate came from one of the named patterns above.
 
-## Deduplication
+## The two collapses
 
-`dedup_candidates` groups by `(subject, relation, object)` and keeps the
-highest-confidence candidate per key, so the same fact restated with
-different phrasing (or extracted redundantly by more than one sentence
-window) surfaces once.
+Everything above produces one candidate per sentence window. Two entry points
+collapse that list, and they differ only in what they do with a repeat.
+
+`extract_candidate_triples` calls `dedup_candidates`, which groups by
+`(subject, relation, object)` and keeps the highest-confidence candidate per
+key, so a fact restated with different phrasing surfaces once — and the spans
+of every other statement of it are discarded.
+
+`extract_aggregates` keeps them: one `AggregateTriple` per
+`(subject, relation, object, polarity)` carrying every span and every rule that
+produced one. Its confidence is the best of them and repetition does not raise
+it, because in fiction a restatement is not independent evidence; `spans.len()`
+is what reports corroboration. Aggregates are ordered by first span rather than
+by triple, which is what lets two facts about one pair be read in the order the
+story states them.
+
+`find_conflicts` reads those aggregates for claims that cannot both be true: a
+fact asserted and denied, or a relation whose object takes one subject
+(`mother_of`, `father_of`) asserted of two. A relation that simply changes over
+a story is not a conflict — `enemy_of` early and `ally_of` late is a character
+arc, and reporting it would bury real continuity errors under every arc in the
+book.
 
 ## NAPI bindings (`src/napi_bindings.rs`)
 
