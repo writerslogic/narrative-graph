@@ -101,16 +101,16 @@ candidate is wrong.**
 Method. Three novels from Project Gutenberg — *The Age of Innocence* (541),
 *Pride and Prejudice* (1342), *Howards End* (2891) — with the licence header
 and footer stripped, split on blank lines and rewrapped, keeping every block of
-at least 80 bytes. That is 3,335 paragraphs. The only filter is the length
-floor, so the sample is not shaped by a guess about which prose the extractor
-handles well. `examples/precision_sample.rs` does this and is the reproduction:
+at least 80 bytes. The only filter is the length floor, so the sample is not
+shaped by a guess about which prose the extractor handles well.
+`examples/precision_sample.rs` does this and is the reproduction:
 
 ```
 cargo run --release --features json --example precision_sample -- \
     --out DIR --sample 100000 --seed 1 541.txt 1342.txt 2891.txt
 ```
 
-That corpus is 5,014 paragraphs.
+That corpus is 5,014 paragraphs, which is what the command reports back.
 
 At the commit where this was first measured, the pipeline emitted **one**
 candidate over all of it, and that candidate was wrong. The same harness
