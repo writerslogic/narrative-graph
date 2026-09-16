@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- A lowercase particle inside a name no longer truncates the mention. "Lady
+  Catherine de Bourgh" normalized to `bourgh`, a fragment of the surname she
+  shares with "Sir Lewis de Bourgh", so a relation between two members of one
+  family could collapse into a claim about a single node. A closed list of
+  particles now continues a capitalized run already open, and only when a
+  capitalized word follows, so a trailing particle is not glued to the next
+  clause (#7).
+
 ### Added
 - Three relation forms that real prose actually uses: the appositive
   (`X, Y's <noun>`), the reversed possessive (`Y's <noun> was X`), and the

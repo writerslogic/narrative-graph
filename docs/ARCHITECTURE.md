@@ -97,7 +97,13 @@ Two independent sources of entity mentions, merged per sentence:
    sentence char by char, treats whitespace and `,.!?;:—'"` as separators,
    and joins consecutive capitalized words into one entity ("Marco",
    "the Archive" is *not* joined since "the" is lowercase, but "New York"
-   would be).
+   would be). A lowercase word on the closed `NAME_PARTICLES` list ("de",
+   "van", "von", …) continues a run that is already open, so "Lady Catherine
+   de Bourgh" is one mention; it is held until a capitalized word follows, so
+   a particle before a lowercase word or a comma is not folded in and never
+   extends the mention's end offset. English "of" is deliberately not a
+   particle: it would swallow "the Duchess of Devonshire" and it is the link
+   text the "of" genitive rule matches.
 2. **Pronoun-antecedent linking.** `extract_pronouns` finds word-bounded
    occurrences of `he/she/they/him/her/them/his/their/it`; for each one,
    `find_pronoun_antecedent` walks backward from the pronoun and picks the
@@ -106,8 +112,11 @@ Two independent sources of entity mentions, merged per sentence:
 
 Every mention is normalized (`normalize_entity`: lowercased, spaces replaced
 with underscores) and, if the caller supplied an `aliases` map, remapped to
-its canonical form. Mentions are then deduplicated, keeping the first
-occurrence per normalized entity.
+its canonical form. Every mention is kept: collapsing repeated mentions of one
+referent would hide the second relation in "Elena is Marco's sister and Marco
+mentors Elena." Duplicate *triples* are collapsed at the end of the pipeline
+instead (`dedup_candidates`), keeping the highest confidence per
+(subject, relation, object).
 
 ## Relation extraction (`src/heuristic/relations.rs`)
 

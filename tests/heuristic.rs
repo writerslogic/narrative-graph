@@ -1,3 +1,4 @@
+use narrative_graph::heuristic::extract_entities;
 use narrative_graph::{extract_candidate_triples, Options};
 
 #[test]
@@ -797,4 +798,62 @@ fn test_of_genitive_respects_assertion_gate() {
         candidates.is_empty(),
         "denied of genitive still extracted: {candidates:?}"
     );
+}
+
+/// Issue #7. A lowercase particle inside a name ended the capitalized run, so
+/// the mention was the fragment after it and both people in this sentence
+/// normalized to the surname they share.
+#[test]
+fn test_a_particle_does_not_truncate_a_name() {
+    let text = "Lady Catherine de Bourgh, widow of Sir Lewis de Bourgh, said nothing.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    let found = candidates
+        .iter()
+        .find(|c| c.relation == "widow_of")
+        .expect("particle-bearing names lost the relation");
+    assert_eq!(found.subject, "lady_catherine_de_bourgh");
+    assert_eq!(found.object, "sir_lewis_de_bourgh");
+}
+
+/// A particle only continues a run that has already started. Capitalized, it
+/// opens a mention the way any capitalized word does, and that shape is
+/// unchanged by the particle list.
+#[test]
+fn test_a_capitalized_particle_still_opens_a_mention() {
+    let text = "De Souza is Marco's sister.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    let found = candidates
+        .iter()
+        .find(|c| c.relation == "sister_of")
+        .expect("sentence-initial particle lost the relation");
+    assert_eq!(found.subject, "de_souza");
+}
+
+/// A trailing particle belongs to the clause after it, not to the name before
+/// it. Gluing it on would extend the mention past the person, and the mention's
+/// end offset is what bounds every relation rule's between-text.
+#[test]
+fn test_a_trailing_particle_is_not_folded_into_the_mention() {
+    let aliases = std::collections::BTreeMap::new();
+
+    for text in [
+        "Elena van derided Marco.",
+        "Catherine de, Marco's sister, said nothing.",
+    ] {
+        let mentions = extract_entities(text, &aliases);
+        let first = &mentions[0];
+        assert!(
+            !first.text.contains(' '),
+            "a dangling particle was folded into {first:?} from {text:?}"
+        );
+        assert_eq!(
+            &text[first.start..first.end],
+            first.text,
+            "the mention's offsets do not bound its own text"
+        );
+    }
 }

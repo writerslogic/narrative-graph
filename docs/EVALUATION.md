@@ -164,13 +164,20 @@ as a count for that reason. The single wrong candidate is
 `mentors(shapely, mentor)`, which reads a role noun as a person; it is the one
 surviving candidate from before this work and neither new rule produced it.
 
-One judge flagged a defect no rule change addresses: in
-`widow_of(bourgh, sir_lewis)`, extracted from "Lady Catherine de Bourgh, widow
-of Sir Lewis de Bourgh", the subject normalizes to `bourgh` because the
-lowercase "de" breaks the capitalized run. Both people in that sentence share
-that surname, so the claim is only distinguishable by taking the reading that
-makes the two slots different people. The relation is right and the entity
-boundary is wrong.
+One judge flagged a defect the rule changes did not address, in
+`widow_of(bourgh, sir_lewis)` extracted from "Lady Catherine de Bourgh, widow
+of Sir Lewis de Bourgh": the lowercase "de" broke the capitalized run, so both
+slots normalized to a fragment of the surname the two people share, and the
+claim was only distinguishable by taking the reading that makes them different
+people. A closed list of name particles now continues a run already open, and
+that candidate reads
+`widow_of(right_honourable_lady_catherine_de_bourgh, sir_lewis_de_bourgh)`.
+The other five candidates are unchanged, so the counts above still stand.
+
+The subject still carries its honorific. That is the same class of boundary
+error one level out — a capitalized run takes in every title before the name —
+and it will keep `right_honourable_lady_catherine_de_bourgh` from unifying with
+any shorter mention of her.
 
 ### What the number is worth
 
@@ -182,11 +189,6 @@ contradicts the test suite — every test still passes, because every test uses
 the phrasing its rule was written for. That is exactly the limit of what a
 suite written by the pattern author can tell you, and it is why this section
 exists.
-
-This does not contradict the test suite. Every test above still passes,
-because every test uses the phrasing its rule was written for. That is
-precisely the limit of what a suite written by the pattern author can tell
-you, and it is why this section exists.
 
 ## What is not measured
 

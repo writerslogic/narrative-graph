@@ -79,6 +79,26 @@ const SENTENCE_OPENERS: &[&str] = &[
     "why", "with", "yesterday", "yet", "your",
 ];
 
+/// Lowercase particles that belong to the name they sit inside.
+///
+/// IMPORTANT: a particle only continues a run already open. "Bourgh" is what
+/// "Lady Catherine de Bourgh" normalized to before this list existed, which
+/// names a surname shared with "Sir Lewis de Bourgh" rather than either person.
+/// A particle may not open a mention, because the same words open ordinary
+/// clauses ("van" rarely, "bin" and "af" never, but "du" and "della" occur in
+/// quoted French and Italian).
+///
+/// English "of" is deliberately absent. It is the only candidate that also
+/// appears in `SENTENCE_OPENERS` and as the link text `of_genitive_noun`
+/// matches, so admitting it would fold "the Duchess of Devonshire" into one
+/// mention and change the shape of mentions already measured in
+/// `docs/EVALUATION.md`, while doing nothing for a title whose noun is
+/// lowercase and therefore closes the run before "of" is reached.
+const NAME_PARTICLES: &[&str] = &[
+    "de", "del", "della", "der", "des", "di", "du", "la", "le", "van", "von", "af", "ter", "bin",
+    "ibn", "al", "da", "dos", "das", "y",
+];
+
 /// Whether `word_start` is the first word of a sentence, looking past any
 /// opening quotation or bracket that precedes it.
 fn is_sentence_start(text: &str, word_start: usize) -> bool {
@@ -118,6 +138,11 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
     // separator position that flushes the entity sits after the following
     // lowercase word, so it does not bound the mention.
     let mut entity_end = 0;
+    // Particles seen since the last capitalized word, held until a capitalized
+    // word proves they sit inside the name. IMPORTANT: they never move
+    // `entity_end`, so a particle that turns out to be trailing cannot extend
+    // the mention past the person.
+    let mut pending_particles = String::new();
 
     for (byte_pos, c) in text.char_indices() {
         let is_sep = c.is_whitespace() || ",.!?;:—'\"".contains(c);
@@ -134,11 +159,22 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
                 if is_capitalized {
                     if !current_entity.is_empty() {
                         current_entity.push(' ');
+                        current_entity.push_str(&pending_particles);
                     } else {
                         start_idx = word_start;
                     }
+                    pending_particles.clear();
                     current_entity.push_str(&current_word);
                     entity_end = byte_pos;
+                } else if !current_entity.is_empty()
+                    && c.is_whitespace()
+                    && NAME_PARTICLES.contains(&current_word.to_lowercase().as_str())
+                {
+                    // Held, not folded: only a capitalized word after it proves
+                    // the particle sits inside the name. Punctuation ends the
+                    // name instead, so "Catherine de, who left" keeps its comma.
+                    pending_particles.push_str(&current_word);
+                    pending_particles.push(' ');
                 } else {
                     if !current_entity.is_empty() {
                         entities.push(EntityCandidate {
@@ -149,6 +185,7 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
                         });
                         current_entity.clear();
                     }
+                    pending_particles.clear();
                 }
                 current_word.clear();
             }
@@ -170,6 +207,7 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
         if is_capitalized {
             if !current_entity.is_empty() {
                 current_entity.push(' ');
+                current_entity.push_str(&pending_particles);
             } else {
                 start_idx = word_start;
             }
