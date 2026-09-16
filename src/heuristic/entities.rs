@@ -37,6 +37,12 @@ pub fn extract_entities(text: &str, aliases: &BTreeMap<String, String>) -> Vec<E
         }
     }
 
+    // IMPORTANT: after the exact-match loop, never before. A lexicon mention
+    // carries its canonical name already, and the loop above keys on the
+    // surface form, which would overwrite it wherever the two collide.
+    let from_lexicon = lexicon_mentions(text, aliases, &entities);
+    entities.extend(from_lexicon);
+
     // IMPORTANT: pronouns are appended grouped by pronoun word, so the vector
     // is not in text order until sorted. `extract_relations` pairs entities by
     // index and treats the earlier index as the subject.
@@ -304,6 +310,103 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
     entities
 }
 
+/// Mentions a capitalized-run detector cannot produce, read from the lowercase
+/// keys of `aliases`.
+///
+/// IMPORTANT: the caller has asserted the phrase names a person by putting it
+/// in the map, so nothing here is inferred. The key's own shape selects the
+/// rule: a key containing an uppercase character is the exact surface-form
+/// match the loop above does, a wholly lowercase key is searched for here as a
+/// literal, word-bounded, case-insensitive phrase. "The detective" opening a
+/// sentence and "the detective" inside one are the same phrase, which is why
+/// this half ignores case while the other half cannot.
+///
+/// A match overlapping a mention that already exists is dropped, so no detected
+/// mention is ever replaced: a key of "detective" cannot delete the run
+/// "Detective Marcus" and take `marcus` with it. Longer keys are tried first,
+/// so "the detective" wins over "detective" where both are supplied.
+fn lexicon_mentions(
+    text: &str,
+    aliases: &BTreeMap<String, String>,
+    existing: &[EntityCandidate],
+) -> Vec<EntityCandidate> {
+    let mut keys: Vec<(&String, &String)> = aliases
+        .iter()
+        .filter(|(key, _)| !key.is_empty() && !key.chars().any(char::is_uppercase))
+        .collect();
+    if keys.is_empty() {
+        return Vec::new();
+    }
+    keys.sort_by(|a, b| {
+        b.0.chars()
+            .count()
+            .cmp(&a.0.chars().count())
+            .then_with(|| a.0.cmp(b.0))
+    });
+
+    let mut found: Vec<EntityCandidate> = Vec::new();
+
+    for (key, canonical) in keys {
+        for (start, _) in text.char_indices() {
+            if !is_word_boundary(text[..start].chars().next_back()) {
+                continue;
+            }
+            let Some(end) = match_phrase(text, start, key) else {
+                continue;
+            };
+            if !is_word_boundary(text[end..].chars().next()) {
+                continue;
+            }
+            let overlaps = |m: &EntityCandidate| start < m.end && m.start < end;
+            if existing.iter().any(overlaps) || found.iter().any(overlaps) {
+                continue;
+            }
+            found.push(EntityCandidate {
+                text: text[start..end].to_string(),
+                normalized: canonical.clone(),
+                start,
+                end,
+            });
+        }
+    }
+
+    found
+}
+
+/// Whether the character bounding a phrase lets it stand as a whole word. The
+/// end of the text bounds one too, hence `None`.
+fn is_word_boundary(c: Option<char>) -> bool {
+    !c.is_some_and(char::is_alphanumeric)
+}
+
+/// The end offset of `key` matched case-insensitively at `start`, or `None`.
+///
+/// IMPORTANT: walks the source text rather than a lowercased copy. A lowercase
+/// form can differ in byte length from the character it came from, so offsets
+/// taken from a lowercased copy do not address `text` and slicing with one
+/// panics. `extract_pronouns` walks the source for the same reason.
+fn match_phrase(text: &str, start: usize, key: &str) -> Option<usize> {
+    let mut end = start;
+    let mut want = key.chars();
+
+    for got in text[start..].chars() {
+        // A lowercase form can be several characters ("İ" lowercases to "i" and
+        // a combining dot), so the key is consumed as a stream and the match
+        // ends only on a character boundary of the source.
+        for lowered in got.to_lowercase() {
+            if want.next()? != lowered {
+                return None;
+            }
+        }
+        end += got.len_utf8();
+        if want.as_str().is_empty() {
+            return Some(end);
+        }
+    }
+
+    None
+}
+
 #[derive(Debug)]
 struct Pronoun {
     text: String,
@@ -342,6 +445,10 @@ fn extract_pronouns(text: &str) -> Vec<Pronoun> {
     found
 }
 
+// TODO: a lexicon mention cannot be a pronoun's antecedent. This walks the raw
+// text for a capitalized word and would have to take the mention list instead,
+// which changes the resolution order for every caller, not just one supplying a
+// lowercase key.
 fn find_pronoun_antecedent(text: &str, pronoun: &Pronoun) -> Option<String> {
     // Simple heuristic: find the most recent capitalized entity before this pronoun
     let before_pronoun = &text[..pronoun.start];

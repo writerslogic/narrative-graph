@@ -9,11 +9,16 @@ export type Options = {
  * Example: { "Marcus": "marcus_hale", "Mr Marcus Hale": "marcus_hale" }
  * All mentions matching a key in this map resolve to the value.
  *
- * IMPORTANT: a key is matched against the mention's surface form exactly,
- * which is the capitalized run with `.` dropped as a separator: "Mr Marcus
- * Hale", never "mr. marcus hale". A lowercase phrase such as "the
- * detective" is not detected as a mention at all, so it can never be a
- * key.
+ * IMPORTANT: the key's own shape selects how it matches. A key carrying an
+ * uppercase character is matched against the mention's surface form
+ * exactly, which is the capitalized run with `.` dropped as a separator:
+ * "Mr Marcus Hale", never "Mr. Marcus Hale". A wholly lowercase key is a
+ * lexicon entry instead: the phrase is searched for in the text as a
+ * literal, word-bounded, case-insensitive match and becomes a mention of
+ * the canonical name there, which is how "the detective" reaches a
+ * referent no capitalized-run detector can see. A lexicon match that
+ * overlaps a mention already detected is dropped, so a key can add a
+ * mention but never replace one.
  */
 aliases: { [key in string]: string }, 
 /**

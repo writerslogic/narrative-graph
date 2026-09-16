@@ -935,3 +935,116 @@ fn test_a_style_qualifier_alone_is_not_a_title() {
         assert_eq!(mentions[0].normalized, expected, "from {text:?}");
     }
 }
+
+fn lexicon(pairs: &[(&str, &str)]) -> Options {
+    Options {
+        aliases: pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect(),
+        ..Options::default()
+    }
+}
+
+/// Issue #9. A lowercase phrase is never a capitalized run, so the alias map
+/// could not reach the case it was documented for: a novel naming someone
+/// "Marcus" in one paragraph and "the detective" in the next.
+#[test]
+fn test_a_lowercase_alias_key_becomes_a_mention() {
+    let opts = lexicon(&[("the detective", "marcus")]);
+    let candidates = extract_candidate_triples("The detective is Ms. Chen's brother.", &opts)
+        .expect("extraction failed");
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].subject, "marcus");
+    assert_eq!(candidates[0].relation, "brother_of");
+    // The capitalized run is untouched: only a lowercase key is a lexicon key.
+    assert_eq!(candidates[0].object, "ms_chen");
+}
+
+/// The match ignores case because "The detective" opening a sentence and "the
+/// detective" inside one are the same phrase. A key with any uppercase
+/// character stays the exact surface-form match it was, and both kinds coexist
+/// in one map.
+#[test]
+fn test_a_lexicon_key_matches_either_case_and_an_exact_key_still_does_not() {
+    let opts = lexicon(&[("the detective", "marcus"), ("Ms Chen", "chen")]);
+    let candidates =
+        extract_candidate_triples("Elena knew the detective was Ms. Chen's brother.", &opts)
+            .expect("extraction failed");
+
+    let found = candidates
+        .iter()
+        .find(|c| c.relation == "brother_of")
+        .expect("the mid-sentence lexicon phrase was not matched");
+    assert_eq!(found.subject, "marcus");
+    assert_eq!(found.object, "chen");
+}
+
+/// A lexicon mention is added, never substituted. A key overlapping a run would
+/// otherwise delete the run and everything the longer name distinguishes.
+#[test]
+fn test_a_lexicon_match_never_replaces_a_detected_mention() {
+    let opts = lexicon(&[("detective", "marcus")]);
+    let candidates = extract_candidate_triples("Detective Marcus is Elena's brother.", &opts)
+        .expect("extraction failed");
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].subject, "detective_marcus");
+}
+
+/// Longest key first, so the caller can supply both halves of a phrase without
+/// the shorter one claiming the text the longer one names.
+#[test]
+fn test_the_longest_lexicon_key_claims_the_phrase() {
+    let opts = lexicon(&[("the detective", "marcus"), ("detective", "someone_else")]);
+    let candidates = extract_candidate_triples("The detective is Elena's brother.", &opts)
+        .expect("extraction failed");
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].subject, "marcus");
+}
+
+/// The match is word-bounded, so a key cannot fire inside a longer word.
+#[test]
+fn test_a_lexicon_key_does_not_match_inside_a_word() {
+    let opts = lexicon(&[("the detective", "marcus")]);
+    let candidates = extract_candidate_triples("The detectives are Elena's brothers.", &opts)
+        .expect("extraction failed");
+
+    assert!(
+        candidates.iter().all(|c| c.subject != "marcus"),
+        "a lexicon key matched inside a longer word: {candidates:?}"
+    );
+}
+
+/// A capitalized run is a mention already, so a key spanning one is dropped
+/// whole rather than cut down to the part that is free. The offsets a lexicon
+/// mention carries address the source text, which a match run over a lowercased
+/// copy would not: a lowercase form can differ in byte length from the
+/// character it came from.
+#[test]
+fn test_a_lexicon_mention_offsets_address_the_source_text() {
+    let aliases = std::collections::BTreeMap::from([
+        ("the i\u{307}stanbul agent".to_string(), "kemal".to_string()),
+        ("the detective".to_string(), "marcus".to_string()),
+    ]);
+    let text = "The \u{130}stanbul agent told the detective everything.";
+    let mentions = extract_entities(text, &aliases);
+
+    for mention in &mentions {
+        assert_eq!(
+            &text[mention.start..mention.end],
+            mention.text,
+            "the mention's offsets do not bound its own text: {mention:?}"
+        );
+    }
+    assert!(
+        mentions.iter().any(|m| m.normalized == "marcus"),
+        "the phrase past the multi-byte character was not matched: {mentions:?}"
+    );
+    assert!(
+        mentions.iter().all(|m| m.normalized != "kemal"),
+        "a key overlapping the run it contains replaced it: {mentions:?}"
+    );
+}

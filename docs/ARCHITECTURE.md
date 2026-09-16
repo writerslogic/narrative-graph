@@ -119,7 +119,15 @@ the identity: without this, "the Right Honourable Lady Catherine de Bourgh"
 cannot unify with any shorter mention of her. The last title is kept when only
 one name word would remain, since that title is what separates "Miss Darcy"
 from "Mr. Darcy". `EntityCandidate.text` keeps the full styled surface form,
-and that is the form `aliases` is keyed on. Every mention is kept: collapsing repeated mentions of one
+and that is the form an uppercase-bearing `aliases` key is matched against. A
+wholly lowercase key is a lexicon entry instead (`lexicon_mentions`): the phrase
+is searched for in the sentence as a literal, word-bounded, case-insensitive
+match and becomes a mention of the mapped canonical name at those offsets, which
+is the only way a referent named by a lowercase phrase ("the detective") is
+reached at all. Longer keys are tried first, and a match overlapping a mention
+already produced is dropped, so a key can add a mention but never replace one.
+A lexicon mention cannot be a pronoun's antecedent: `find_pronoun_antecedent`
+walks the raw text for a capitalized word. Every mention is kept: collapsing repeated mentions of one
 referent would hide the second relation in "Elena is Marco's sister and Marco
 mentors Elena." Duplicate *triples* are collapsed at the end of the pipeline
 instead (`dedup_candidates`), keeping the highest confidence per

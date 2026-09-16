@@ -99,7 +99,9 @@ Capitalized-token detection, pronoun-antecedent linking within a sentence, and a
 > **You supply:** `{ aliases: { "Marcus": "marcus_hale", "Mr Marcus Hale": "marcus_hale" } }`
 > **Result:** either mention resolves to `marcus_hale` in every candidate.
 >
-> Keys match the mention's surface form exactly, and `.` is a separator, so the key is `Mr Marcus Hale`. A lowercase phrase like "the detective" is never detected as a mention, so it cannot be an alias key.
+> Keys match the mention's surface form exactly, and `.` is a separator, so the key is `Mr Marcus Hale`.
+>
+> A wholly lowercase key is a lexicon entry instead: the phrase is searched for in the text as a literal, word-bounded, case-insensitive match and becomes a mention of the canonical name, which is how a phrase no capitalized-run detector can see reaches a referent. `{ aliases: { "the detective": "marcus" } }` turns "The detective is Ms. Chen's brother." into `marcus brother_of ms_chen`. A lexicon match overlapping a mention already detected is dropped, so a key adds a mention and never replaces one: with `"detective": "marcus"`, "Detective Marcus" stays `detective_marcus`. A lexicon key is therefore for a phrase carrying no capitalized name — a key like `"ms. chen"` spans one, and the run `Ms Chen` is already a mention, so the key never fires.
 
 ### Relations
 

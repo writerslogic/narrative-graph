@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- A wholly lowercase `aliases` key is now a lexicon entry: the phrase is
+  searched for in the text as a literal, word-bounded, case-insensitive match
+  and becomes a mention of the mapped canonical name. This is what the option
+  was documented for and could not do — an alias key was matched against the
+  capitalized run, and a lowercase phrase such as "the detective" is never a
+  run, so the key could never fire. The caller asserts the phrase names a
+  person by putting it in the map, so nothing is inferred. Keys carrying an
+  uppercase character keep matching the surface form exactly, longer keys are
+  tried first, and a lexicon match overlapping a mention already detected is
+  dropped, so a key can add a mention but never replace one. A lexicon mention
+  cannot yet be a pronoun's antecedent.
+
 ### Fixed
 - A title leading a name is no longer part of the entity's identity. A
   capitalized run swallowed every honorific in front of the name, so
