@@ -47,6 +47,10 @@ bindings = ["serde", "dep:ts-rs"]
 node-api = ["dep:napi", "dep:napi-derive", "dep:napi-build", "bindings", "json"]
 cli = ["dep:clap", "dep:anyhow", "json"]
 
+[[example]]
+name = "precision_sample"
+required-features = ["json"]
+
 [[bin]]
 name = "narrative-graph"
 path = "src/bin/main.rs"

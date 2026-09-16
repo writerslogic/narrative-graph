@@ -92,15 +92,70 @@ This is adversarial probing by the pattern author, which is weaker evidence
 than an independent judgment on real prose. It bounds nothing about behavior
 on phrasing nobody thought to probe.
 
+## Recall on real prose
+
+Measured, and the result is bad enough to state plainly: **on 1.96 MB of
+public-domain narrative prose the pipeline emitted one candidate, and that
+candidate is wrong.**
+
+Method. Three novels from Project Gutenberg — *The Age of Innocence* (541),
+*Pride and Prejudice* (1342), *Howards End* (2891) — with the licence header
+and footer stripped, split on blank lines and rewrapped, keeping every block of
+at least 80 bytes. That is 3,335 paragraphs. The only filter is the length
+floor, so the sample is not shaped by a guess about which prose the extractor
+handles well. `examples/precision_sample.rs` does this and is the reproduction:
+
+```
+cargo run --release --features json --example precision_sample -- \
+    --out DIR --sample 100000 --seed 1 541.txt 1342.txt 2891.txt
+```
+
+Result: 1 candidate from 3,335 paragraphs. It is
+`mentors(shapely, mentor)`, extracted from the fragment
+`her selected Mentor that "he`, and it is not a relation any reader would say
+that text asserts.
+
+The same harness against `ad9aa4e`, the commit before the precision work
+described above, emits 24. Of those 24, **17 name a subject that is not an
+entity at all** — a sentence-opening function word (`but`, `if`, `this`), a
+pronoun (`it`, `they`, `his`, `he`), or a place standing in for a person
+(`new_york`). That is a structural defect anyone can check without judging
+meaning. The remaining 7 include at least one correct extraction
+(`father_of(bob_spicer, mrs_manson_mingott)` from "Bob Spicer, old Mrs. Manson
+Mingott's father") and at least two inverted ones, and still need independent
+adjudication.
+
+So the precision work did what it was meant to do and removed a large body of
+nonsense. What it also shows, now that there is a number, is that almost
+nothing correct was there to keep. The cause is reproducible in three
+sentences:
+
+| Phrasing | Extracted |
+| --- | --- |
+| `Elena is Marco's sister` | `sister_of(elena, marco)` |
+| `Bob Spicer, old Mrs. Manson Mingott's father, was...` | nothing |
+| `Mrs. Manson Mingott's father was Bob Spicer` | nothing |
+
+The possessive rule requires the text between the two mentions to be a bare
+singular copula, so it matches only `X is Y's <noun>`. Prose overwhelmingly
+uses the appositive (`X, Y's <noun>`) and the reversed copula
+(`Y's <noun> was X`), and neither is recognized. The verb patterns are narrow
+in the same way for the same reason.
+
+This does not contradict the test suite. Every test above still passes,
+because every test uses the phrasing its rule was written for. That is
+precisely the limit of what a suite written by the pattern author can tell
+you, and it is why this section exists.
+
 ## What is not measured
 
-- **Precision and recall against real narrative prose.** There is no
-  labeled dataset of (passage, expected triples) pairs. `tests/fixtures/narrative-passages.json`
-  exists as a placeholder (currently empty) for exactly this purpose.
-  Building one requires prose with ground-truth relations labeled by
-  someone other than the pattern author — the test suite above confirms the
-  code does what it was written to do, not that what it was written to do
-  is correct on prose it wasn't designed around.
+- **Precision against real narrative prose.** Recall is now measured (above);
+  precision is not, because the pipeline emits too few candidates on real
+  prose to compute one. A precision figure needs a body of emitted triples
+  judged by someone who did not write the patterns, and one candidate is not
+  a sample. Recall has to come up before precision can be measured at all.
+  `tests/fixtures/narrative-passages.json` exists as a placeholder (currently
+  empty) for the labeled dataset this would eventually want.
 
   No such corpus appears to be published. A survey of the citation cluster in
   [Artificial Relationships in Fiction](https://aclanthology.org/2025.latechclfl-1.13.pdf)
