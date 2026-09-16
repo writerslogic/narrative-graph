@@ -194,8 +194,9 @@ you, and it is why this section exists.
   a count, not a rate. Getting to a number with a usable interval needs the
   recall work to continue until the corpus yields candidates in the hundreds,
   which is a lexicon and pattern problem rather than a measurement one.
-  `tests/fixtures/narrative-passages.json` exists as a placeholder (currently
-  empty) for the labeled dataset that would eventually want.
+  No labeled corpus is checked in. The measurement above is reproduced from
+  the seed and the command, not from a fixture, so the repository carries no
+  copy of the prose and nothing here goes stale against one.
 
   No such corpus appears to be published. A survey of the citation cluster in
   [Artificial Relationships in Fiction](https://aclanthology.org/2025.latechclfl-1.13.pdf)

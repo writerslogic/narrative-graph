@@ -150,7 +150,7 @@ Installed alongside the crate (`cargo install narrative-graph --features cli` pr
 
 - **[Architecture](./docs/ARCHITECTURE.md)** -- the extraction pipeline and confidence scoring
 - **[Integration with holographic-memory](./docs/INTEGRATION.md)** -- extracting, thresholding, and feeding a Meaning Memory store
-- **[Evaluation](./docs/EVALUATION.md)** -- methodology and results against the fixtures in `tests/fixtures/`
+- **[Evaluation](./docs/EVALUATION.md)** -- what is measured, what is not, and the recall and precision numbers on real prose
 - **[Contributing](./CONTRIBUTING.md)** -- development setup and conventions
 
 ## Requirements
