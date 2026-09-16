@@ -172,12 +172,16 @@ claim was only distinguishable by taking the reading that makes them different
 people. A closed list of name particles now continues a run already open, and
 that candidate reads
 `widow_of(right_honourable_lady_catherine_de_bourgh, sir_lewis_de_bourgh)`.
-The other five candidates are unchanged, so the counts above still stand.
+The other five candidates are byte-identical and none was added, so the counts
+above still stand. The changed candidate was not re-adjudicated: both judges
+ruled on the relation and its direction, which the fix does not touch, and the
+entity boundary they objected to is what it repairs.
 
 The subject still carries its honorific. That is the same class of boundary
 error one level out — a capitalized run takes in every title before the name —
 and it will keep `right_honourable_lady_catherine_de_bourgh` from unifying with
-any shorter mention of her.
+any shorter mention of her. Tracked as issue #8; it was invisible until the
+particle fix, because the truncated mention never reached the honorific.
 
 ### What the number is worth
 
