@@ -152,6 +152,20 @@ const POSSESSIVE_NOUNS: &[(&str, &str, f32)] = &[
 /// to carry "cousins" to reach the phrase at all.
 const POSSESSIVE_COPULAS: &[&str] = &["is", "was"];
 
+/// Pre-nominal modifiers that may stand between an appositive comma and the
+/// possessor, as in "Bob Spicer, old Mrs. Mingott's father".
+///
+/// IMPORTANT: closed class, and it holds no verb, no conjunction and no
+/// relative pronoun. "Elena, who visited Marco's sister" and "Dev, and Marco's
+/// sister" are not appositions, and admitting "who" or "and" here would read
+/// both as one.
+#[rustfmt::skip]
+const APPOSITIVE_MODIFIERS: &[&str] = &[
+    "the", "a", "an", "this", "that",
+    "his", "her", "their", "its", "my", "our", "your",
+    "old", "young", "little", "poor", "dear", "late", "good",
+];
+
 /// Byte range of the first ASCII-case-insensitive *whole-word* occurrence of
 /// `needle`. IMPORTANT: whole-word matching is what stops "grandmother" from
 /// matching "mother" and labeling it `mother_of`. A substring match would make
@@ -251,6 +265,74 @@ fn heads_possessed_phrase(phrase: &str, start: usize, end: usize) -> bool {
     phrase[end..].trim().is_empty() && find_ascii_ci(&phrase[..start], "'s").is_none()
 }
 
+/// The possessed phrase in "y's <phrase> <copula> x", where the possessive sits
+/// on the *earlier* mention and the copula hands the relation to the later one.
+///
+/// IMPORTANT: this is the mirror of the forward possessive, not a loosening of
+/// it. The copula must still be the whole link between the phrase and the
+/// object, so "Mingott's father was once Bob Spicer" does not match; the same
+/// closed set of copulas applies, and the assertion gate has already rejected
+/// anything that denies or suspends the claim.
+fn reversed_possessive_phrase(between: &str) -> Option<&str> {
+    let rest = between.strip_prefix("'s")?;
+    if !rest.starts_with(' ') {
+        return None;
+    }
+    let (phrase, copula) = rest.trim().rsplit_once(' ')?;
+    POSSESSIVE_COPULAS
+        .contains(&copula)
+        .then(|| phrase.trim_end())
+}
+
+/// Whether the text between the mentions is an appositive comma, so that
+/// "x, y's <noun>" renames x as that noun.
+///
+/// IMPORTANT: everything after the comma must be a pre-nominal modifier. A verb
+/// or a relative pronoun there means the possessive belongs to a clause about x
+/// rather than a renaming of it, and the relation would name the wrong person.
+fn is_appositive_link(between: &str) -> bool {
+    let Some(rest) = between.trim_start().strip_prefix(',') else {
+        return false;
+    };
+    rest.split_whitespace()
+        .all(|word| APPOSITIVE_MODIFIERS.contains(&word))
+}
+
+/// The relational noun in an "of" genitive: "x, the <noun> of y", or the same
+/// with a copula in place of the comma.
+///
+/// IMPORTANT: this is the form English prose actually prefers, and the reason
+/// a possessive-only rule set reads almost nothing. Measured over three novels
+/// in `docs/EVALUATION.md`, "x is y's <noun>" occurs zero times and the "of"
+/// genitive nineteen.
+fn of_genitive_noun(between: &str) -> Option<&str> {
+    let trimmed = between.trim();
+    let rest = match trimmed.strip_prefix(',') {
+        Some(rest) => rest,
+        None => {
+            let (link, rest) = trimmed.split_once(' ')?;
+            POSSESSIVE_COPULAS.contains(&link).then_some(rest)?
+        }
+    };
+
+    let mut words: Vec<&str> = rest.split_whitespace().collect();
+    if words.pop()? != "of" {
+        return None;
+    }
+    let noun = words.pop()?;
+    words
+        .iter()
+        .all(|word| APPOSITIVE_MODIFIERS.contains(word))
+        .then_some(noun)
+}
+
+/// Whether an apostrophe-s opens at `from`, marking the mention before it as a
+/// possessor.
+fn opens_possessive(text: &str, from: usize) -> bool {
+    let bytes = &text.as_bytes()[from..];
+    bytes.len() >= 2 && bytes[0] == b'\'' && bytes[1].eq_ignore_ascii_case(&b's')
+}
+
 fn find_relation_pattern(
     text: &str,
     subj: &EntityCandidate,
@@ -291,7 +373,10 @@ fn find_relation_pattern(
         && bytes[1].eq_ignore_ascii_case(&b's')
         && matches!(bytes[2], b' ' | b'.');
 
-    if possessive && POSSESSIVE_COPULAS.contains(&between.trim()) {
+    let asserts_possessive =
+        POSSESSIVE_COPULAS.contains(&between.trim()) || is_appositive_link(between);
+
+    if possessive && asserts_possessive {
         let rest = &after_obj["'s".len()..];
         let phrase = &rest[..possessed_noun_phrase_len(rest)];
         let phrase_start = obj.end + "'s".len();
@@ -307,6 +392,44 @@ fn find_relation_pattern(
                 PatternMatch::new(relation, &format!("possessive-{noun}-pattern"), *base, gap)
                     .span_end(phrase_start + noun_end),
             );
+        }
+    }
+
+    // "of" genitive: "x, the [relation] of y". IMPORTANT: same guard as the
+    // reversed possessive — "Elena, the sister of Marco's wife" names the wife,
+    // not Marco.
+    if let Some(noun) = of_genitive_noun(between) {
+        if !opens_possessive(text, obj.end) {
+            if let Some((_, relation, base)) = POSSESSIVE_NOUNS.iter().find(|(n, _, _)| *n == noun)
+            {
+                return Some(PatternMatch::new(
+                    relation,
+                    &format!("of-genitive-{noun}-pattern"),
+                    *base,
+                    gap,
+                ));
+            }
+        }
+    }
+
+    // Reversed possessive: "y's [relation] is x". IMPORTANT: the object must not
+    // open a possessive of its own. In "Elena's mother was Marco's sister" the
+    // sister belongs to Marco, and reading the copula as linking Elena's mother
+    // to Marco states a relation the sentence never makes.
+    if let Some(phrase) = reversed_possessive_phrase(between) {
+        if !opens_possessive(text, obj.end) {
+            for (noun, relation, base) in POSSESSIVE_NOUNS {
+                let Some((noun_start, noun_end)) = find_ascii_ci_word(phrase, noun) else {
+                    continue;
+                };
+                if !heads_possessed_phrase(phrase, noun_start, noun_end) {
+                    continue;
+                }
+                return Some(
+                    PatternMatch::new(relation, &format!("possessive-{noun}-pattern"), *base, gap)
+                        .swapped(true),
+                );
+            }
         }
     }
 

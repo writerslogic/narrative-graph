@@ -110,37 +110,78 @@ cargo run --release --features json --example precision_sample -- \
     --out DIR --sample 100000 --seed 1 541.txt 1342.txt 2891.txt
 ```
 
-Result: 1 candidate from 3,335 paragraphs. It is
-`mentors(shapely, mentor)`, extracted from the fragment
-`her selected Mentor that "he`, and it is not a relation any reader would say
-that text asserts.
+That corpus is 5,014 paragraphs.
 
-The same harness against `ad9aa4e`, the commit before the precision work
-described above, emits 24. Of those 24, **17 name a subject that is not an
-entity at all** — a sentence-opening function word (`but`, `if`, `this`), a
-pronoun (`it`, `they`, `his`, `he`), or a place standing in for a person
-(`new_york`). That is a structural defect anyone can check without judging
-meaning. The remaining 7 include at least one correct extraction
-(`father_of(bob_spicer, mrs_manson_mingott)` from "Bob Spicer, old Mrs. Manson
-Mingott's father") and at least two inverted ones, and still need independent
-adjudication.
+At the commit where this was first measured, the pipeline emitted **one**
+candidate over all of it, and that candidate was wrong. The same harness
+against `ad9aa4e`, the commit before the precision work described above,
+emits 24, of which **17 name a subject that is not an entity at all** — a
+sentence-opening function word (`but`, `if`, `this`), a pronoun (`it`, `they`,
+`his`, `he`), or a place standing in for a person (`new_york`). So the
+precision work removed a large body of nonsense, and what the measurement then
+showed is that almost nothing correct was there to keep.
 
-So the precision work did what it was meant to do and removed a large body of
-nonsense. What it also shows, now that there is a number, is that almost
-nothing correct was there to keep. The cause is reproducible in three
-sentences:
+### Why: the rules matched a form prose does not use
 
-| Phrasing | Extracted |
-| --- | --- |
-| `Elena is Marco's sister` | `sister_of(elena, marco)` |
-| `Bob Spicer, old Mrs. Manson Mingott's father, was...` | nothing |
-| `Mrs. Manson Mingott's father was Bob Spicer` | nothing |
+Counting surface forms across the same three novels, against the same
+relational-noun lexicon:
 
-The possessive rule requires the text between the two mentions to be a bare
-singular copula, so it matches only `X is Y's <noun>`. Prose overwhelmingly
-uses the appositive (`X, Y's <noun>`) and the reversed copula
-(`Y's <noun> was X`), and neither is recognized. The verb patterns are narrow
-in the same way for the same reason.
+| Form | Occurrences |
+| --- | ---: |
+| `X is Y's <noun>` — the only form the possessive rule matched | **0** |
+| `X's <noun> was Y` | 0 |
+| `X, Y's <noun>` | 1 |
+| `the <noun> of Y` | 13 |
+| `X, the <noun> of Y` | 6 |
+
+The rule set was built entirely around the Saxon possessive and a copula. That
+exact construction does not occur once in 1.96 MB of narrative prose. English
+prefers the "of" genitive, which was not recognized at all.
+
+Three rules now cover the forms that do occur: the appositive
+(`X, Y's <noun>`), the reversed possessive (`Y's <noun> was X`), and the "of"
+genitive (`X, the <noun> of Y`, with or without a copula in place of the
+comma). Each admits only a closed class of pre-nominal modifiers between the
+mentions, so a relative clause or a conjunction is not read as an apposition.
+
+### Precision, independently adjudicated
+
+With those rules the same 5,014 paragraphs yield 6 candidates. Each was put to
+two judges who had not seen the patterns, the rule names, or the confidence
+scores — only the paragraph and the claim in plain English. Both returned the
+same verdict on all six:
+
+| | |
+| --- | ---: |
+| Candidates | 6 |
+| Judged correct | 5 |
+| Judged wrong | 1 |
+| Inter-judge agreement | 6/6 |
+
+**Precision 5/6.** The sample is far too small for that ratio to mean much —
+the 95% interval on 6 trials runs from roughly 44% to 97% — and it is reported
+as a count for that reason. The single wrong candidate is
+`mentors(shapely, mentor)`, which reads a role noun as a person; it is the one
+surviving candidate from before this work and neither new rule produced it.
+
+One judge flagged a defect no rule change addresses: in
+`widow_of(bourgh, sir_lewis)`, extracted from "Lady Catherine de Bourgh, widow
+of Sir Lewis de Bourgh", the subject normalizes to `bourgh` because the
+lowercase "de" breaks the capitalized run. Both people in that sentence share
+that surname, so the claim is only distinguishable by taking the reading that
+makes the two slots different people. The relation is right and the entity
+boundary is wrong.
+
+### What the number is worth
+
+Recall went from 1 candidate to 6. That is a real improvement and it is still
+6 facts from three novels. The ceiling table above is the honest bound: with
+this lexicon, roughly forty relational statements exist to be found in 1.96 MB
+of prose, and the pipeline currently reaches a sixth of them. Nothing here
+contradicts the test suite — every test still passes, because every test uses
+the phrasing its rule was written for. That is exactly the limit of what a
+suite written by the pattern author can tell you, and it is why this section
+exists.
 
 This does not contradict the test suite. Every test above still passes,
 because every test uses the phrasing its rule was written for. That is
@@ -149,13 +190,12 @@ you, and it is why this section exists.
 
 ## What is not measured
 
-- **Precision against real narrative prose.** Recall is now measured (above);
-  precision is not, because the pipeline emits too few candidates on real
-  prose to compute one. A precision figure needs a body of emitted triples
-  judged by someone who did not write the patterns, and one candidate is not
-  a sample. Recall has to come up before precision can be measured at all.
+- **Precision at a sample size worth quoting.** Six adjudicated candidates is
+  a count, not a rate. Getting to a number with a usable interval needs the
+  recall work to continue until the corpus yields candidates in the hundreds,
+  which is a lexicon and pattern problem rather than a measurement one.
   `tests/fixtures/narrative-passages.json` exists as a placeholder (currently
-  empty) for the labeled dataset this would eventually want.
+  empty) for the labeled dataset that would eventually want.
 
   No such corpus appears to be published. A survey of the citation cluster in
   [Artificial Relationships in Fiction](https://aclanthology.org/2025.latechclfl-1.13.pdf)

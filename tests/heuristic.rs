@@ -660,3 +660,141 @@ fn test_a_quoted_sentence_after_the_attribution_comma_starts_a_sentence() {
         "{candidates:?}"
     );
 }
+
+/// The mirror of "x is y's sister". Prose writes the possessive first at least
+/// as often, and before this the whole form extracted nothing.
+#[test]
+fn test_reversed_possessive_pattern() {
+    let text = "Mrs. Manson Mingott's father was Bob Spicer.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    let found = candidates
+        .iter()
+        .find(|c| c.relation == "father_of")
+        .expect("reversed possessive not matched");
+    assert_eq!(found.subject, "bob_spicer");
+    assert_eq!(found.object, "mrs_manson_mingott");
+}
+
+/// The copula links the possessed phrase to a second possessor, not to a
+/// person: the sister is Marco's, and no relation holds between Elena and
+/// Marco.
+#[test]
+fn test_reversed_possessive_rejects_second_possessor() {
+    let text = "Elena's mother was Marco's sister.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert!(
+        !candidates
+            .iter()
+            .any(|c| c.relation == "mother_of" && c.object == "elena"),
+        "reversed possessive fired across a second possessive: {candidates:?}"
+    );
+}
+
+/// The appositive renames the subject. "Bob Spicer, old Mrs. Mingott's father"
+/// asserts exactly what "Bob Spicer is Mrs. Mingott's father" does.
+#[test]
+fn test_appositive_possessive_pattern() {
+    let text = "Bob Spicer, old Mrs. Manson Mingott's father, came to the house.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    let found = candidates
+        .iter()
+        .find(|c| c.relation == "father_of")
+        .expect("appositive not matched");
+    assert_eq!(found.subject, "bob_spicer");
+    assert_eq!(found.object, "mrs_manson_mingott");
+}
+
+/// A relative clause is not an apposition. "Elena, who visited Marco's sister"
+/// says Elena visited someone; it does not say Elena is that someone.
+#[test]
+fn test_appositive_rejects_relative_clause() {
+    let text = "Elena, who visited Marco's sister, left before dawn.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert!(
+        candidates.is_empty(),
+        "relative clause read as an apposition: {candidates:?}"
+    );
+}
+
+/// A conjunction makes a list, not a renaming. "Dev, and Marco's sister" names
+/// two people.
+#[test]
+fn test_appositive_rejects_conjunction() {
+    let text = "Dev, and Marco's sister, waited at the gate.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert!(
+        candidates.is_empty(),
+        "conjunction read as an apposition: {candidates:?}"
+    );
+}
+
+/// The "of" genitive, which is what prose actually uses. Measured over three
+/// novels it outnumbers every Saxon-possessive form combined.
+#[test]
+fn test_of_genitive_appositive() {
+    let text = "Newland Archer, the husband of Ellen Olenska, said nothing.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    let found = candidates
+        .iter()
+        .find(|c| c.relation == "husband_of")
+        .expect("of genitive not matched");
+    assert_eq!(found.subject, "newland_archer");
+    assert_eq!(found.object, "ellen_olenska");
+}
+
+/// The same form with a copula instead of the appositive comma.
+#[test]
+fn test_of_genitive_copula() {
+    let text = "Struthers was the guardian of Ellen Olenska.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    let found = candidates
+        .iter()
+        .find(|c| c.relation == "guardian_of")
+        .expect("of genitive with copula not matched");
+    assert_eq!(found.subject, "struthers");
+    assert_eq!(found.object, "ellen_olenska");
+}
+
+/// The genitive hands off to a further possessive, so the relation holds
+/// against the wife rather than against Marco.
+#[test]
+fn test_of_genitive_rejects_trailing_possessive() {
+    let text = "Elena, the sister of Marco's wife, arrived late.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert!(
+        !candidates
+            .iter()
+            .any(|c| c.relation == "sister_of" && c.object == "marco"),
+        "of genitive fired across a trailing possessive: {candidates:?}"
+    );
+}
+
+/// A denial is not a weaker assertion. The gate runs ahead of every rule,
+/// including this one.
+#[test]
+fn test_of_genitive_respects_assertion_gate() {
+    let text = "Newland Archer was not the husband of Ellen Olenska.";
+    let opts = Options::default();
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+
+    assert!(
+        candidates.is_empty(),
+        "denied of genitive still extracted: {candidates:?}"
+    );
+}

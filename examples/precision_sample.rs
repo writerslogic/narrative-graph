@@ -147,7 +147,11 @@ fn strip_boilerplate(raw: &str) -> &str {
 /// a length floor, so that the sample is not shaped by a guess about which
 /// prose the extractor handles well.
 fn paragraphs(body: &str) -> Vec<String> {
-    body.split("\n\n")
+    // IMPORTANT: normalize line endings first. Gutenberg ships some texts CRLF,
+    // where splitting on "\n\n" matches nothing and the whole book becomes a
+    // single unit, silently removing it from the measurement.
+    body.replace('\r', "")
+        .split("\n\n")
         .map(|p| p.split_whitespace().collect::<Vec<_>>().join(" "))
         .filter(|p| p.len() >= MIN_PARAGRAPH_BYTES)
         .collect()

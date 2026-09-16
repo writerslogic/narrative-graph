@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Three relation forms that real prose actually uses: the appositive
+  (`X, Y's <noun>`), the reversed possessive (`Y's <noun> was X`), and the
+  "of" genitive (`X, the <noun> of Y`). Measured over three public-domain
+  novels, the form the possessive rule previously required (`X is Y's <noun>`)
+  occurs zero times in 1.96 MB of narrative prose, and the "of" genitive
+  nineteen; recall over that corpus goes from 1 candidate to 6, of which two
+  independent judges who had not seen the patterns rated 5 correct.
+- `examples/precision_sample.rs`, a seeded sampler that draws a reproducible
+  corpus sample, extracts from it, and writes a separate adjudication sheet
+  carrying only the passage and the claim, so precision can be judged by
+  someone who did not write the rules. See `docs/EVALUATION.md`.
+
 ## [0.1.1] - 2026-09-15
 
 First published release. 0.1.0 was tagged, reached neither crates.io nor npm,
