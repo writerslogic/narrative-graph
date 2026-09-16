@@ -48,7 +48,7 @@ narrative-graph reads prose and returns candidate `(subject, relation, object)` 
 > **Output** (measured, `cargo run --features cli -- extract -`):
 > ```
 > dev --works_at--> archive 0.75 [39..68]
-> elena --sister_of--> marco 0.85 [0..14]
+> elena --sister_of--> marco 0.85 [0..23]
 > marco --mentors--> dev 0.78 [25..42]
 > ```
 
