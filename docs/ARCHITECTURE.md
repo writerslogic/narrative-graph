@@ -126,8 +126,12 @@ match and becomes a mention of the mapped canonical name at those offsets, which
 is the only way a referent named by a lowercase phrase ("the detective") is
 reached at all. Longer keys are tried first, and a match overlapping a mention
 already produced is dropped, so a key can add a mention but never replace one.
-A lexicon mention cannot be a pronoun's antecedent: `find_pronoun_antecedent`
-walks the raw text for a capitalized word. Every mention is kept: collapsing repeated mentions of one
+A lexicon mention is a referent a pronoun can take: `find_pronoun_antecedent`
+still walks the raw text backward for a capitalized word, and the lexicon
+mention wins where it sits nearer the pronoun and where that walk finds no
+capitalized word at all, so a caller supplying no lowercase key resolves exactly
+as before. A lexicon mention covering a pronoun's
+own offsets replaces it rather than standing beside it. Every mention is kept: collapsing repeated mentions of one
 referent would hide the second relation in "Elena is Marco's sister and Marco
 mentors Elena." Duplicate *triples* are collapsed at the end of the pipeline
 instead (`dedup_candidates`), keeping the highest confidence per

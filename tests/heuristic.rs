@@ -1048,3 +1048,73 @@ fn test_a_lexicon_mention_offsets_address_the_source_text() {
         "a key overlapping the run it contains replaced it: {mentions:?}"
     );
 }
+
+/// The third of issue #9's design questions: a lexicon mention is a referent a
+/// pronoun can take. Without it the backward walk finds the sentence-opening
+/// "The" and the pronoun names a function word.
+#[test]
+fn test_a_lexicon_mention_resolves_a_pronoun() {
+    let aliases =
+        std::collections::BTreeMap::from([("the detective".to_string(), "marcus".to_string())]);
+    let text = "The detective said he was Elena's brother.";
+    let mentions = extract_entities(text, &aliases);
+
+    let pronoun = mentions
+        .iter()
+        .find(|m| m.text == "he")
+        .expect("the pronoun was dropped");
+    assert_eq!(pronoun.normalized, "marcus");
+}
+
+/// A capitalized run standing between the lexicon mention and the pronoun is
+/// nearer, so it keeps the pronoun. The lexicon adds a referent; it does not
+/// outrank one.
+#[test]
+fn test_the_nearest_mention_keeps_the_pronoun() {
+    let aliases =
+        std::collections::BTreeMap::from([("the detective".to_string(), "marcus".to_string())]);
+    let text = "The detective told Elena she was wrong.";
+    let mentions = extract_entities(text, &aliases);
+
+    let pronoun = mentions
+        .iter()
+        .find(|m| m.text == "she")
+        .expect("the pronoun was dropped");
+    assert_eq!(pronoun.normalized, "elena");
+}
+
+/// A key spanning a pronoun replaces it rather than doubling it. The caller
+/// named that referent outright, which beats resolving one, and two mentions at
+/// one set of offsets would pair with each other.
+#[test]
+fn test_a_lexicon_key_covering_a_pronoun_replaces_it() {
+    let aliases =
+        std::collections::BTreeMap::from([("her ladyship".to_string(), "catherine".to_string())]);
+    let text = "Her ladyship is Elizabeth's aunt.";
+    let mentions = extract_entities(text, &aliases);
+
+    assert!(
+        mentions.iter().all(|m| m.text != "her"),
+        "the pronoun and the lexicon mention both stand: {mentions:?}"
+    );
+    assert!(
+        mentions.iter().any(|m| m.normalized == "catherine"),
+        "the lexicon mention was dropped with the pronoun: {mentions:?}"
+    );
+}
+
+/// The lexicon mention is the antecedent outright where the backward walk finds
+/// no capitalized word at all, which is the case that has no nearness to judge.
+#[test]
+fn test_a_lexicon_mention_is_the_antecedent_when_nothing_else_precedes() {
+    let aliases =
+        std::collections::BTreeMap::from([("the detective".to_string(), "marcus".to_string())]);
+    let text = "the detective knew she was late.";
+    let mentions = extract_entities(text, &aliases);
+
+    let pronoun = mentions
+        .iter()
+        .find(|m| m.text == "she")
+        .expect("the pronoun was dropped");
+    assert_eq!(pronoun.normalized, "marcus");
+}

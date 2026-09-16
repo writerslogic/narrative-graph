@@ -17,19 +17,6 @@ pub fn extract_entities(text: &str, aliases: &BTreeMap<String, String>) -> Vec<E
     let entities_from_capitalization = extract_capitalized_entities(text);
     entities.extend(entities_from_capitalization);
 
-    // Find pronouns that can be linked to previously mentioned entities in the sentence
-    let pronouns = extract_pronouns(text);
-    for pronoun in pronouns {
-        if let Some(antecedent) = find_pronoun_antecedent(text, &pronoun) {
-            entities.push(EntityCandidate {
-                text: pronoun.text.clone(),
-                normalized: antecedent,
-                start: pronoun.start,
-                end: pronoun.end,
-            });
-        }
-    }
-
     // Resolve aliases: any mention in the aliases map becomes the mapped canonical name
     for entity in &mut entities {
         if let Some(canonical) = aliases.get(&entity.text) {
@@ -41,6 +28,28 @@ pub fn extract_entities(text: &str, aliases: &BTreeMap<String, String>) -> Vec<E
     // carries its canonical name already, and the loop above keys on the
     // surface form, which would overwrite it wherever the two collide.
     let from_lexicon = lexicon_mentions(text, aliases, &entities);
+
+    // Find pronouns that can be linked to previously mentioned entities in the
+    // sentence. A lexicon mention covering the pronoun's own offsets replaces
+    // it: the caller named that referent outright, which beats resolving one.
+    let pronouns = extract_pronouns(text);
+    for pronoun in pronouns {
+        let covered = from_lexicon
+            .iter()
+            .any(|m| pronoun.start < m.end && m.start < pronoun.end);
+        if covered {
+            continue;
+        }
+        if let Some(antecedent) = find_pronoun_antecedent(text, &pronoun, &from_lexicon) {
+            entities.push(EntityCandidate {
+                text: pronoun.text.clone(),
+                normalized: antecedent,
+                start: pronoun.start,
+                end: pronoun.end,
+            });
+        }
+    }
+
     entities.extend(from_lexicon);
 
     // IMPORTANT: pronouns are appended grouped by pronoun word, so the vector
@@ -321,10 +330,12 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
 /// sentence and "the detective" inside one are the same phrase, which is why
 /// this half ignores case while the other half cannot.
 ///
-/// A match overlapping a mention that already exists is dropped, so no detected
-/// mention is ever replaced: a key of "detective" cannot delete the run
-/// "Detective Marcus" and take `marcus` with it. Longer keys are tried first,
-/// so "the detective" wins over "detective" where both are supplied.
+/// A match overlapping a capitalized run is dropped, so no detected mention is
+/// ever replaced: a key of "detective" cannot delete the run "Detective Marcus"
+/// and take `marcus` with it. Longer keys are tried first, so "the detective"
+/// wins over "detective" where both are supplied. A pronoun cuts the other way
+/// and is dropped in favour of the lexicon mention covering it, because a
+/// pronoun is a referent resolved by guess and a key is one the caller named.
 fn lexicon_mentions(
     text: &str,
     aliases: &BTreeMap<String, String>,
@@ -445,16 +456,28 @@ fn extract_pronouns(text: &str) -> Vec<Pronoun> {
     found
 }
 
-// TODO: a lexicon mention cannot be a pronoun's antecedent. This walks the raw
-// text for a capitalized word and would have to take the mention list instead,
-// which changes the resolution order for every caller, not just one supplying a
-// lowercase key.
-fn find_pronoun_antecedent(text: &str, pronoun: &Pronoun) -> Option<String> {
+/// The referent of a pronoun: the nearest mention before it.
+///
+/// IMPORTANT: a lexicon mention counts here exactly as a capitalized word does,
+/// because the caller asserted it names a person: it takes the pronoun where it
+/// sits nearer than the capitalized word the backward walk finds, and where the
+/// walk finds no capitalized word at all. With no lexicon mention in front of
+/// the pronoun this is the backward walk over raw text it has always been, so a
+/// caller supplying no lowercase key resolves as before.
+fn find_pronoun_antecedent(
+    text: &str,
+    pronoun: &Pronoun,
+    lexicon: &[EntityCandidate],
+) -> Option<String> {
+    let nearest_lexicon = lexicon
+        .iter()
+        .filter(|m| m.end <= pronoun.start)
+        .max_by_key(|m| m.end);
+
     // Simple heuristic: find the most recent capitalized entity before this pronoun
     let before_pronoun = &text[..pronoun.start];
-    let words: Vec<&str> = before_pronoun.split_whitespace().collect();
 
-    for word in words.iter().rev() {
+    for (offset, word) in words_with_offsets(before_pronoun).into_iter().rev() {
         // IMPORTANT: strip the possessive clitic and surrounding punctuation.
         // `extract_capitalized_entities` treats them as separators, so leaving
         // them here yields a second, misspelled referent ("marco's") that
@@ -463,11 +486,33 @@ fn find_pronoun_antecedent(text: &str, pronoun: &Pronoun) -> Option<String> {
         let word = word.trim_matches(|c: char| !c.is_alphanumeric());
 
         if word.chars().next().is_some_and(|c| c.is_uppercase()) && word.len() > 1 {
-            return Some(normalize_entity(word));
+            return match nearest_lexicon {
+                Some(m) if m.end > offset => Some(m.normalized.clone()),
+                _ => Some(normalize_entity(word)),
+            };
         }
     }
 
-    None
+    nearest_lexicon.map(|m| m.normalized.clone())
+}
+
+/// Whitespace-separated words paired with their byte offset in `text`.
+fn words_with_offsets(text: &str) -> Vec<(usize, &str)> {
+    let mut words = Vec::new();
+    let mut word_start: Option<usize> = None;
+    let sentinel = std::iter::once((text.len(), ' '));
+
+    for (byte_pos, c) in text.char_indices().chain(sentinel) {
+        if !c.is_whitespace() {
+            word_start.get_or_insert(byte_pos);
+            continue;
+        }
+        if let Some(start) = word_start.take() {
+            words.push((start, &text[start..byte_pos]));
+        }
+    }
+
+    words
 }
 
 fn normalize_entity(text: &str) -> String {

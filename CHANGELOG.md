@@ -18,7 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   uppercase character keep matching the surface form exactly, longer keys are
   tried first, and a lexicon match overlapping a mention already detected is
   dropped, so a key can add a mention but never replace one. A lexicon mention
-  cannot yet be a pronoun's antecedent.
+  is a referent a pronoun can take, winning where it sits nearer the pronoun
+  than the capitalized word the backward walk finds and where that walk finds
+  no capitalized word at all, so pronoun
+  resolution is unchanged for a caller supplying no lowercase key; a pronoun
+  covered by a lexicon mention is replaced by it.
 
 ### Fixed
 - A title leading a name is no longer part of the entity's identity. A

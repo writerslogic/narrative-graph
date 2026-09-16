@@ -39,7 +39,8 @@ pub struct Options {
     /// the canonical name there, which is how "the detective" reaches a
     /// referent no capitalized-run detector can see. A lexicon match that
     /// overlaps a mention already detected is dropped, so a key can add a
-    /// mention but never replace one.
+    /// mention but never replace one. A pronoun can take a lexicon mention as
+    /// its referent, and a pronoun the mention covers is replaced by it.
     #[cfg_attr(feature = "serde", serde(default))]
     pub aliases: BTreeMap<String, String>,
 
