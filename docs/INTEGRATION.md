@@ -50,7 +50,7 @@ const candidates = extractCandidateTriplesNapi('Marco mentors Dev.')
 import { extractCandidateTriplesNapi, NapiOptions, NapiTripleCandidate } from 'narrative-graph'
 
 const opts: NapiOptions = {
-  aliases: { 'the detective': 'marcus' },
+  aliases: { Marcus: 'marcus_hale', 'Mr Marcus Hale': 'marcus_hale' },
   minConfidence: 0.7,
   ontology: { mentors: 'mentorship' },
 }
@@ -65,7 +65,7 @@ defaults (no aliases, no confidence floor, no ontology remapping).
 
 | Field | Type | Default | Effect |
 |---|---|---|---|
-| `aliases` | `Record<string, string>` | `{}` | Surface form → canonical entity name. Any mention matching a key resolves to the mapped value. |
+| `aliases` | `Record<string, string>` | `{}` | Surface form → canonical entity name. Any mention matching a key resolves to the mapped value. Keys match the mention's surface form exactly — the capitalized run with `.` dropped as a separator, so `Mr Marcus Hale`. A lowercase phrase is never a mention and cannot be a key. |
 | `minConfidence` | `number` (0.0–1.0) | `0.0` (all candidates) | Candidates below this score are filtered out. Passing a value outside `[0.0, 1.0]` throws. |
 | `ontology` | `Record<string, string>` | `{}` | Recognized relation name → caller-supplied vocabulary. Relations not present in the map pass through with their heuristic default name. |
 

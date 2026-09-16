@@ -27,8 +27,14 @@ pub struct TripleCandidate {
 #[cfg_attr(feature = "bindings", derive(ts_rs::TS), ts(export))]
 pub struct Options {
     /// Optional mapping from surface forms to canonical entity names.
-    /// Example: { "the detective": "marcus", "ms. chen": "chen" }
+    /// Example: { "Marcus": "marcus_hale", "Mr Marcus Hale": "marcus_hale" }
     /// All mentions matching a key in this map resolve to the value.
+    ///
+    /// IMPORTANT: a key is matched against the mention's surface form exactly,
+    /// which is the capitalized run with `.` dropped as a separator: "Mr Marcus
+    /// Hale", never "mr. marcus hale". A lowercase phrase such as "the
+    /// detective" is not detected as a mention at all, so it can never be a
+    /// key.
     #[cfg_attr(feature = "serde", serde(default))]
     pub aliases: BTreeMap<String, String>,
 

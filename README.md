@@ -94,10 +94,12 @@ Segmentation is hand-rolled rather than a naive split on `.`/`!`/`?`, because na
 
 ### Entities
 
-Capitalized-token detection, pronoun-antecedent linking within a sentence, and an optional caller-supplied alias list so "Marcus" and "the detective" resolve to the same entity when you already know that.
+Capitalized-token detection, pronoun-antecedent linking within a sentence, and an optional caller-supplied alias list so "Marcus" and "Mr. Marcus Hale" resolve to the same entity when you already know that. A title leading a name is dropped from the identity but kept in the surface form, so "Lady Catherine de Bourgh" and "Catherine de Bourgh" already unify without an alias.
 
-> **You supply:** `{ aliases: { "the detective": "marcus" } }`
-> **Result:** mentions of "the detective" resolve to `marcus` in every candidate.
+> **You supply:** `{ aliases: { "Marcus": "marcus_hale", "Mr Marcus Hale": "marcus_hale" } }`
+> **Result:** either mention resolves to `marcus_hale` in every candidate.
+>
+> Keys match the mention's surface form exactly, and `.` is a separator, so the key is `Mr Marcus Hale`. A lowercase phrase like "the detective" is never detected as a mention, so it cannot be an alias key.
 
 ### Relations
 
