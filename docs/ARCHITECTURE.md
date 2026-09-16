@@ -121,6 +121,9 @@ fixed set of surface patterns:
 | Pattern | Example | Relation | Rule name |
 |---|---|---|---|
 | `<Subj> is <Obj>'s <noun>` | "Elena is Marco's sister." | `<noun>_of` | `possessive-<noun>-pattern` |
+| `<Subj>, <Obj>'s <noun>` | "Elena, Marco's sister, arrived." | `<noun>_of` | `possessive-<noun>-pattern` |
+| `<Subj>'s <noun> is <Obj>` | "Mingott's father was Bob Spicer." | `<noun>_of` | `possessive-<noun>-pattern` |
+| `<Subj>, the <noun> of <Obj>` | "Charlotte, the wife of Mr. Collins." | `<noun>_of` | `of-genitive-<noun>-pattern` |
 | `<Subj> ... mentor...` | "Marco mentors Dev." | `mentors` | `verb-mentor-pattern` |
 | `<Subj> ... work... at...` | "Dev works at the Archive." | `works_at` | `verb-works-at-pattern` |
 | `<Subj> ... , who ... work... at...` | "Marco mentors Dev, who works at the Archive." | `works_at` | `relative-works-at-pattern` |
@@ -135,17 +138,28 @@ grammar for a weaker claim — stance is routinely negated, hypothetical, or
 narrated from a character's mistaken view — and score lower. Nouns are matched
 whole-word, so "grandmother" is never read as "mother".
 
-The possessive row requires a bare singular copula (`is`, `was`) as the
-entire text between the two mentions, and requires the relational noun to head
-the possessed phrase. Without both, "Elena visited Marco's sister" reads as
-`sister_of(elena, marco)` — a third person's relation claimed for the subject,
-at the highest confidence in the system — and so do "Marco's master key" and
-"Marco's friend's sister". The appositive "Elena, Marco's sister, arrived"
-states a true relation and is deliberately not extracted: it is a distinct
-pattern, and widening the copula set to reach it also admits ", unlike". The
-plural copulas are absent for a different reason: "Dev and Elena are Marco's
-cousins" has two subjects where the pair loop sees one, so the relation would
-be claimed for whichever mention the loop reached.
+Every one of those four rows requires the text between the two mentions to be
+the whole link and nothing else: a bare singular copula (`is`, `was`), or an
+appositive comma followed only by pre-nominal modifiers from the closed
+`APPOSITIVE_MODIFIERS` list. Without that, "Elena visited Marco's sister" reads
+as `sister_of(elena, marco)` — a third person's relation claimed for the
+subject, at the highest confidence in the system. Admitting a verb or a
+relative pronoun after the comma would do the same to "Elena, who visited
+Marco's sister"; admitting a conjunction would read "Dev, and Marco's sister"
+as one person rather than two. The relational noun must also head the possessed
+phrase, which is what rejects "Marco's master key" and "Marco's friend's
+sister", and the object must not open a possessive of its own, which is what
+rejects "Elena's mother was Marco's sister".
+
+The plural copulas are absent for a separate reason: "Dev and Elena are
+Marco's cousins" has two subjects where the pair loop sees one, so the relation
+would be claimed for whichever mention the loop reached.
+
+The three non-copula rows exist because the copula row alone reads almost
+nothing. `docs/EVALUATION.md` measures this: across three novels the
+`<Subj> is <Obj>'s <noun>` form occurs zero times, while the "of" genitive
+occurs nineteen. Adding these forms took recall over that corpus from one
+candidate to six.
 
 Across every row, text between the mentions that denies or suspends the
 relation blocks it entirely: a negator (`not`, `never`, `no`, or an `n't`
