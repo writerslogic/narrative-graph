@@ -1,5 +1,8 @@
 use narrative_graph::heuristic::extract_entities;
-use narrative_graph::{extract_aggregates, extract_candidate_triples, Options, Rejection};
+use narrative_graph::{
+    extract_aggregates, extract_candidate_triples, find_conflicts, ConflictKind, Options, Polarity,
+    Rejection,
+};
 
 #[test]
 fn test_simple_possessive_pattern() {
@@ -1288,4 +1291,101 @@ fn an_empty_passage_aggregates_to_nothing() {
     assert!(extract_aggregates("Nothing relational here.", &opts)
         .unwrap()
         .is_empty());
+}
+
+#[test]
+fn a_denial_is_recorded_as_the_opposite_claim_not_dropped() {
+    let opts = Options::default();
+
+    for text in [
+        "Elena is not Marco's sister.",
+        "Elena isn't Marco's sister.",
+        "Elena is not the sister of Marco.",
+    ] {
+        let aggregates = extract_aggregates(text, &opts).expect("extraction failed");
+        assert_eq!(aggregates.len(), 1, "no denial recorded for {text:?}");
+        assert_eq!(aggregates[0].polarity, Polarity::Denied, "for {text:?}");
+        assert_eq!(aggregates[0].relation, "sister_of");
+
+        // The per-sentence output has nowhere to say "denied", so it says
+        // nothing — exactly as before denials were representable.
+        assert!(extract_candidate_triples(text, &opts).unwrap().is_empty());
+    }
+}
+
+#[test]
+fn a_conditional_denial_settles_nothing_and_is_not_a_denial() {
+    let opts = Options::default();
+
+    // A suspender outranks a negator. Reading these as denials is how a
+    // contradiction check invents a conflict the text never states.
+    for text in [
+        "If Elena is not Marco's sister, nothing follows.",
+        "Elena might not be Marco's sister.",
+        "Did Elena mentor Marco?",
+        "Marco refused to mentor Dev.",
+    ] {
+        assert!(
+            extract_aggregates(text, &opts).unwrap().is_empty(),
+            "suspended text produced a claim: {text:?}"
+        );
+    }
+}
+
+#[test]
+fn a_passage_asserting_and_denying_one_fact_is_flagged_with_both_spans() {
+    let text = "Elena is Marco's sister. Later, Elena is not Marco's sister.";
+    let opts = Options::default();
+
+    let conflicts = find_conflicts(text, &opts).expect("extraction failed");
+    assert_eq!(conflicts.len(), 1);
+
+    let conflict = &conflicts[0];
+    assert_eq!(conflict.kind, ConflictKind::Denial);
+    assert_eq!(conflict.left.polarity, Polarity::Asserted);
+    assert_eq!(conflict.right.polarity, Polarity::Denied);
+    // Left is the claim the passage makes first, and both sides carry evidence.
+    assert!(conflict.left.spans[0][0] < conflict.right.spans[0][0]);
+    for aggregate in [&conflict.left, &conflict.right] {
+        let span = aggregate.spans[0];
+        assert!(text.get(span[0]..span[1]).is_some());
+    }
+}
+
+#[test]
+fn two_compatible_facts_about_one_pair_are_not_a_conflict() {
+    let opts = Options::default();
+
+    // Compatible, and a stance that changes over the story is a character arc
+    // rather than a continuity error: neither is reported.
+    for text in [
+        "Elena is Marco's sister. Elena is Marco's student.",
+        "Elena is Marco's enemy. Later, Elena is Marco's ally.",
+    ] {
+        assert!(
+            find_conflicts(text, &opts).unwrap().is_empty(),
+            "invented a conflict in {text:?}"
+        );
+    }
+}
+
+#[test]
+fn one_person_cannot_have_two_mothers() {
+    let opts = Options::default();
+
+    let conflicts = find_conflicts("Elena is Dev's mother. Sofia is Dev's mother.", &opts).unwrap();
+    assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].kind, ConflictKind::Cardinality);
+    assert_eq!(conflicts[0].left.subject, "elena");
+    assert_eq!(conflicts[0].right.subject, "sofia");
+
+    // The constraint binds the object, not the subject: one mother of two
+    // children is ordinary.
+    let siblings =
+        find_conflicts("Elena is Dev's mother. Elena is Marco's mother.", &opts).unwrap();
+    assert!(siblings.is_empty());
+
+    // And it is per relation: siblings are not cardinality-constrained.
+    let many = find_conflicts("Elena is Dev's sister. Sofia is Dev's sister.", &opts).unwrap();
+    assert!(many.is_empty());
 }

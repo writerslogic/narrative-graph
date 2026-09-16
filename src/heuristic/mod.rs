@@ -5,7 +5,7 @@ pub mod pack;
 mod relations;
 mod segment;
 
-use crate::types::{AggregateTriple, Options, TripleCandidate};
+use crate::types::{AggregateTriple, Conflict, Options, Polarity, TripleCandidate};
 use crate::Result;
 use pack::LanguagePack;
 use std::collections::{BTreeMap, BTreeSet};
@@ -15,8 +15,15 @@ pub use relations::normalize_relation;
 
 /// Extract candidate (subject, relation, object) triples from prose.
 /// Runs the heuristic pipeline: entity detection, relation labeling, co-occurrence scoring, and confidence calculation.
+/// IMPORTANT: asserted candidates only. A denied relation is a different claim
+/// and this output has nowhere to say so, which is why it is dropped here and
+/// kept by `extract_aggregates`, whose type carries the polarity.
 pub fn extract_candidate_triples(text: &str, opts: &Options) -> Result<Vec<TripleCandidate>> {
-    let mut candidates = collect_candidates(text, opts, &pack::ENGLISH)?;
+    let mut candidates: Vec<TripleCandidate> = collect_candidates(text, opts, &pack::ENGLISH)?
+        .into_iter()
+        .filter(|(_, polarity)| *polarity == Polarity::Asserted)
+        .map(|(candidate, _)| candidate)
+        .collect();
     // Deduplicate: keep highest confidence for each (subj, rel, obj) triple
     dedup_candidates(&mut candidates);
     Ok(candidates)
@@ -33,6 +40,22 @@ pub fn extract_aggregates(text: &str, opts: &Options) -> Result<Vec<AggregateTri
     Ok(aggregate::aggregate(candidates))
 }
 
+/// Find the claims in a passage that cannot both be true.
+///
+/// A fact asserted and the same fact denied, or a relation that admits one
+/// subject per object asserted of two subjects. Both sides of every conflict
+/// carry their spans, because the crate has no way to decide which one the
+/// manuscript meant and no business guessing.
+///
+/// IMPORTANT: a relation that simply changes over the story is not a conflict.
+/// `enemy_of` early and `ally_of` late is a character arc, and
+/// `extract_aggregates` already puts the two in the order the story states
+/// them.
+pub fn find_conflicts(text: &str, opts: &Options) -> Result<Vec<Conflict>> {
+    let aggregates = extract_aggregates(text, opts)?;
+    Ok(aggregate::find_conflicts(&aggregates, &pack::ENGLISH))
+}
+
 /// Every candidate the rules fire on, in document order and with repeats
 /// intact. IMPORTANT: this is the one place the evidence still exists in full.
 /// `dedup_candidates` keeps one candidate per triple and drops the spans of the
@@ -45,7 +68,7 @@ fn collect_candidates(
     text: &str,
     opts: &Options,
     pack: &LanguagePack,
-) -> Result<Vec<TripleCandidate>> {
+) -> Result<Vec<(TripleCandidate, Polarity)>> {
     if text.is_empty() {
         return Ok(vec![]);
     }
@@ -88,15 +111,25 @@ fn collect_candidates(
             );
             if confidence >= min_confidence && !rejected.contains(&key) {
                 let span = [sent_start + rel.span[0], sent_start + rel.span[1]];
+                // A rejection names a triple, not a stance: a caller rejecting
+                // a wrong claim means the claim, whichever way the text put it.
+                let polarity = match rel.stance {
+                    relations::Stance::Denied => Polarity::Denied,
+                    // `extract_relations` emits nothing for a suspended window.
+                    _ => Polarity::Asserted,
+                };
 
-                candidates.push(TripleCandidate {
-                    subject: rel.subject,
-                    relation: rel.relation,
-                    object: rel.object,
-                    confidence,
-                    span,
-                    rule: rel.rule,
-                });
+                candidates.push((
+                    TripleCandidate {
+                        subject: rel.subject,
+                        relation: rel.relation,
+                        object: rel.object,
+                        confidence,
+                        span,
+                        rule: rel.rule,
+                    },
+                    polarity,
+                ));
             }
         }
     }

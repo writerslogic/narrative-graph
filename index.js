@@ -701,3 +701,4 @@ if (!nativeBinding) {
 module.exports = nativeBinding
 module.exports.extractAggregatesNapi = nativeBinding.extractAggregatesNapi
 module.exports.extractCandidateTriplesNapi = nativeBinding.extractCandidateTriplesNapi
+module.exports.findConflictsNapi = nativeBinding.findConflictsNapi

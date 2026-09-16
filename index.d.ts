@@ -10,13 +10,28 @@ export declare function extractAggregatesNapi(text: string, opts?: NapiOptions |
 
 export declare function extractCandidateTriplesNapi(text: string, opts?: NapiOptions | undefined | null): Array<NapiTripleCandidate>
 
+/**
+ * Claims the passage makes that cannot both be true: a fact and its denial,
+ * or two subjects where the relation admits one. Both sides carry their spans.
+ */
+export declare function findConflictsNapi(text: string, opts?: NapiOptions | undefined | null): Array<NapiConflict>
+
 export interface NapiAggregateTriple {
   subject: string
   relation: string
   object: string
+  /** "asserted" or "denied". */
+  polarity: string
   confidence: number
   spans: Array<Array<number>>
   rules: Array<string>
+}
+
+export interface NapiConflict {
+  /** "denial" or "cardinality". */
+  kind: string
+  left: NapiAggregateTriple
+  right: NapiAggregateTriple
 }
 
 export interface NapiOptions {

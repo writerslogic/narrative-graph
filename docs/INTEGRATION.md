@@ -101,6 +101,7 @@ Each `NapiAggregateTriple` carries `subject`, `relation`, `object`, plus:
 
 | Field | Type | Meaning |
 |---|---|---|
+| `polarity` | `"asserted" \| "denied"` | Whether the passage states the fact or states that it does not hold. Text that settles neither — a conditional, a modal, a question, a complement its main verb holds open — produces no entry at all. |
 | `confidence` | `number` | The best of its supporting candidates. Repetition does not raise it: a restatement in fiction is not independent evidence, so `spans.length` is what reports corroboration and the score deliberately ignores it. |
 | `spans` | `number[][]` | Every `[start, end)` that stated the fact, in document order |
 | `rules` | `string[]` | The rules that produced them, first occurrence first, without repeats |
@@ -110,6 +111,31 @@ pair can be read in the order the story states them — which is what makes
 `enemy_of` in chapter 2 and `ally_of` in chapter 20 a character arc rather
 than a contradiction. `extractCandidateTriplesNapi` keeps its own order, by
 triple, and is unaffected.
+
+### Finding contradictions
+
+`findConflictsNapi(text, opts?)` returns the claims a passage makes that cannot
+both be true. Each `NapiConflict` carries `kind` plus `left` and `right`, two
+`NapiAggregateTriple`s with their own spans:
+
+| `kind` | Means |
+|---|---|
+| `"denial"` | The passage asserts a fact and denies the same fact. |
+| `"cardinality"` | The relation admits one subject per object — `mother_of`, `father_of` — and two subjects are asserted over one object. |
+
+`left` is the claim the passage makes first. Neither side is marked true:
+deciding that needs the manuscript, so both carry their evidence and the
+decision stays with you.
+
+A relation that simply changes over a story is never a conflict. `enemy_of`
+early and `ally_of` late is what a narrative does, and reporting it would bury
+real continuity errors under every character arc in the book.
+
+Two limits worth knowing. A denial has to be phrasable as a triple, so "Elena
+is not Marco's sister" is representable and "Elena was an only child" is not —
+the latter names no second entity, so no rule fires on it either way. And a
+denial expressed outside the text between the two mentions is invisible: "It
+was a lie. Elena is Marco's sister." reads as a plain assertion.
 
 ### Error handling
 

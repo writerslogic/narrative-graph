@@ -95,6 +95,20 @@ pub struct Options {
     pub ontology: BTreeMap<String, String>,
 }
 
+/// Whether a document states a fact or states that it does not hold.
+///
+/// IMPORTANT: a denial is a claim, not a missing assertion. Text that neither
+/// asserts nor denies — a conditional, a modal, a question, a complement held
+/// open by its main verb — produces no aggregate at all and so has no polarity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+#[cfg_attr(feature = "bindings", derive(ts_rs::TS), ts(export))]
+pub enum Polarity {
+    Asserted,
+    Denied,
+}
+
 /// One fact as a whole document states it, with every piece of evidence for it.
 ///
 /// `TripleCandidate` is per-sentence and `extract_candidate_triples` keeps the
@@ -108,6 +122,11 @@ pub struct AggregateTriple {
     pub subject: String,
     pub relation: String,
     pub object: String,
+    /// Whether the document states this fact or denies it. A denial and the
+    /// assertion of the same triple are two aggregates, not one, because they
+    /// are two claims — and a document carrying both is the contradiction
+    /// `find_conflicts` reports.
+    pub polarity: Polarity,
     /// The highest confidence of any supporting candidate.
     ///
     /// IMPORTANT: repetition does not raise it, and `spans.len()` is the only
@@ -123,6 +142,35 @@ pub struct AggregateTriple {
     /// The rules that produced those spans, first occurrence first, without
     /// repeats. Two spans from one rule name it once.
     pub rules: Vec<String>,
+}
+
+/// Why two aggregates cannot both be true.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+#[cfg_attr(feature = "bindings", derive(ts_rs::TS), ts(export))]
+pub enum ConflictKind {
+    /// The document asserts a fact and denies the same fact.
+    Denial,
+    /// The relation admits one subject per object, and two subjects are
+    /// asserted over the same object.
+    Cardinality,
+}
+
+/// Two claims a single passage cannot both support, with the evidence for each.
+///
+/// IMPORTANT: a conflict is not a ranking. Neither side is the true one, and
+/// the crate has no way to decide which is: both carry their spans so the
+/// decision stays with whoever can read the manuscript.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "bindings", derive(ts_rs::TS), ts(export))]
+pub struct Conflict {
+    pub kind: ConflictKind,
+    /// The claim appearing first in the document.
+    pub left: AggregateTriple,
+    /// The claim appearing second.
+    pub right: AggregateTriple,
 }
 
 /// A reference span into the input text with its corresponding surface text.

@@ -47,6 +47,10 @@ pub struct LanguagePack {
     pub possessive_copulas: &'static [&'static str],
     pub appositive_modifiers: &'static [&'static str],
     pub suspending_words: &'static [&'static str],
+    pub negators: &'static [&'static str],
+    /// Relations whose object admits exactly one subject, so two different
+    /// subjects asserted over one object contradict each other.
+    pub single_filler_relations: &'static [&'static str],
     /// A negator that attaches as a suffix rather than standing as a word.
     pub negation_clitic: &'static str,
     /// The word whose infinitive complement suspends the event it names.
@@ -79,6 +83,8 @@ pub static ENGLISH: LanguagePack = LanguagePack {
     possessive_copulas: POSSESSIVE_COPULAS,
     appositive_modifiers: APPOSITIVE_MODIFIERS,
     suspending_words: SUSPENDING_WORDS,
+    negators: NEGATORS,
+    single_filler_relations: SINGLE_FILLER_RELATIONS,
     negation_clitic: "n't",
     infinitive_marker: "to",
     possessive_clitic: "'s",
@@ -262,14 +268,38 @@ const APPOSITIVE_MODIFIERS: &[&str] = &[
     "old", "young", "little", "poor", "dear", "late", "good",
 ];
 
-/// Closed-class words that deny the event or hold it open. IMPORTANT: this is
-/// a closed class on purpose. The verbs that suspend a complement (refuse,
-/// hope, intend, pretend) are an open one, and are caught structurally by the
-/// `to`-infinitive instead. "will" is absent because a future tense asserts.
+/// Closed-class words that hold the event open without settling it either way.
+///
+/// IMPORTANT: this is a closed class on purpose. The verbs that suspend a
+/// complement (refuse, hope, intend, pretend) are an open one, and are caught
+/// structurally by the `to`-infinitive instead. "will" is absent because a
+/// future tense asserts.
+///
+/// A suspender outranks a negator: "if Elena is not Marco's sister" settles
+/// nothing, so it is suspended rather than denied. A conditional denial is not
+/// a denial, and reading it as one is how a contradiction check invents a
+/// conflict the text never states.
 const SUSPENDING_WORDS: &[&str] = &[
-    "not", "never", "no", "nor", "neither", "if", "unless", "whether", "could", "would", "might",
-    "may", "should",
+    "if", "unless", "whether", "could", "would", "might", "may", "should",
 ];
+
+/// Words that deny the event outright. Paired with the `n't` clitic, which is
+/// a suffix rather than a word and is handled beside this list.
+const NEGATORS: &[&str] = &["not", "never", "no", "nor", "neither"];
+
+/// Relations where the object admits one subject and no more.
+///
+/// IMPORTANT: membership is about the world, not about the grammar. A person
+/// has one mother and one father; they may have any number of siblings,
+/// cousins, teachers and enemies, so those are absent. "widow_of" is absent
+/// too: remarriage makes it repeatable over a lifetime, and a manuscript
+/// spanning one is not in error for saying so.
+///
+/// Read with the relation's own direction: an entry reads "X is Y's <noun>",
+/// so the constraint binds the object. Two different people asserted as
+/// `mother_of` one person contradict each other; one person asserted as
+/// `mother_of` two people does not.
+const SINGLE_FILLER_RELATIONS: &[&str] = &["mother_of", "father_of"];
 
 /// Verbs read straight from the text between the mentions.
 ///

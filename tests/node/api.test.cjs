@@ -2,7 +2,11 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { extractAggregatesNapi, extractCandidateTriplesNapi } = require('../../index.js')
+const {
+  extractAggregatesNapi,
+  extractCandidateTriplesNapi,
+  findConflictsNapi,
+} = require('../../index.js')
 
 test('extracts a possessive-sister relation with a confident score', () => {
   const candidates = extractCandidateTriplesNapi("Elena is Marco's sister.")
@@ -117,4 +121,23 @@ test('aggregates one fact across a passage, in the order the story states it', (
   assert.equal(repeated.length, 1)
   assert.equal(repeated[0].spans.length, 2)
   assert.deepEqual(repeated[0].rules, ['possessive-sister-pattern'])
+})
+
+test('records a denial and flags it against the assertion of the same fact', () => {
+  const text = "Elena is Marco's sister. Later, Elena is not Marco's sister."
+
+  const aggregates = extractAggregatesNapi(text)
+  assert.deepEqual(
+    aggregates.map((a) => a.polarity),
+    ['asserted', 'denied'],
+  )
+
+  const conflicts = findConflictsNapi(text)
+  assert.equal(conflicts.length, 1)
+  assert.equal(conflicts[0].kind, 'denial')
+  assert.equal(conflicts[0].left.polarity, 'asserted')
+  assert.equal(conflicts[0].right.polarity, 'denied')
+
+  // A stance that changes over a story is a character arc, not a conflict.
+  assert.equal(findConflictsNapi("Elena is Marco's enemy. Later, Elena is Marco's ally.").length, 0)
 })

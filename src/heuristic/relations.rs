@@ -12,6 +12,7 @@ pub struct RelationCandidate {
     pub span: [usize; 2],
     pub base: f32,
     pub gap: usize,
+    pub stance: Stance,
 }
 
 /// Extract relations between entity pairs in the same sentence/clause.
@@ -48,6 +49,7 @@ pub fn extract_relations(
                     span: [subj.start, m.span_end.unwrap_or(obj.end)],
                     base: m.base,
                     gap: m.gap,
+                    stance: m.stance,
                 });
             }
         }
@@ -67,6 +69,7 @@ struct PatternMatch {
     gap: usize,
     swapped: bool,
     span_end: Option<usize>,
+    stance: Stance,
 }
 
 impl PatternMatch {
@@ -78,11 +81,16 @@ impl PatternMatch {
             gap,
             swapped: false,
             span_end: None,
+            stance: Stance::Asserted,
         }
     }
 
     fn swapped(self, swapped: bool) -> Self {
         Self { swapped, ..self }
+    }
+
+    fn stance(self, stance: Stance) -> Self {
+        Self { stance, ..self }
     }
 
     fn span_end(self, span_end: usize) -> Self {
@@ -149,18 +157,62 @@ fn possessed_noun_phrase_len(rest: &str, pack: &LanguagePack) -> usize {
     punct.min(conjunction)
 }
 
-/// Whether the text between two mentions denies the relation or holds it open
-/// rather than asserting it.
-fn suspends_assertion(between: &str, pack: &LanguagePack) -> bool {
-    between.split(|c: char| !c.is_ascii_alphanumeric() && c != '\'').any(|word| {
+/// What the text between two mentions does to the relation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stance {
+    /// The text states the relation holds.
+    Asserted,
+    /// The text states it does not. A denial is not a weak assertion; it is
+    /// the opposite claim, and it is what makes a contradiction representable.
+    Denied,
+    /// The text neither states nor denies it: a conditional, a modal, or a
+    /// complement the main verb holds open. Nothing is emitted for these.
+    Suspended,
+}
+
+/// Read the text between two mentions as a stance on the relation.
+///
+/// IMPORTANT: a suspender outranks a negator. "if Elena is not Marco's sister"
+/// carries both and settles neither, so it is suspended; treating it as a
+/// denial would hand the contradiction check a conflict the text never states.
+fn assertion_stance(between: &str, pack: &LanguagePack) -> Stance {
+    let mut denied = false;
+
+    for word in between.split(|c: char| !c.is_ascii_alphanumeric() && c != '\'') {
+        if pack.suspending_words.contains(&word) {
+            return Stance::Suspended;
+        }
         // "didn't", "doesn't", "isn't": the negator is a suffix, not a word.
-        word.ends_with(pack.negation_clitic) || pack.suspending_words.contains(&word)
-    })
-        // A complement verb suspends its infinitive: "refused to mentor",
-        // "hoped to mentor", "wanted to work" assert nothing about the event.
-        || between
-            .split_whitespace()
-            .any(|word| word == pack.infinitive_marker)
+        if word.ends_with(pack.negation_clitic) || pack.negators.contains(&word) {
+            denied = true;
+        }
+    }
+
+    // A complement verb suspends its infinitive: "refused to mentor",
+    // "hoped to mentor", "wanted to work" assert nothing about the event.
+    if between
+        .split_whitespace()
+        .any(|word| word == pack.infinitive_marker)
+    {
+        return Stance::Suspended;
+    }
+
+    if denied {
+        Stance::Denied
+    } else {
+        Stance::Asserted
+    }
+}
+
+/// Whether a word before `from` holds the clause open. `text` is one sentence,
+/// so the scan cannot reach back into a previous one.
+fn suspended_before(text: &str, from: usize, pack: &LanguagePack) -> bool {
+    text[..from]
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .any(|word| {
+            let word = word.to_lowercase();
+            pack.suspending_words.contains(&word.as_str()) || word == pack.infinitive_marker
+        })
 }
 
 /// Whether the sentence holding the mentions is a question. IMPORTANT: "Did
@@ -205,6 +257,31 @@ fn reversed_possessive_phrase<'a>(between: &'a str, pack: &LanguagePack) -> Opti
         .then(|| phrase.trim_end())
 }
 
+/// Whether the text between the mentions is the whole link of a possessive
+/// statement, either way round: "x is y's sister", "x is not y's sister".
+///
+/// IMPORTANT: the link must still be the whole text between the mentions, and
+/// the negated form is as closed as the bare one. Only a copula, a copula
+/// followed by exactly one negator, or a copula carrying the `n't` clitic will
+/// do; "was once", "believed ... was" and "is not merely" are none of those.
+/// Widening this is how "Elena visited Marco's sister" starts claiming a third
+/// person's relation for the subject at the highest confidence in the system.
+fn is_possessive_link(between: &str, pack: &LanguagePack) -> bool {
+    let trimmed = between.trim();
+    if pack.possessive_copulas.contains(&trimmed) || is_appositive_link(between, pack) {
+        return true;
+    }
+
+    match trimmed.split_once(' ') {
+        Some((copula, negator)) => {
+            pack.possessive_copulas.contains(&copula) && pack.negators.contains(&negator)
+        }
+        None => trimmed
+            .strip_suffix(pack.negation_clitic)
+            .is_some_and(|copula| pack.possessive_copulas.contains(&copula)),
+    }
+}
+
 /// Whether the text between the mentions is an appositive comma, so that
 /// "x, y's <noun>" renames x as that noun.
 ///
@@ -241,9 +318,12 @@ fn of_genitive_noun<'a>(between: &'a str, pack: &LanguagePack) -> Option<&'a str
         return None;
     }
     let noun = words.pop()?;
+    // A negator is admitted alongside the modifiers so that "x is not the
+    // sister of y" reaches the rule at all. Which claim it makes is the
+    // caller's question; `assertion_stance` has already read the same window.
     words
         .iter()
-        .all(|word| pack.appositive_modifiers.contains(word))
+        .all(|word| pack.appositive_modifiers.contains(word) || pack.negators.contains(word))
         .then_some(noun)
 }
 
@@ -287,13 +367,38 @@ fn find_relation_pattern(
 
     let between = &text[start..end].to_lowercase();
 
-    // IMPORTANT: every rule below reads the text between the mentions as an
-    // assertion that the relation holds. Text that denies or suspends it is
-    // not a weaker assertion, it is the opposite one, so no rule may fire.
-    if suspends_assertion(between, pack) || ends_in_question(text, obj.end) {
+    // IMPORTANT: a question is suspended, never denied. "Did Elena mentor
+    // Marco?" does not claim the relation and does not deny it either.
+    // IMPORTANT: a denial is read from a wider window than an assertion. The
+    // suspender in "If Elena is not Marco's sister" sits before the subject, so
+    // the text between the mentions reads as a flat denial and a conflict check
+    // would take it for one. An assertion is deliberately left on the narrow
+    // window: widening it would drop claims the extractor has always made, and
+    // the same sentence opener does not make "Elena is Marco's sister" false.
+    let stance = match assertion_stance(between, pack) {
+        Stance::Denied if suspended_before(text, subj.start, pack) => Stance::Suspended,
+        other => other,
+    };
+    if stance == Stance::Suspended || ends_in_question(text, obj.end) {
         return None;
     }
 
+    Some(match_rules(text, obj, pack, between, gap)?.stance(stance))
+}
+
+/// The rule table proper, once the window between the mentions has been bounded
+/// and read for stance. IMPORTANT: every rule here is stance-blind — it decides
+/// *which* relation the phrasing names, and the caller decides whether the text
+/// asserts or denies it. The two questions were one `bool` before denials
+/// existed, and keeping them apart is what stops a negated sentence from being
+/// silently dropped instead of recorded as the opposite claim.
+fn match_rules(
+    text: &str,
+    obj: &EntityCandidate,
+    pack: &LanguagePack,
+    between: &str,
+    gap: usize,
+) -> Option<PatternMatch> {
     // Possessive pattern: "x is y's [relation]". Matched against the original
     // text so the noun's offsets can bound the evidence span.
     let after_obj = &text[obj.end..];
@@ -302,10 +407,7 @@ fn find_relation_pattern(
     let possessive =
         starts_with_clitic(bytes, pack) && matches!(bytes.get(clitic_len), Some(b' ') | Some(b'.'));
 
-    let asserts_possessive =
-        pack.possessive_copulas.contains(&between.trim()) || is_appositive_link(between, pack);
-
-    if possessive && asserts_possessive {
+    if possessive && is_possessive_link(between, pack) {
         let rest = &after_obj[clitic_len..];
         let phrase = &rest[..possessed_noun_phrase_len(rest, pack)];
         let phrase_start = obj.end + clitic_len;
