@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- A title leading a name is no longer part of the entity's identity. A
+  capitalized run swallowed every honorific in front of the name, so
+  "the Right Honourable Lady Catherine de Bourgh" normalized to
+  `right_honourable_lady_catherine_de_bourgh` and could never unify with
+  "Lady Catherine" or "Catherine de Bourgh" elsewhere in the same novel. Titles
+  are now dropped from the normalized form while `EntityCandidate.text` keeps
+  the styled surface form, which is the form `aliases` is keyed on. The last
+  title is kept when only one name word would remain, because that is the title
+  doing the distinguishing work: stripping it collapses "Miss Darcy" and
+  "Mr. Darcy" onto `darcy` and the relation between them is then dropped as a
+  self-relation.
+
 ## [0.1.2] - 2026-09-16
 
 ### Added

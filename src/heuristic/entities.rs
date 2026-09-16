@@ -99,6 +99,78 @@ const NAME_PARTICLES: &[&str] = &[
     "ibn", "al", "da", "dos", "das", "y",
 ];
 
+/// Titles and ranks that precede a name and are not part of the identity.
+///
+/// IMPORTANT: this cuts differently from both lists above. A particle joins a
+/// run, an opener is dropped at position 0 only, and a title is capitalized,
+/// real, and correctly part of the surface form; it just must not be part of
+/// the identity, or "the Right Honourable Lady Catherine de Bourgh" can never
+/// unify with any shorter mention of her.
+///
+/// Entries are bare: `.` is a separator in `extract_capitalized_entities`, so
+/// the run already reads "Mrs Bennet" and a "mrs." entry would never match.
+///
+/// Membership is restricted to words that do not also do relational or naming
+/// work. "Father", "Mother", "Sister" and "Master" are titles in address but
+/// heads of the relational lexicon `find_relation_pattern` matches; "Major",
+/// "General" and "President" are common nouns. "Grace" is excluded for the
+/// reason "May" and "June" are excluded above: it is a given name, and "His
+/// Grace" needs no entry because stripping it would leave nothing and
+/// `strip_honorifics` keeps the mention whole in that case.
+#[rustfmt::skip]
+const HONORIFICS: &[&str] = &[
+    "mr", "mrs", "ms", "miss", "mister", "dr", "doctor", "sir", "dame", "lady", "lord",
+    "captain", "capt", "colonel", "col", "reverend", "rev", "professor", "prof",
+    "sergeant", "sgt", "lieutenant", "admiral", "bishop", "cardinal",
+    "hon", "honourable", "honorable",
+];
+
+/// Words that form a compounded style only in front of another title. Alone
+/// they are ordinary adjectives, so they are stripped only when an entry of
+/// `HONORIFICS` follows.
+const HONORIFIC_QUALIFIERS: &[&str] = &["right", "most", "very"];
+
+fn is_title_word(word: &str, next: Option<&str>) -> bool {
+    let word = word.to_lowercase();
+    if HONORIFIC_QUALIFIERS.contains(&word.as_str()) {
+        return next.is_some_and(|n| HONORIFICS.contains(&n.to_lowercase().as_str()));
+    }
+    HONORIFICS.contains(&word.as_str())
+}
+
+/// Drop the titles leading a mention, keeping the last one when only a single
+/// name word would remain.
+///
+/// IMPORTANT: the carve-out is what keeps the title that is doing the
+/// distinguishing work. Stripping unconditionally normalizes "Miss Darcy" and
+/// "Mr. Darcy" both to `darcy`, which is not a person and, where the two
+/// appear in one sentence, turns a real relation into a self-relation that
+/// `extract_relations` then drops. A title in front of two or more name words
+/// distinguishes nothing the name does not.
+fn strip_honorifics(entity: &str) -> &str {
+    let mut rest = entity;
+
+    while let Some((head, tail)) = rest.split_once(' ') {
+        // Stop while one name word would be left: that word is a bare given
+        // name or surname, and the title is the only thing separating it from
+        // everyone else who shares it. A particle is not one of those words —
+        // "Lady de Bourgh" reduced to `de_bourgh` names the surname two people
+        // share, which is the error the particle list exists to prevent.
+        if name_word_count(tail) < 2 || !is_title_word(head, tail.split(' ').next()) {
+            break;
+        }
+        rest = tail;
+    }
+
+    rest
+}
+
+fn name_word_count(run: &str) -> usize {
+    run.split(' ')
+        .filter(|w| !NAME_PARTICLES.contains(&w.to_lowercase().as_str()))
+        .count()
+}
+
 /// Whether `word_start` is the first word of a sentence, looking past any
 /// opening quotation or bracket that precedes it.
 fn is_sentence_start(text: &str, word_start: usize) -> bool {
@@ -126,6 +198,17 @@ fn is_sentence_start(text: &str, word_start: usize) -> bool {
 /// there, and so must not open a mention.
 fn opens_sentence_by_position(text: &str, word: &str, word_start: usize) -> bool {
     SENTENCE_OPENERS.contains(&word.to_lowercase().as_str()) && is_sentence_start(text, word_start)
+}
+
+/// The one place a completed capitalized run becomes a candidate, so that the
+/// title rule is applied once rather than at each of the flush sites.
+fn push_entity(entities: &mut Vec<EntityCandidate>, run: &str, start: usize, end: usize) {
+    entities.push(EntityCandidate {
+        text: run.to_string(),
+        normalized: normalize_entity(strip_honorifics(run)),
+        start,
+        end,
+    });
 }
 
 fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
@@ -177,12 +260,7 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
                     pending_particles.push(' ');
                 } else {
                     if !current_entity.is_empty() {
-                        entities.push(EntityCandidate {
-                            text: current_entity.clone(),
-                            normalized: normalize_entity(&current_entity),
-                            start: start_idx,
-                            end: entity_end,
-                        });
+                        push_entity(&mut entities, &current_entity, start_idx, entity_end);
                         current_entity.clear();
                     }
                     pending_particles.clear();
@@ -214,23 +292,13 @@ fn extract_capitalized_entities(text: &str) -> Vec<EntityCandidate> {
             current_entity.push_str(&current_word);
             entity_end = text.len();
         } else if !current_entity.is_empty() {
-            entities.push(EntityCandidate {
-                text: current_entity.clone(),
-                normalized: normalize_entity(&current_entity),
-                start: start_idx,
-                end: entity_end,
-            });
+            push_entity(&mut entities, &current_entity, start_idx, entity_end);
             current_entity.clear();
         }
     }
 
     if !current_entity.is_empty() {
-        entities.push(EntityCandidate {
-            text: current_entity.clone(),
-            normalized: normalize_entity(&current_entity),
-            start: start_idx,
-            end: entity_end,
-        });
+        push_entity(&mut entities, &current_entity, start_idx, entity_end);
     }
 
     entities

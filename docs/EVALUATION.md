@@ -9,18 +9,18 @@ exists is behavioral test coverage over the pattern set documented in
 | Suite | Count | What it checks |
 |---|---|---|
 | `src/heuristic/segment.rs` (`cargo test`) | 14 | Sentence segmentation: honorifics, initials, ellipses, decimals, em-dashes, quoted dialogue with attribution, terminator runs, multibyte offsets, empty input, and a 20k-case property test asserting no panic and valid char-boundary offsets |
-| `tests/heuristic.rs` (`cargo test`) | 38 | Each relation pattern fires on a canonical example, confidence ordering, span correctness, `min_confidence` filtering, rule attribution, and multi-relation sentences; plus nested mentions (`Jane` inside `Mary Jane`), a surface form recurring inside an earlier word (`Dev` inside `Devon`), an entity whose lowercase form changes byte length (`İ`), a possessive bounded to its noun phrase, passive-voice role orientation, spans covering the token that licensed the relation, a referent mentioned twice yielding both relations, no self-relations, whole-word lexicon matching (`grandmother` is not `mother`), stance nouns scoring below stated kinship, one label shared between a noun rule and a verb rule, and a 20k-case property test over the whole pipeline asserting no panic and valid char-boundary spans. Ten of them came out of the near-miss probing below. Seven assert that nothing is emitted: a possessive without a copula, a reported possessive, a non-head relational noun, a denied or suspended relation, a question, a plural copula, and a capitalized pronoun inside dialogue. Three guard the other direction, so the gates cannot be tightened into silence: a sentence opener dropped without losing the mention after it, a given name that reads as a function word, and each copula the possessive still accepts |
+| `tests/heuristic.rs` (`cargo test`) | 53 | Each relation pattern fires on a canonical example, confidence ordering, span correctness, `min_confidence` filtering, rule attribution, and multi-relation sentences; plus nested mentions (`Jane` inside `Mary Jane`), a surface form recurring inside an earlier word (`Dev` inside `Devon`), an entity whose lowercase form changes byte length (`İ`), a possessive bounded to its noun phrase, passive-voice role orientation, spans covering the token that licensed the relation, a referent mentioned twice yielding both relations, no self-relations, whole-word lexicon matching (`grandmother` is not `mother`), stance nouns scoring below stated kinship, one label shared between a noun rule and a verb rule, and a 20k-case property test over the whole pipeline asserting no panic and valid char-boundary spans. Ten of them came out of the near-miss probing below. Seven assert that nothing is emitted: a possessive without a copula, a reported possessive, a non-head relational noun, a denied or suspended relation, a question, a plural copula, and a capitalized pronoun inside dialogue. Three guard the other direction, so the gates cannot be tightened into silence: a sentence opener dropped without losing the mention after it, a given name that reads as a function word, and each copula the possessive still accepts. Entity boundaries have their own group: a name particle inside a run, a trailing particle that must not be folded in, a leading title dropped from the identity, a title in front of one name word kept because it is doing the distinguishing work, and a style qualifier that is only a title in front of another title |
 | `types.rs` binding-export tests (`cargo test --features bindings`) | 3 | `ts-rs` regenerates `bindings/*.ts` from `Options`, `TripleCandidate`, `SpannedTriple` without drift |
 | `tests/node/api.test.cjs` (`npm test`) | 8 | The N-API surface: extraction, empty input, `minConfidence` filtering, `aliases`, `ontology`, and the out-of-range-confidence error |
 | `tests/node/types.test.mts` (`npm run test:types`) | — | `index.d.ts` accepts valid `NapiOptions`/results and rejects invalid ones (`tsc --strict`) |
 
-All pass as of this writing (52 under default features; the 3 binding-export
+All pass as of this writing (67 under default features; the 3 binding-export
 tests require `--features bindings`, which CI covers via `--all-features`).
 Reproduce with:
 
 ```bash
-cargo test                      # 52: segmentation + pipeline
-cargo test --all-features       # 55: adds the binding-export tests
+cargo test                      # 67: segmentation + pipeline
+cargo test --all-features       # 70: adds the binding-export tests
 npm install && npm test
 npm run test:types
 ```
@@ -171,17 +171,29 @@ slots normalized to a fragment of the surname the two people share, and the
 claim was only distinguishable by taking the reading that makes them different
 people. A closed list of name particles now continues a run already open, and
 that candidate reads
-`widow_of(right_honourable_lady_catherine_de_bourgh, sir_lewis_de_bourgh)`.
-The other five candidates are byte-identical and none was added, so the counts
-above still stand. The changed candidate was not re-adjudicated: both judges
-ruled on the relation and its direction, which the fix does not touch, and the
-entity boundary they objected to is what it repairs.
+`widow_of(catherine_de_bourgh, lewis_de_bourgh)`. The other five candidates
+carry the same relation, direction and referents, so the counts above still
+stand. The changed candidate was not re-adjudicated: both judges ruled on the
+relation and its direction, which the fix does not touch, and the entity
+boundary they objected to is what it repairs.
 
-The subject still carries its honorific. That is the same class of boundary
-error one level out — a capitalized run takes in every title before the name —
-and it will keep `right_honourable_lady_catherine_de_bourgh` from unifying with
-any shorter mention of her. Tracked as issue #8; it was invisible until the
-particle fix, because the truncated mention never reached the honorific.
+The honorific the subject then carried — the same class of boundary error one
+level out, a capitalized run taking in every title before the name — was
+tracked as issue #8 and is fixed too. Re-running the sample is how both were
+found and how both were confirmed; the run is unchanged at 6 candidates and
+three of them changed a mention:
+
+| Before | After |
+| --- | --- |
+| `widow_of(right_honourable_lady_catherine_de_bourgh, sir_lewis_de_bourgh)` | `widow_of(catherine_de_bourgh, lewis_de_bourgh)` |
+| `uncle_of(mr_percy_cahill, mrs_charles)` | `uncle_of(percy_cahill, mrs_charles)` |
+| `father_of(bob_spicer, mrs_manson_mingott)` | `father_of(bob_spicer, manson_mingott)` |
+
+`mrs_charles` keeps its title on purpose: a title in front of a single name
+word is the only thing distinguishing the people who share that word. The same
+rule is why `daughter_of(miss_darcy, mr_darcy)` is untouched — stripping
+unconditionally would make both slots `darcy`, which `extract_relations` then
+drops as a self-relation, costing a candidate the judges ruled correct.
 
 ### What the number is worth
 

@@ -112,7 +112,14 @@ Two independent sources of entity mentions, merged per sentence:
 
 Every mention is normalized (`normalize_entity`: lowercased, spaces replaced
 with underscores) and, if the caller supplied an `aliases` map, remapped to
-its canonical form. Every mention is kept: collapsing repeated mentions of one
+its canonical form. Normalization also drops the titles leading the run
+(`HONORIFICS`, plus `right`/`most`/`very` in front of another title), because
+a title is capitalized and correctly part of the surface form but not part of
+the identity: without this, "the Right Honourable Lady Catherine de Bourgh"
+cannot unify with any shorter mention of her. The last title is kept when only
+one name word would remain, since that title is what separates "Miss Darcy"
+from "Mr. Darcy". `EntityCandidate.text` keeps the full styled surface form,
+and that is the form `aliases` is keyed on. Every mention is kept: collapsing repeated mentions of one
 referent would hide the second relation in "Elena is Marco's sister and Marco
 mentors Elena." Duplicate *triples* are collapsed at the end of the pipeline
 instead (`dedup_candidates`), keeping the highest confidence per

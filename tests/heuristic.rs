@@ -675,7 +675,7 @@ fn test_reversed_possessive_pattern() {
         .find(|c| c.relation == "father_of")
         .expect("reversed possessive not matched");
     assert_eq!(found.subject, "bob_spicer");
-    assert_eq!(found.object, "mrs_manson_mingott");
+    assert_eq!(found.object, "manson_mingott");
 }
 
 /// The copula links the possessed phrase to a second possessor, not to a
@@ -708,7 +708,7 @@ fn test_appositive_possessive_pattern() {
         .find(|c| c.relation == "father_of")
         .expect("appositive not matched");
     assert_eq!(found.subject, "bob_spicer");
-    assert_eq!(found.object, "mrs_manson_mingott");
+    assert_eq!(found.object, "manson_mingott");
 }
 
 /// A relative clause is not an apposition. "Elena, who visited Marco's sister"
@@ -813,8 +813,8 @@ fn test_a_particle_does_not_truncate_a_name() {
         .iter()
         .find(|c| c.relation == "widow_of")
         .expect("particle-bearing names lost the relation");
-    assert_eq!(found.subject, "lady_catherine_de_bourgh");
-    assert_eq!(found.object, "sir_lewis_de_bourgh");
+    assert_eq!(found.subject, "catherine_de_bourgh");
+    assert_eq!(found.object, "lewis_de_bourgh");
 }
 
 /// A particle only continues a run that has already started. Capitalized, it
@@ -855,5 +855,82 @@ fn test_a_trailing_particle_is_not_folded_into_the_mention() {
             first.text,
             "the mention's offsets do not bound its own text"
         );
+    }
+}
+
+/// Issue #8. A title is capitalized and belongs to the surface form, so the
+/// capitalized run swallows it and the mention names the honorific as well as
+/// the person. The identity has to come out the same with the titles and
+/// without them, or every styled mention is its own graph node.
+#[test]
+fn test_a_title_is_not_part_of_the_identity() {
+    let aliases = std::collections::BTreeMap::new();
+
+    for (text, surface, expected) in [
+        (
+            "the Right Honourable Lady Catherine de Bourgh spoke",
+            "Right Honourable Lady Catherine de Bourgh",
+            "catherine_de_bourgh",
+        ),
+        (
+            "Lady Catherine de Bourgh spoke",
+            "Lady Catherine de Bourgh",
+            "catherine_de_bourgh",
+        ),
+        (
+            "Catherine de Bourgh spoke",
+            "Catherine de Bourgh",
+            "catherine_de_bourgh",
+        ),
+        (
+            "Sir Lewis de Bourgh spoke",
+            "Sir Lewis de Bourgh",
+            "lewis_de_bourgh",
+        ),
+        ("Mr. Percy Cahill spoke", "Mr Percy Cahill", "percy_cahill"),
+    ] {
+        let mentions = extract_entities(text, &aliases);
+        assert_eq!(mentions[0].normalized, expected, "from {text:?}");
+        // The title leaves the identity only. It is what the text says, so the
+        // surface form keeps it, and `aliases` is keyed on that form.
+        assert_eq!(mentions[0].text, surface, "from {text:?}");
+    }
+}
+
+/// The title in front of a bare surname is the only thing distinguishing the
+/// people who share it. Stripping it would make Miss Darcy her own father, and
+/// `extract_relations` then drops the pair as a self-relation, so the rule
+/// costs a correct candidate rather than repairing one.
+#[test]
+fn test_a_title_in_front_of_one_name_word_is_kept() {
+    let aliases = std::collections::BTreeMap::new();
+
+    for (text, expected) in [
+        ("Miss Darcy spoke", "miss_darcy"),
+        ("Mr. Darcy spoke", "mr_darcy"),
+        ("Mrs. Charles spoke", "mrs_charles"),
+        // A particle is not a name word. Stripping here would leave the
+        // surname shared with every other de Bourgh.
+        ("Lady de Bourgh spoke", "lady_de_bourgh"),
+        // Nothing would remain at all, and a mention has to name something.
+        ("the Colonel spoke", "colonel"),
+    ] {
+        let mentions = extract_entities(text, &aliases);
+        assert_eq!(mentions[0].normalized, expected, "from {text:?}");
+    }
+}
+
+/// "Right" and "Most" are titles only in front of another title. Alone they
+/// are ordinary adjectives, and a mention that opens with one is a name.
+#[test]
+fn test_a_style_qualifier_alone_is_not_a_title() {
+    let aliases = std::collections::BTreeMap::new();
+
+    for (text, expected) in [
+        ("Right Whale Bay is far south", "right_whale_bay"),
+        ("Most Holy Redeemer stands there", "most_holy_redeemer"),
+    ] {
+        let mentions = extract_entities(text, &aliases);
+        assert_eq!(mentions[0].normalized, expected, "from {text:?}");
     }
 }
