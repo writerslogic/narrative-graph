@@ -1,5 +1,5 @@
 use narrative_graph::heuristic::extract_entities;
-use narrative_graph::{extract_candidate_triples, Options, Rejection};
+use narrative_graph::{extract_aggregates, extract_candidate_triples, Options, Rejection};
 
 #[test]
 fn test_simple_possessive_pattern() {
@@ -1199,4 +1199,93 @@ fn a_rejection_keys_on_the_relation_the_caller_saw() {
             .len(),
         1
     );
+}
+
+#[test]
+fn one_fact_stated_three_ways_yields_one_aggregate_with_three_spans() {
+    let text = "Elena is Marco's sister. Marco mentors Dev. \
+                Elena, the sister of Marco, left. Elena is Marco's sister.";
+    let opts = Options::default();
+
+    let aggregates = extract_aggregates(text, &opts).expect("extraction failed");
+    let sisterhood = aggregates
+        .iter()
+        .find(|a| a.relation == "sister_of")
+        .expect("no sister_of aggregate");
+
+    assert_eq!(sisterhood.subject, "elena");
+    assert_eq!(sisterhood.object, "marco");
+    assert_eq!(sisterhood.spans.len(), 3);
+    // Two rules produced them, each named once however many spans it produced.
+    assert_eq!(
+        sisterhood.rules,
+        vec!["possessive-sister-pattern", "of-genitive-sister-pattern"]
+    );
+
+    // Every span addresses the source text and they are in document order.
+    for pair in sisterhood.spans.windows(2) {
+        assert!(pair[0][0] <= pair[1][0]);
+    }
+    for span in &sisterhood.spans {
+        assert!(text.get(span[0]..span[1]).is_some());
+    }
+
+    // The per-sentence output is unchanged: one candidate for the fact, one span.
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+    let one = candidates
+        .iter()
+        .filter(|c| c.relation == "sister_of")
+        .count();
+    assert_eq!(one, 1);
+}
+
+#[test]
+fn repetition_does_not_raise_an_aggregate_confidence() {
+    let once = "Elena is Marco's sister.";
+    let thrice = "Elena is Marco's sister. Elena is Marco's sister. Elena is Marco's sister.";
+    let opts = Options::default();
+
+    let a = &extract_aggregates(once, &opts).unwrap()[0];
+    let b = &extract_aggregates(thrice, &opts).unwrap()[0];
+
+    assert_eq!(b.spans.len(), 3);
+    assert_eq!(a.confidence, b.confidence);
+}
+
+#[test]
+fn aggregates_are_ordered_by_where_the_story_states_them() {
+    // Two relations over the same pair, the second contradicting the first.
+    // Ordering by first span is what lets a caller say which one the story
+    // ends on; the alphabetical order of the per-sentence output cannot.
+    let text = "Elena is Marco's enemy. Dev works at the Archive. Elena is Marco's ally.";
+    let opts = Options::default();
+
+    let aggregates = extract_aggregates(text, &opts).expect("extraction failed");
+    let order: Vec<&str> = aggregates.iter().map(|a| a.relation.as_str()).collect();
+    assert_eq!(order, vec!["enemy_of", "works_at", "ally_of"]);
+
+    // The per-sentence output sorts the same facts by triple, subject first,
+    // which is the documented behaviour and must not have moved.
+    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
+    let alphabetical: Vec<(&str, &str)> = candidates
+        .iter()
+        .map(|c| (c.subject.as_str(), c.relation.as_str()))
+        .collect();
+    assert_eq!(
+        alphabetical,
+        vec![
+            ("dev", "works_at"),
+            ("elena", "ally_of"),
+            ("elena", "enemy_of")
+        ]
+    );
+}
+
+#[test]
+fn an_empty_passage_aggregates_to_nothing() {
+    let opts = Options::default();
+    assert!(extract_aggregates("", &opts).unwrap().is_empty());
+    assert!(extract_aggregates("Nothing relational here.", &opts)
+        .unwrap()
+        .is_empty());
 }

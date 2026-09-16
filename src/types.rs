@@ -95,6 +95,36 @@ pub struct Options {
     pub ontology: BTreeMap<String, String>,
 }
 
+/// One fact as a whole document states it, with every piece of evidence for it.
+///
+/// `TripleCandidate` is per-sentence and `extract_candidate_triples` keeps the
+/// highest-confidence one per triple, discarding the spans of the rest. An
+/// aggregate keeps them: a passage stating one fact three ways yields one
+/// aggregate carrying three spans.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "bindings", derive(ts_rs::TS), ts(export))]
+pub struct AggregateTriple {
+    pub subject: String,
+    pub relation: String,
+    pub object: String,
+    /// The highest confidence of any supporting candidate.
+    ///
+    /// IMPORTANT: repetition does not raise it, and `spans.len()` is the only
+    /// thing that reports corroboration. In fiction a restatement is not
+    /// independent evidence — an unreliable narrator restates a falsehood as
+    /// readily as a reliable one states a fact — so summing would let a
+    /// thrice-repeated lie outrank a once-stated fact, and averaging would
+    /// punish a strong statement for being echoed by a weaker phrasing. The
+    /// score answers "how good is the best evidence", not "how much is there".
+    pub confidence: f32,
+    /// Every span the fact was found at, in document order. Never empty.
+    pub spans: Vec<[usize; 2]>,
+    /// The rules that produced those spans, first occurrence first, without
+    /// repeats. Two spans from one rule name it once.
+    pub rules: Vec<String>,
+}
+
 /// A reference span into the input text with its corresponding surface text.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

@@ -1,10 +1,11 @@
+mod aggregate;
 mod cooccurrence;
 mod entities;
 pub mod pack;
 mod relations;
 mod segment;
 
-use crate::types::{Options, TripleCandidate};
+use crate::types::{AggregateTriple, Options, TripleCandidate};
 use crate::Result;
 use pack::LanguagePack;
 use std::collections::{BTreeMap, BTreeSet};
@@ -15,13 +16,32 @@ pub use relations::normalize_relation;
 /// Extract candidate (subject, relation, object) triples from prose.
 /// Runs the heuristic pipeline: entity detection, relation labeling, co-occurrence scoring, and confidence calculation.
 pub fn extract_candidate_triples(text: &str, opts: &Options) -> Result<Vec<TripleCandidate>> {
-    extract_with_pack(text, opts, &pack::ENGLISH)
+    let mut candidates = collect_candidates(text, opts, &pack::ENGLISH)?;
+    // Deduplicate: keep highest confidence for each (subj, rel, obj) triple
+    dedup_candidates(&mut candidates);
+    Ok(candidates)
 }
 
-/// The pipeline proper, reading its whole vocabulary from one pack. Selecting a
-/// pack is a caller-facing decision that waits on a second pack existing, so
-/// this stays internal and `extract_candidate_triples` supplies English.
-fn extract_with_pack(
+/// Extract one entry per fact the document states, carrying every span that
+/// states it and ordered by where the first of them appears.
+///
+/// The same pipeline and the same rules as `extract_candidate_triples`; only
+/// the collapse at the end differs. Use this to ask what a manuscript claims
+/// overall, and that one to ask what each sentence claims.
+pub fn extract_aggregates(text: &str, opts: &Options) -> Result<Vec<AggregateTriple>> {
+    let candidates = collect_candidates(text, opts, &pack::ENGLISH)?;
+    Ok(aggregate::aggregate(candidates))
+}
+
+/// Every candidate the rules fire on, in document order and with repeats
+/// intact. IMPORTANT: this is the one place the evidence still exists in full.
+/// `dedup_candidates` keeps one candidate per triple and drops the spans of the
+/// rest, so anything that needs them has to read this list, not that output.
+///
+/// Reading the whole vocabulary from one pack; selecting a pack is a
+/// caller-facing decision that waits on a second pack existing, so this stays
+/// internal and the public entry points supply English.
+fn collect_candidates(
     text: &str,
     opts: &Options,
     pack: &LanguagePack,
@@ -80,9 +100,6 @@ fn extract_with_pack(
             }
         }
     }
-
-    // Deduplicate: keep highest confidence for each (subj, rel, obj) triple
-    dedup_candidates(&mut candidates);
 
     Ok(candidates)
 }

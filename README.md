@@ -125,6 +125,8 @@ Every candidate carries a confidence score from the extraction rule's pattern st
 | `extract_candidate_triples(text, &Options)` | Run the heuristic pipeline over a passage |
 | `Options { aliases, min_confidence, rejections, ontology }` | Alias map, confidence floor, rejected triples, relation-vocabulary overrides |
 | `TripleCandidate { subject, relation, object, confidence, span, rule }` | One candidate fact; `span` is a byte range into the input, `rule` names the pattern that produced it |
+| `extract_aggregates(text, &Options)` | Same pipeline, collapsed per fact instead of per sentence: one entry per triple, ordered by where the document first states it |
+| `AggregateTriple { subject, relation, object, confidence, spans, rules }` | One fact with every span that stated it; `confidence` is the best of them, and repetition does not raise it |
 
 </details>
 

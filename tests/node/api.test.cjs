@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { extractCandidateTriplesNapi } = require('../../index.js')
+const { extractAggregatesNapi, extractCandidateTriplesNapi } = require('../../index.js')
 
 test('extracts a possessive-sister relation with a confident score', () => {
   const candidates = extractCandidateTriplesNapi("Elena is Marco's sister.")
@@ -102,4 +102,19 @@ test('suppresses a rejected triple and leaves every other one', () => {
 
   assert.equal(kept.length, 1)
   assert.equal(kept[0].relation, 'mentors')
+})
+
+test('aggregates one fact across a passage, in the order the story states it', () => {
+  const text = "Elena is Marco's enemy. Dev works at the Archive. Elena is Marco's ally."
+  const aggregates = extractAggregatesNapi(text)
+
+  assert.deepEqual(
+    aggregates.map((a) => a.relation),
+    ['enemy_of', 'works_at', 'ally_of'],
+  )
+
+  const repeated = extractAggregatesNapi("Elena is Marco's sister. Elena is Marco's sister.")
+  assert.equal(repeated.length, 1)
+  assert.equal(repeated[0].spans.length, 2)
+  assert.deepEqual(repeated[0].rules, ['possessive-sister-pattern'])
 })

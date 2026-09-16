@@ -83,6 +83,34 @@ Each `NapiTripleCandidate`:
 | `span` | `number[]` | `[start, end)` byte range in the input text |
 | `rule` | `string` | Name of the extraction rule that produced this candidate |
 
+### Aggregating a whole document
+
+`extractCandidateTriplesNapi` works sentence by sentence and keeps the
+highest-confidence candidate per triple, so the spans of every other statement
+of the same fact are discarded. `extractAggregatesNapi(text, opts?)` runs the
+same rules and keeps them:
+
+```ts
+const aggregates = extractAggregatesNapi(
+  "Elena is Marco's enemy. Dev works at the Archive. Elena is Marco's ally.",
+)
+// → enemy_of, works_at, ally_of — in the order the passage states them
+```
+
+Each `NapiAggregateTriple` carries `subject`, `relation`, `object`, plus:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `confidence` | `number` | The best of its supporting candidates. Repetition does not raise it: a restatement in fiction is not independent evidence, so `spans.length` is what reports corroboration and the score deliberately ignores it. |
+| `spans` | `number[][]` | Every `[start, end)` that stated the fact, in document order |
+| `rules` | `string[]` | The rules that produced them, first occurrence first, without repeats |
+
+The array is ordered by each entry's first span, so two facts about the same
+pair can be read in the order the story states them — which is what makes
+`enemy_of` in chapter 2 and `ally_of` in chapter 20 a character arc rather
+than a contradiction. `extractCandidateTriplesNapi` keeps its own order, by
+triple, and is unaffected.
+
 ### Error handling
 
 The only error the current pipeline raises is an out-of-range
