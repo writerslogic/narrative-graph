@@ -56,6 +56,7 @@ fn main() -> anyhow::Result<()> {
                 } else {
                     None
                 },
+                cross_sentence_pronouns: false,
                 rejections: Default::default(),
                 ontology: Default::default(),
             };

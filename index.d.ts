@@ -37,6 +37,7 @@ export interface NapiConflict {
 export interface NapiOptions {
   aliases?: Record<string, string>
   minConfidence?: number
+  crossSentencePronouns?: boolean
   rejections?: Array<NapiRejection>
   ontology?: Record<string, string>
 }

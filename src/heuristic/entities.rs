@@ -10,16 +10,23 @@ pub struct EntityCandidate {
     pub end: usize,
 }
 
-/// Extract entities from a sentence with the pipeline's own language pack.
+/// Extract entities from a sentence with the pipeline's own language pack and
+/// no context from any preceding sentence.
 pub fn extract_entities(text: &str, aliases: &BTreeMap<String, String>) -> Vec<EntityCandidate> {
-    extract_entities_with(text, aliases, &super::pack::ENGLISH)
+    extract_entities_with(text, aliases, &super::pack::ENGLISH, &[])
 }
 
-/// Extract entities from a sentence using capitalization + pronoun linking + alias resolution.
+/// Extract entities from a sentence using capitalization + pronoun linking +
+/// alias resolution.
+///
+/// `carried` holds the referents named by the previous sentence, in the order
+/// it named them, and is consulted only for a pronoun with no antecedent in
+/// this sentence. See `resolve_pronouns` for what that ordering assumes.
 pub fn extract_entities_with(
     text: &str,
     aliases: &BTreeMap<String, String>,
     pack: &LanguagePack,
+    carried: &[String],
 ) -> Vec<EntityCandidate> {
     let mut entities = Vec::new();
 
@@ -39,26 +46,7 @@ pub fn extract_entities_with(
     // surface form, which would overwrite it wherever the two collide.
     let from_lexicon = lexicon_mentions(text, aliases, &entities);
 
-    // Find pronouns that can be linked to previously mentioned entities in the
-    // sentence. A lexicon mention covering the pronoun's own offsets replaces
-    // it: the caller named that referent outright, which beats resolving one.
-    let pronouns = extract_pronouns(text, pack);
-    for pronoun in pronouns {
-        let covered = from_lexicon
-            .iter()
-            .any(|m| pronoun.start < m.end && m.start < pronoun.end);
-        if covered {
-            continue;
-        }
-        if let Some(antecedent) = find_pronoun_antecedent(text, &pronoun, &from_lexicon) {
-            entities.push(EntityCandidate {
-                text: pronoun.text.clone(),
-                normalized: antecedent,
-                start: pronoun.start,
-                end: pronoun.end,
-            });
-        }
-    }
+    entities.extend(resolve_pronouns(text, pack, &from_lexicon, carried));
 
     entities.extend(from_lexicon);
 
@@ -160,6 +148,14 @@ fn push_entity(
     end: usize,
     pack: &LanguagePack,
 ) {
+    // IMPORTANT: a pronoun is never a proper name, wherever it is capitalized.
+    // `SENTENCE_OPENERS` catches one that opens a sentence; one mid-sentence
+    // ("Elena said that She is Marco's sister") reached here and became a node
+    // named `she`, which names nobody, alongside the correct mention.
+    if pack.pronouns.iter().any(|p| run.eq_ignore_ascii_case(p)) {
+        return;
+    }
+
     entities.push(EntityCandidate {
         text: run.to_string(),
         normalized: normalize_entity(strip_honorifics(run, pack)),
@@ -185,7 +181,13 @@ fn extract_capitalized_entities(text: &str, pack: &LanguagePack) -> Vec<EntityCa
     let mut pending_particles = String::new();
 
     for (byte_pos, c) in text.char_indices() {
-        let is_sep = c.is_whitespace() || ",.!?;:—'\"".contains(c);
+        // IMPORTANT: the typographic apostrophe separates exactly as the
+        // straight one does. Without it "Blanche’s" is one capitalized run and
+        // normalizes to `blanche’s`, a node that never unifies with any other
+        // mention of her — and Gutenberg texts are typeset with the curly form
+        // throughout, so this is the common case in real prose, not the rare
+        // one. `find_pronoun_antecedent` already strips both.
+        let is_sep = c.is_whitespace() || ",.!?;:—'\u{2019}\"".contains(c);
 
         if is_sep {
             if !current_word.is_empty() {
@@ -398,6 +400,94 @@ fn extract_pronouns(text: &str, pack: &LanguagePack) -> Vec<Pronoun> {
     found
 }
 
+/// Resolve every pronoun in the sentence, in text order.
+///
+/// A pronoun with a mention before it in its own sentence takes that one, as
+/// it always has. A pronoun with none — one opening a sentence, which is where
+/// narrative prose puts them — falls back to a referent the previous sentence
+/// named, and `runs(elena, archive)` in "Elena grew up in the Archive. She runs
+/// it now." is invisible without that fallback.
+///
+/// IMPORTANT: two assumptions carry the whole fallback, and neither is free.
+///
+/// - Carried referents are consumed in the order the previous sentence named
+///   them, so the first unresolved pronoun takes its topic. That is a
+///   different rule from the within-sentence one: "nearest preceding" is about
+///   syntactic proximity, and across a boundary the relevant relation is topic
+///   continuity, whose best single guess is the previous sentence's subject.
+/// - Two distinct pronouns in one sentence never take the same referent. "She
+///   runs it" cannot mean Elena runs Elena, so a carried referent is consumed
+///   once. This is the only thing standing in for agreement, which the
+///   pipeline does not have: with no gender or number check, nothing else
+///   keeps "it" off the person "she" just named.
+///
+/// The scope ends at the previous sentence and at a paragraph break, which
+/// `collect_candidates` enforces by clearing the carry. One sentence is the
+/// smallest window that fixes the case above, and every additional sentence
+/// multiplies the error rate of a rule with no agreement behind it.
+fn resolve_pronouns(
+    text: &str,
+    pack: &LanguagePack,
+    lexicon: &[EntityCandidate],
+    carried: &[String],
+) -> Vec<EntityCandidate> {
+    let mut resolved = Vec::new();
+    let mut next_carried = 0;
+
+    // A lexicon mention covering the pronoun's own offsets replaces it: the
+    // caller named that referent outright, which beats resolving one.
+    for pronoun in extract_pronouns(text, pack) {
+        let covered = lexicon
+            .iter()
+            .any(|m| pronoun.start < m.end && m.start < pronoun.end);
+        if covered {
+            continue;
+        }
+
+        let antecedent = match find_pronoun_antecedent(text, &pronoun, lexicon, pack) {
+            Some(antecedent) => antecedent,
+            None => {
+                let Some(carried) = carried.get(next_carried) else {
+                    continue;
+                };
+                next_carried += 1;
+                carried.clone()
+            }
+        };
+
+        resolved.push(EntityCandidate {
+            text: pronoun.text.clone(),
+            normalized: antecedent,
+            start: pronoun.start,
+            end: pronoun.end,
+        });
+    }
+
+    resolved
+}
+
+/// The referents this sentence names outright, in order and without repeats,
+/// for the next sentence's pronouns to fall back on.
+///
+/// IMPORTANT: a pronoun's own mention is not carried. It is a referent resolved
+/// by guess, and carrying it would let one wrong guess seed the next sentence's.
+pub fn carried_referents(entities: &[EntityCandidate], pack: &LanguagePack) -> Vec<String> {
+    let mut carried: Vec<String> = Vec::new();
+
+    for entity in entities {
+        let is_pronoun = pack
+            .pronouns
+            .iter()
+            .any(|p| entity.text.eq_ignore_ascii_case(p));
+        if is_pronoun || carried.contains(&entity.normalized) {
+            continue;
+        }
+        carried.push(entity.normalized.clone());
+    }
+
+    carried
+}
+
 /// The referent of a pronoun: the nearest mention before it.
 ///
 /// IMPORTANT: a lexicon mention counts here exactly as a capitalized word does,
@@ -410,6 +500,7 @@ fn find_pronoun_antecedent(
     text: &str,
     pronoun: &Pronoun,
     lexicon: &[EntityCandidate],
+    pack: &LanguagePack,
 ) -> Option<String> {
     let nearest_lexicon = lexicon
         .iter()
@@ -427,7 +518,14 @@ fn find_pronoun_antecedent(
         let word = word.split(['\'', '\u{2019}']).next().unwrap_or(word);
         let word = word.trim_matches(|c: char| !c.is_alphanumeric());
 
-        if word.chars().next().is_some_and(|c| c.is_uppercase()) && word.len() > 1 {
+        // IMPORTANT: a capitalized pronoun is not an antecedent. "She runs it"
+        // would otherwise resolve "it" to the word "She" and put a graph node
+        // named `she` in the output, which names nobody — and it would hide
+        // the pronoun that has no antecedent here from the cross-sentence
+        // fallback, which is the only thing that can resolve it.
+        let is_pronoun = pack.pronouns.iter().any(|p| word.eq_ignore_ascii_case(p));
+
+        if !is_pronoun && word.chars().next().is_some_and(|c| c.is_uppercase()) && word.len() > 1 {
             return match nearest_lexicon {
                 Some(m) if m.end > offset => Some(m.normalized.clone()),
                 _ => Some(normalize_entity(word)),

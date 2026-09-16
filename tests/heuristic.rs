@@ -1389,3 +1389,91 @@ fn one_person_cannot_have_two_mothers() {
     let many = find_conflicts("Elena is Dev's sister. Sofia is Dev's sister.", &opts).unwrap();
     assert!(many.is_empty());
 }
+
+#[test]
+fn a_pronoun_opening_a_sentence_can_take_the_previous_sentence_referent() {
+    let text = "Elena joined the Archive. She works at it.";
+    let on = Options {
+        cross_sentence_pronouns: true,
+        ..Default::default()
+    };
+
+    let candidates = extract_candidate_triples(text, &on).expect("extraction failed");
+    let works_at = candidates
+        .iter()
+        .find(|c| c.subject == "elena" && c.object == "archive")
+        .unwrap_or_else(|| panic!("no cross-sentence relation: {candidates:?}"));
+    // The span addresses the source text and covers the second sentence.
+    assert!(works_at.span[0] >= "Elena joined the Archive.".len());
+    assert!(text.get(works_at.span[0]..works_at.span[1]).is_some());
+
+    // Off by default, so the second sentence contributes nothing.
+    assert!(extract_candidate_triples(text, &Options::default())
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn a_pronoun_chain_does_not_cross_a_paragraph_break() {
+    let on = Options {
+        cross_sentence_pronouns: true,
+        ..Default::default()
+    };
+
+    // Same two sentences, separated by a blank line: the subject may have
+    // switched and nothing in the text says otherwise, so the chain ends.
+    let split = "Elena joined the Archive.\n\nShe works at it.";
+    assert!(
+        extract_candidate_triples(split, &on).unwrap().is_empty(),
+        "linked a pronoun across a paragraph break"
+    );
+}
+
+#[test]
+fn two_pronouns_in_one_sentence_do_not_take_the_same_referent() {
+    // "She runs it" cannot mean Elena runs Elena. With no agreement check,
+    // consuming each carried referent once is the only thing keeping "it" off
+    // the person "she" just took.
+    let on = Options {
+        cross_sentence_pronouns: true,
+        ..Default::default()
+    };
+    let aggregates = extract_aggregates("Elena joined the Archive. She works at it.", &on)
+        .expect("extraction failed");
+
+    assert!(aggregates.iter().all(|a| a.subject != a.object));
+    assert!(aggregates
+        .iter()
+        .any(|a| a.subject == "elena" && a.object == "archive"));
+}
+
+#[test]
+fn a_capitalized_pronoun_is_never_an_antecedent() {
+    // The backward walk used to accept the word "She" and emit a node named
+    // `she`, which names nobody.
+    let opts = Options::default();
+    for text in [
+        "She is Marco's sister.",
+        "Elena said that She is Marco's sister.",
+    ] {
+        let candidates = extract_candidate_triples(text, &opts).unwrap();
+        assert!(
+            candidates
+                .iter()
+                .all(|c| c.subject != "she" && c.object != "she"),
+            "a pronoun became a graph node in {text:?}: {candidates:?}"
+        );
+    }
+}
+
+#[test]
+fn a_typographic_apostrophe_separates_a_mention_as_a_straight_one_does() {
+    let opts = Options::default();
+    let curly = extract_candidate_triples("Elena is Blanche\u{2019}s sister.", &opts).unwrap();
+    let straight = extract_candidate_triples("Elena is Blanche's sister.", &opts).unwrap();
+
+    assert_eq!(straight.len(), 1);
+    assert_eq!(straight[0].object, "blanche");
+    // The curly form must at least not fold the clitic into the name.
+    assert!(curly.iter().all(|c| !c.object.contains('\u{2019}')));
+}

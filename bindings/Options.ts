@@ -46,6 +46,26 @@ min_confidence: number | null,
  */
 rejections: Array<Rejection>, 
 /**
+ * Let a pronoun with no antecedent in its own sentence take one from the
+ * sentence before it, within the same paragraph. Default: off.
+ *
+ * It buys the relation in "Elena grew up in the Archive. She runs it now.",
+ * which is invisible without it because the second sentence resolves
+ * nothing and so contributes no candidate at all.
+ *
+ * IMPORTANT: off by default because it is measurably lossy today. The
+ * pipeline has no gender or number agreement, so the fallback picks by
+ * position alone, and over three novels (5014 paragraphs) turning it on
+ * adds exactly one triple, which is wrong: "He" there refers to a man
+ * named three sentences earlier and resolves to the woman named in the
+ * sentence before. Agreement is the prerequisite, not a wider window —
+ * the right antecedent was out of reach of any one-sentence lookback.
+ *
+ * Turn it on for prose with few characters per scene, or where recall
+ * matters more than precision and a caller filters afterwards.
+ */
+cross_sentence_pronouns: boolean, 
+/**
  * Optional mapping from recognized relation patterns to a caller-supplied controlled vocabulary.
  * Example: { "loves": "romantic_interest", "is_married_to": "spouse" }
  * If a relation type is not in this map, the heuristic default is used.

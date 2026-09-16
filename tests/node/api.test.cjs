@@ -141,3 +141,14 @@ test('records a denial and flags it against the assertion of the same fact', () 
   // A stance that changes over a story is a character arc, not a conflict.
   assert.equal(findConflictsNapi("Elena is Marco's enemy. Later, Elena is Marco's ally.").length, 0)
 })
+
+test('links a pronoun to the previous sentence only when asked', () => {
+  const text = 'Elena joined the Archive. She works at it.'
+
+  assert.equal(extractCandidateTriplesNapi(text).length, 0)
+
+  const linked = extractCandidateTriplesNapi(text, { crossSentencePronouns: true })
+  assert.equal(linked.length, 1)
+  assert.equal(linked[0].subject, 'elena')
+  assert.equal(linked[0].object, 'archive')
+})

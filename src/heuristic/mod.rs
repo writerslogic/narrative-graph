@@ -89,9 +89,24 @@ fn collect_candidates(
         .collect();
 
     let mut candidates = Vec::new();
+    // The referents the previous sentence named, for a pronoun in this one
+    // that has no antecedent of its own. Cleared at a paragraph break: a
+    // pronoun chain does not cross one, and a paragraph is the coarsest
+    // boundary the pipeline can actually see — it has no notion of a scene
+    // break or a POV change, so this is the closest stand-in for both.
+    let mut carried: Vec<String> = Vec::new();
+    let mut previous_end = 0usize;
 
     for (sent_text, sent_start) in segment::split_sentences(text, pack) {
-        let entities = entities::extract_entities_with(sent_text, &opts.aliases, pack);
+        if text[previous_end..sent_start].matches('\n').count() > 1 {
+            carried.clear();
+        }
+        previous_end = sent_start + sent_text.len();
+
+        let entities = entities::extract_entities_with(sent_text, &opts.aliases, pack, &carried);
+        if opts.cross_sentence_pronouns {
+            carried = entities::carried_referents(&entities, pack);
+        }
 
         if entities.is_empty() {
             continue;
