@@ -1421,6 +1421,19 @@ fn a_pronoun_chain_does_not_cross_a_paragraph_break() {
 }
 
 #[test]
+fn a_pronoun_chain_does_not_reach_back_past_an_intervening_sentence() {
+    // The carry holds one sentence, not the whole document: a sentence naming
+    // nobody ends the chain exactly as a paragraph break does.
+    let interrupted = "Mrs. Bennet joined the Archive. Nothing happened. She works at it.";
+    assert!(
+        extract_candidate_triples(interrupted, &Options::default())
+            .unwrap()
+            .is_empty(),
+        "reached back two sentences for a referent"
+    );
+}
+
+#[test]
 fn two_pronouns_in_one_sentence_do_not_take_the_same_referent() {
     // "She runs it" cannot mean Elena runs Elena. With no agreement check,
     // consuming each carried referent once is the only thing keeping "it" off
