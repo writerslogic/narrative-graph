@@ -42,6 +42,36 @@ pub struct LanguagePack {
     pub honorifics: &'static [&'static str],
     pub honorific_qualifiers: &'static [&'static str],
     pub pronouns: &'static [&'static str],
+    /// The pronoun list cut by what it agrees with. IMPORTANT: every entry
+    /// must also appear in `pronouns`, which is what decides whether a word is
+    /// a pronoun at all; these only say what kind.
+    pub masculine_pronouns: &'static [&'static str],
+    pub feminine_pronouns: &'static [&'static str],
+    pub neuter_pronouns: &'static [&'static str],
+    pub plural_pronouns: &'static [&'static str],
+    /// Titles that settle the bearer's gender. A subset of `honorifics`:
+    /// "dr", "captain" and "professor" are titles and settle nothing.
+    pub masculine_titles: &'static [&'static str],
+    pub feminine_titles: &'static [&'static str],
+    /// Words whose presence in front of a capitalized run marks it as a common
+    /// noun phrase rather than a personal name.
+    pub determiners: &'static [&'static str],
+    /// Pronouns that name the speaker or the listener rather than anyone in
+    /// the story. IMPORTANT: these are never mentions. "I" is capitalized in
+    /// every sentence of first-person narration, and a graph node called `i`
+    /// names whoever happens to be talking.
+    pub deictic_pronouns: &'static [&'static str],
+    /// The pronouns that stand in subject position. IMPORTANT: only these are
+    /// read as evidence about the name in front of them. An object or
+    /// possessive pronoun after a name usually names someone else — "Archer
+    /// looked at her" is about two people — so learning from one records the
+    /// opposite of what the sentence says.
+    pub subject_pronouns: &'static [&'static str],
+    /// Prepositions that take a place and essentially never take a person.
+    /// "to" and "from" are absent: both take people constantly.
+    pub locative_prepositions: &'static [&'static str],
+    /// Names of times rather than of people.
+    pub temporal_names: &'static [&'static str],
     pub abbreviations: &'static [&'static str],
     pub possessive_nouns: &'static [(&'static str, &'static str, f32)],
     pub possessive_copulas: &'static [&'static str],
@@ -78,6 +108,58 @@ pub static ENGLISH: LanguagePack = LanguagePack {
     honorifics: HONORIFICS,
     honorific_qualifiers: HONORIFIC_QUALIFIERS,
     pronouns: PRONOUNS,
+    masculine_pronouns: &["he", "him", "his"],
+    feminine_pronouns: &["she", "her"],
+    neuter_pronouns: &["it", "its"],
+    plural_pronouns: &["they", "them", "their"],
+    masculine_titles: &["mr", "mister", "sir", "lord"],
+    feminine_titles: &["mrs", "ms", "miss", "dame", "lady"],
+    determiners: &["the", "a", "an"],
+    deictic_pronouns: &[
+        "i",
+        "me",
+        "my",
+        "mine",
+        "myself",
+        "you",
+        "your",
+        "yours",
+        "yourself",
+        "we",
+        "us",
+        "our",
+        "ours",
+        "ourselves",
+    ],
+    subject_pronouns: &["he", "she", "it", "they"],
+    locative_prepositions: &[
+        "at", "in", "near", "into", "within", "upon", "beyond", "outside", "inside", "across",
+    ],
+    temporal_names: &[
+        "january",
+        "february",
+        "march",
+        "april",
+        "june",
+        "july",
+        "august",
+        "september",
+        "october",
+        "november",
+        "december",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+        "christmas",
+        "easter",
+        "michaelmas",
+        "lady day",
+        "midsummer",
+    ],
     abbreviations: ABBREVIATIONS,
     possessive_nouns: POSSESSIVE_NOUNS,
     possessive_copulas: POSSESSIVE_COPULAS,

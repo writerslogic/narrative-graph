@@ -37,7 +37,6 @@ fn to_options(opts: Option<NapiOptions>) -> Options {
         Options {
             aliases: napi_opts.aliases.unwrap_or_default().into_iter().collect(),
             min_confidence: napi_opts.min_confidence.map(|c| c as f32),
-            cross_sentence_pronouns: napi_opts.cross_sentence_pronouns.unwrap_or(false),
             rejections: napi_opts
                 .rejections
                 .unwrap_or_default()
@@ -155,7 +154,6 @@ pub struct NapiTripleCandidate {
 pub struct NapiOptions {
     pub aliases: Option<std::collections::HashMap<String, String>>,
     pub min_confidence: Option<f64>,
-    pub cross_sentence_pronouns: Option<bool>,
     pub rejections: Option<Vec<NapiRejection>>,
     pub ontology: Option<std::collections::HashMap<String, String>>,
 }

@@ -2,6 +2,7 @@ mod aggregate;
 mod cooccurrence;
 mod entities;
 pub mod pack;
+mod register;
 mod relations;
 mod segment;
 
@@ -97,16 +98,26 @@ fn collect_candidates(
     let mut carried: Vec<String> = Vec::new();
     let mut previous_end = 0usize;
 
+    // IMPORTANT: built over the whole text before any pronoun is resolved. A
+    // name's evidence — a title on it, a determiner in front of it, a capital
+    // no sentence boundary explains — can appear anywhere in the document, and
+    // a register built as the pipeline went would miss whatever came later.
+    let mut register = register::Register::default();
+    for (sent_text, _) in segment::split_sentences(text, pack) {
+        let mentions = entities::mentions_for_register(sent_text, pack);
+        let pronouns = entities::pronouns_for_register(sent_text, pack);
+        register.observe(sent_text, &mentions, &pronouns, pack);
+    }
+
     for (sent_text, sent_start) in segment::split_sentences(text, pack) {
         if text[previous_end..sent_start].matches('\n').count() > 1 {
             carried.clear();
         }
         previous_end = sent_start + sent_text.len();
 
-        let entities = entities::extract_entities_with(sent_text, &opts.aliases, pack, &carried);
-        if opts.cross_sentence_pronouns {
-            carried = entities::carried_referents(&entities, pack);
-        }
+        let entities =
+            entities::extract_entities_with(sent_text, &opts.aliases, pack, &carried, &register);
+        carried = entities::carried_referents(sent_text, &entities, pack);
 
         if entities.is_empty() {
             continue;

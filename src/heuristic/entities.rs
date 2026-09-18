@@ -1,4 +1,5 @@
 use super::pack::LanguagePack;
+use super::register::Register;
 use std::collections::BTreeMap;
 
 /// Entity candidate with start and end positions in the text.
@@ -13,7 +14,28 @@ pub struct EntityCandidate {
 /// Extract entities from a sentence with the pipeline's own language pack and
 /// no context from any preceding sentence.
 pub fn extract_entities(text: &str, aliases: &BTreeMap<String, String>) -> Vec<EntityCandidate> {
-    extract_entities_with(text, aliases, &super::pack::ENGLISH, &[])
+    extract_entities_with(
+        text,
+        aliases,
+        &super::pack::ENGLISH,
+        &[],
+        &Register::default(),
+    )
+}
+
+/// The capitalized runs of one sentence, for the register pre-pass. Aliases and
+/// pronouns are deliberately absent: the register records what the text says
+/// about a name, before anything is resolved or remapped.
+pub fn mentions_for_register(text: &str, pack: &LanguagePack) -> Vec<EntityCandidate> {
+    extract_capitalized_entities(text, pack)
+}
+
+/// The pronouns of one sentence with their offsets, for the register pre-pass.
+pub fn pronouns_for_register(text: &str, pack: &LanguagePack) -> Vec<(String, usize)> {
+    extract_pronouns(text, pack)
+        .into_iter()
+        .map(|p| (p.text, p.start))
+        .collect()
 }
 
 /// Extract entities from a sentence using capitalization + pronoun linking +
@@ -27,6 +49,7 @@ pub fn extract_entities_with(
     aliases: &BTreeMap<String, String>,
     pack: &LanguagePack,
     carried: &[String],
+    register: &Register,
 ) -> Vec<EntityCandidate> {
     let mut entities = Vec::new();
 
@@ -46,7 +69,13 @@ pub fn extract_entities_with(
     // surface form, which would overwrite it wherever the two collide.
     let from_lexicon = lexicon_mentions(text, aliases, &entities);
 
-    entities.extend(resolve_pronouns(text, pack, &from_lexicon, carried));
+    entities.extend(resolve_pronouns(
+        text,
+        pack,
+        &from_lexicon,
+        carried,
+        register,
+    ));
 
     entities.extend(from_lexicon);
 
@@ -152,7 +181,11 @@ fn push_entity(
     // `SENTENCE_OPENERS` catches one that opens a sentence; one mid-sentence
     // ("Elena said that She is Marco's sister") reached here and became a node
     // named `she`, which names nobody, alongside the correct mention.
-    if pack.pronouns.iter().any(|p| run.eq_ignore_ascii_case(p)) {
+    // A deictic pronoun is excluded for a sharper reason: "I" is capitalized in
+    // every sentence of first-person narration, so `i` becomes a node naming
+    // whoever is talking, and the carry then offers it to the next sentence.
+    let is_pronoun = |list: &[&str]| list.iter().any(|p| run.eq_ignore_ascii_case(p));
+    if is_pronoun(pack.pronouns) || is_pronoun(pack.deictic_pronouns) {
         return;
     }
 
@@ -430,9 +463,10 @@ fn resolve_pronouns(
     pack: &LanguagePack,
     lexicon: &[EntityCandidate],
     carried: &[String],
+    register: &Register,
 ) -> Vec<EntityCandidate> {
     let mut resolved = Vec::new();
-    let mut next_carried = 0;
+    let mut used: Vec<&str> = Vec::new();
 
     // A lexicon mention covering the pronoun's own offsets replaces it: the
     // caller named that referent outright, which beats resolving one.
@@ -447,11 +481,15 @@ fn resolve_pronouns(
         let antecedent = match find_pronoun_antecedent(text, &pronoun, lexicon, pack) {
             Some(antecedent) => antecedent,
             None => {
-                let Some(carried) = carried.get(next_carried) else {
+                // The first referent the previous sentence named that agrees
+                // with this pronoun and has not already been taken by one.
+                let Some(candidate) = carried.iter().find(|name| {
+                    !used.contains(&name.as_str()) && register.allows(&pronoun.text, name, pack)
+                }) else {
                     continue;
                 };
-                next_carried += 1;
-                carried.clone()
+                used.push(candidate.as_str());
+                candidate.clone()
             }
         };
 
@@ -471,7 +509,17 @@ fn resolve_pronouns(
 ///
 /// IMPORTANT: a pronoun's own mention is not carried. It is a referent resolved
 /// by guess, and carrying it would let one wrong guess seed the next sentence's.
-pub fn carried_referents(entities: &[EntityCandidate], pack: &LanguagePack) -> Vec<String> {
+/// IMPORTANT: a possessor is not carried either. "When Blanche's husband
+/// offered him work" names Blanche, but the sentence is about the husband and
+/// the one after it is about neither; a possessor sits low enough in the
+/// salience order that carrying it hands the next sentence's pronoun the wrong
+/// referent with nothing else on offer. That is the one link this whole
+/// mechanism made over three novels before the rule existed, and it was wrong.
+pub fn carried_referents(
+    sentence: &str,
+    entities: &[EntityCandidate],
+    pack: &LanguagePack,
+) -> Vec<String> {
     let mut carried: Vec<String> = Vec::new();
 
     for entity in entities {
@@ -479,7 +527,12 @@ pub fn carried_referents(entities: &[EntityCandidate], pack: &LanguagePack) -> V
             .pronouns
             .iter()
             .any(|p| entity.text.eq_ignore_ascii_case(p));
-        if is_pronoun || carried.contains(&entity.normalized) {
+        let is_possessor = sentence[entity.end..]
+            .trim_start_matches(['\u{2019}', '\''])
+            .starts_with(['s', 'S'])
+            && sentence[entity.end..].starts_with(['\u{2019}', '\'']);
+
+        if is_pronoun || is_possessor || carried.contains(&entity.normalized) {
             continue;
         }
         carried.push(entity.normalized.clone());

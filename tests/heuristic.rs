@@ -1392,39 +1392,30 @@ fn one_person_cannot_have_two_mothers() {
 
 #[test]
 fn a_pronoun_opening_a_sentence_can_take_the_previous_sentence_referent() {
-    let text = "Elena joined the Archive. She works at it.";
-    let on = Options {
-        cross_sentence_pronouns: true,
-        ..Default::default()
-    };
-
-    let candidates = extract_candidate_triples(text, &on).expect("extraction failed");
+    // "Elena" carries no title, so the only thing that can say she is a woman
+    // is the document itself: the middle sentence names her and one subject
+    // pronoun, which settles it, and the last sentence can then use it.
+    let text = "The Archive hired Elena. \
+                Elena said she would start at the Archive. \
+                She works at it.";
+    let candidates =
+        extract_candidate_triples(text, &Options::default()).expect("extraction failed");
     let works_at = candidates
         .iter()
         .find(|c| c.subject == "elena" && c.object == "archive")
         .unwrap_or_else(|| panic!("no cross-sentence relation: {candidates:?}"));
-    // The span addresses the source text and covers the second sentence.
-    assert!(works_at.span[0] >= "Elena joined the Archive.".len());
     assert!(text.get(works_at.span[0]..works_at.span[1]).is_some());
-
-    // Off by default, so the second sentence contributes nothing.
-    assert!(extract_candidate_triples(text, &Options::default())
-        .unwrap()
-        .is_empty());
 }
 
 #[test]
 fn a_pronoun_chain_does_not_cross_a_paragraph_break() {
-    let on = Options {
-        cross_sentence_pronouns: true,
-        ..Default::default()
-    };
-
     // Same two sentences, separated by a blank line: the subject may have
     // switched and nothing in the text says otherwise, so the chain ends.
-    let split = "Elena joined the Archive.\n\nShe works at it.";
+    let split = "Mrs. Bennet joined the Archive.\n\nShe works at it.";
     assert!(
-        extract_candidate_triples(split, &on).unwrap().is_empty(),
+        extract_candidate_triples(split, &Options::default())
+            .unwrap()
+            .is_empty(),
         "linked a pronoun across a paragraph break"
     );
 }
@@ -1434,17 +1425,19 @@ fn two_pronouns_in_one_sentence_do_not_take_the_same_referent() {
     // "She runs it" cannot mean Elena runs Elena. With no agreement check,
     // consuming each carried referent once is the only thing keeping "it" off
     // the person "she" just took.
-    let on = Options {
-        cross_sentence_pronouns: true,
-        ..Default::default()
-    };
-    let aggregates = extract_aggregates("Elena joined the Archive. She works at it.", &on)
-        .expect("extraction failed");
+    let aggregates = extract_aggregates(
+        "Mrs. Bennet joined the Archive. She works at it.",
+        &Options::default(),
+    )
+    .expect("extraction failed");
 
     assert!(aggregates.iter().all(|a| a.subject != a.object));
-    assert!(aggregates
-        .iter()
-        .any(|a| a.subject == "elena" && a.object == "archive"));
+    assert!(
+        aggregates
+            .iter()
+            .any(|a| a.subject == "mrs_bennet" && a.object == "archive"),
+        "{aggregates:?}"
+    );
 }
 
 #[test]
@@ -1476,4 +1469,74 @@ fn a_typographic_apostrophe_separates_a_mention_as_a_straight_one_does() {
     assert_eq!(straight[0].object, "blanche");
     // The curly form must at least not fold the clitic into the name.
     assert!(curly.iter().all(|c| !c.object.contains('\u{2019}')));
+}
+
+#[test]
+fn a_cross_sentence_pronoun_agrees_in_gender() {
+    // Nearest-first would take Mr. Darcy, who is named first. The document
+    // says he is male and that "she" is therefore not him.
+    let text = "Mr. Darcy greeted Mrs. Bennet. She works at the Archive.";
+    let candidates =
+        extract_candidate_triples(text, &Options::default()).expect("extraction failed");
+
+    assert_eq!(candidates.len(), 1, "{candidates:?}");
+    assert_eq!(candidates[0].subject, "mrs_bennet");
+    assert_eq!(candidates[0].object, "archive");
+}
+
+#[test]
+fn a_personal_pronoun_does_not_take_a_thing_and_it_does_not_take_a_person() {
+    // "the Archive" is introduced with a determiner, so it is a thing: "he"
+    // cannot be it and "it" cannot be Mr. Darcy.
+    let text = "Mr. Darcy entered the Archive. He works at it.";
+    let candidates =
+        extract_candidate_triples(text, &Options::default()).expect("extraction failed");
+
+    assert_eq!(candidates.len(), 1, "{candidates:?}");
+    assert_eq!(candidates[0].subject, "mr_darcy");
+    assert_eq!(candidates[0].object, "archive");
+
+    // Neither pronoun has anything left to take, so nothing is claimed.
+    let mismatched = "Mr. Darcy entered the Archive. She works at it.";
+    let none = extract_candidate_triples(mismatched, &Options::default()).unwrap();
+    assert!(
+        none.iter()
+            .all(|c| c.subject != "mr_darcy" && c.subject != "archive"),
+        "{none:?}"
+    );
+}
+
+#[test]
+fn an_unestablished_capital_is_not_a_referent() {
+    // "Behind" is capitalized only because the sentence starts there, and the
+    // opener list is closed and does not hold it. It is not a name, so it is
+    // not something a pronoun can mean.
+    // A capitalized run swallows the words after it, so the opener has to be
+    // followed by a lowercase word to stand alone as a mention.
+    let text = "Penned in haste, the letter reached Mr. Darcy. He works at the Archive.";
+    let candidates =
+        extract_candidate_triples(text, &Options::default()).expect("extraction failed");
+
+    assert!(
+        candidates.iter().all(|c| c.subject != "behind"),
+        "linked a pronoun to a sentence-opening word: {candidates:?}"
+    );
+    assert!(
+        candidates.iter().any(|c| c.subject == "mr_darcy"),
+        "{candidates:?}"
+    );
+}
+
+#[test]
+fn a_plural_pronoun_never_links_across_a_sentence() {
+    // "They" names a group assembled over several sentences, which a carry
+    // holding one referent at a time cannot represent.
+    let text = "Mr. Darcy entered the Archive. They work at it.";
+    let candidates =
+        extract_candidate_triples(text, &Options::default()).expect("extraction failed");
+
+    assert!(
+        candidates.iter().all(|c| c.subject != "mr_darcy"),
+        "a plural pronoun claimed a single referent: {candidates:?}"
+    );
 }

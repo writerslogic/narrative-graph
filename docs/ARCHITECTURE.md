@@ -74,6 +74,40 @@ therefore enough only for a language sharing all three; deciding otherwise is
 what the second pack is for. Selecting a pack is not yet caller-facing, since
 there is nothing to select.
 
+## The mention register (`src/heuristic/register.rs`)
+
+Cross-sentence resolution needs facts a single sentence cannot supply: whether
+a capitalized word is a name at all, whether the name is a person, and whether
+that person is male or female. A pre-pass over the whole text records what the
+document itself says, and nothing else:
+
+- **Established.** Seen capitalized where no sentence boundary forced the
+  capital, or seen carrying a title. This is what keeps `Behind`, `Penned` and
+  `Imagine` from being referents — the sentence-opener list is closed and
+  cannot hold every word that opens an English sentence.
+- **Gender and personhood**, from titles: `Mr`/`Sir`/`Lord` against
+  `Mrs`/`Miss`/`Ms`/`Lady`/`Dame`. `Dr` and `Captain` are titles and settle
+  nothing.
+- **Thinghood**, from a determiner in front of the name ("the Archive"), from a
+  name of a time, and from a name the document only ever uses after a locative
+  preposition and nowhere else.
+- **What a subject pronoun says about the one name in front of it.** Most names
+  in prose are bare most of the time, and "Elena said she would go" states
+  Elena's gender as plainly as "Mrs." would. Only subject pronouns, only where
+  exactly one name precedes them, and never where that name sits in a locative
+  phrase — an object pronoun after a name usually names someone else, and "In
+  London she saw them" opens on an adjunct rather than a subject.
+
+Evidence is **counted, not latched**: a reading wins only by outweighing its
+opposite two to one, and a title outweighs three bootstrapped sightings. One
+sentence reading "Newland Archer looked at her" therefore cannot record him as
+female for the whole document. A tie settles nothing, and an unsettled name is
+one no pronoun may take — so ambiguity costs recall and never accuracy.
+
+A link is made only on positive evidence. A plural pronoun is never resolved
+across a sentence boundary at all: "they" names a group assembled over several
+sentences, which a carry holding one referent at a time cannot represent.
+
 ## Sentence segmentation (`src/heuristic/segment.rs`)
 
 Segmentation runs before anything else, and it is the one part of this
@@ -131,14 +165,11 @@ Two independent sources of entity mentions, merged per sentence:
    is never an antecedent and never a mention of its own: `she` as a graph node
    names nobody.
 
-   By default this looks no further than the sentence it is in, so a pronoun
-   opening a sentence resolves to nothing and the relation it takes part in is
-   lost. `Options.cross_sentence_pronouns` lets such a pronoun fall back to a
-   referent the previous sentence named, within the same paragraph, consuming
-   them in the order that sentence named them and once each. It is off by
-   default and `docs/EVALUATION.md` has the measurement that says why: with no
-   gender or number agreement the fallback picks by position, and over three
-   novels it adds one triple, which is wrong.
+   A pronoun with no antecedent in its own sentence falls back to a referent
+   the previous sentence named, within the same paragraph, consuming them in
+   the order that sentence named them and once each. That fallback is gated by
+   the register below: it links only where the document has positively said
+   what the referent is.
 
 Every mention is normalized (`normalize_entity`: lowercased, spaces replaced
 with underscores) and, if the caller supplied an `aliases` map, remapped to

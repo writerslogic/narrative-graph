@@ -94,7 +94,7 @@ Segmentation is hand-rolled rather than a naive split on `.`/`!`/`?`, because na
 
 ### Entities
 
-Capitalized-token detection, pronoun-antecedent linking within a sentence, and an optional caller-supplied alias list so "Marcus" and "Mr. Marcus Hale" resolve to the same entity when you already know that. A title leading a name is dropped from the identity but kept in the surface form, so "Lady Catherine de Bourgh" and "Catherine de Bourgh" already unify without an alias.
+Capitalized-token detection, pronoun-antecedent linking within and across sentences, and an optional caller-supplied alias list so "Marcus" and "Mr. Marcus Hale" resolve to the same entity when you already know that. A title leading a name is dropped from the identity but kept in the surface form, so "Lady Catherine de Bourgh" and "Catherine de Bourgh" already unify without an alias.
 
 > **You supply:** `{ aliases: { "Marcus": "marcus_hale", "Mr Marcus Hale": "marcus_hale" } }`
 > **Result:** either mention resolves to `marcus_hale` in every candidate.
@@ -123,7 +123,7 @@ Every candidate carries a confidence score from the extraction rule's pattern st
 | Item | What it does |
 |------|-------------|
 | `extract_candidate_triples(text, &Options)` | Run the heuristic pipeline over a passage |
-| `Options { aliases, min_confidence, cross_sentence_pronouns, rejections, ontology }` | Alias map, confidence floor, cross-sentence pronoun linking, rejected triples, relation-vocabulary overrides |
+| `Options { aliases, min_confidence, rejections, ontology }` | Alias map, confidence floor, rejected triples, relation-vocabulary overrides |
 | `TripleCandidate { subject, relation, object, confidence, span, rule }` | One candidate fact; `span` is a byte range into the input, `rule` names the pattern that produced it |
 | `extract_aggregates(text, &Options)` | Same pipeline, collapsed per fact instead of per sentence: one entry per triple, ordered by where the document first states it |
 | `AggregateTriple { subject, relation, object, polarity, confidence, spans, rules }` | One fact with every span that stated it; `confidence` is the best of them, and repetition does not raise it |
@@ -150,7 +150,7 @@ Installed alongside the crate (`cargo install narrative-graph --features cli` pr
 |----------|-------------|
 | `extractCandidateTriplesNapi(text, opts?)` | Run the heuristic pipeline over a passage |
 
-`opts` accepts `aliases`, `minConfidence`, `crossSentencePronouns`, `rejections`, and `ontology`. Full TypeScript definitions ship in the package (`index.d.ts`), generated from the Rust types via `ts-rs` — treat them as the source of truth over this table.
+`opts` accepts `aliases`, `minConfidence`, `rejections`, and `ontology`. Full TypeScript definitions ship in the package (`index.d.ts`), generated from the Rust types via `ts-rs` — treat them as the source of truth over this table.
 
 </details>
 
