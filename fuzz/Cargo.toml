@@ -1,0 +1,19 @@
+[package]
+name = "narrative-graph-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+narrative-graph = { path = ".." }
+
+[[bin]]
+name = "extract_triples"
+path = "fuzz_targets/extract_triples.rs"
+test = false
+doc = false
+bench = false
