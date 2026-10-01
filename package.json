@@ -50,10 +50,10 @@
     "typescript": "^6.0.3"
   },
   "optionalDependencies": {
-    "narrative-graph-darwin-arm64": "0.1.0",
-    "narrative-graph-darwin-x64": "0.1.0",
-    "narrative-graph-linux-x64-gnu": "0.1.0",
-    "narrative-graph-win32-x64-msvc": "0.1.0"
+    "narrative-graph-darwin-arm64": "0.1.2",
+    "narrative-graph-darwin-x64": "0.1.2",
+    "narrative-graph-linux-x64-gnu": "0.1.2",
+    "narrative-graph-win32-x64-msvc": "0.1.2"
   },
   "peerDependencies": {
     "@huggingface/transformers": "^3.8.1 || ^4.2.0"
