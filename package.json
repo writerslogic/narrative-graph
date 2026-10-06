@@ -47,7 +47,7 @@
   "devDependencies": {
     "@napi-rs/cli": "^3.7.4",
     "@types/node": "^26.6.3",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "optionalDependencies": {
     "narrative-graph-darwin-arm64": "0.1.2",
