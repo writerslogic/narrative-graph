@@ -1,30 +1,12 @@
-<img src="https://raw.githubusercontent.com/writerslogic/narrative-graph/main/assets/logo-black.svg" alt="narrative-graph logo" width="120" align="left">
+### narrative-graph
 
-<h3>narrative-graph</h3>
+<img align="left" width="96" src="assets/logo-black.svg" alt="narrative-graph logo">
 
-<p><strong>Turn prose into candidate relational facts, entirely local. No LLM, no network. Entities, relations, confidence scores and spans, for Rust and Node.</strong></p>
+Turn prose into candidate relational facts, entirely local. No LLM, no network. Entities, relations, confidence scores and spans, for Rust and Node.
 
 <br clear="left">
 
-[![CI](https://img.shields.io/github/actions/workflow/status/writerslogic/narrative-graph/ci.yml?style=flat-square&labelColor=20232a&branch=main&label=CI)](https://github.com/writerslogic/narrative-graph/actions/workflows/ci.yml) [![CodeQL](https://img.shields.io/github/actions/workflow/status/writerslogic/narrative-graph/codeql.yml?style=flat-square&labelColor=20232a&branch=main&label=CodeQL)](https://github.com/writerslogic/narrative-graph/actions/workflows/codeql.yml) [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/writerslogic/narrative-graph?style=flat-square&labelColor=20232a&label=OpenSSF)](https://securityscorecards.dev/viewer/?uri=github.com/writerslogic/narrative-graph) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15146/badge)](https://www.bestpractices.dev/projects/15146) [![License](https://img.shields.io/github/license/writerslogic/narrative-graph?style=flat-square&labelColor=20232a&color=007ec6&label=license)](https://github.com/writerslogic/narrative-graph/blob/main/LICENSE) [![Code of Conduct](https://img.shields.io/badge/code%20of%20conduct-Contributor%20Covenant%202.1-6a4c93?style=flat-square&labelColor=20232a)](https://github.com/writerslogic/narrative-graph/blob/main/CODE_OF_CONDUCT.md)
-
-<a href="https://www.npmjs.com/package/narrative-graph">
-    <img src="https://img.shields.io/npm/v/narrative-graph.svg?style=flat-square&labelColor=20232a&color=007ec6" alt="npm version"/>
-  </a>
-  <img src="https://img.shields.io/npm/dm/narrative-graph.svg?style=flat-square&labelColor=20232a&color=007ec6" alt="npm downloads"/>
-  <a href="https://crates.io/crates/narrative-graph">
-    <img src="https://img.shields.io/crates/v/narrative-graph.svg?style=flat-square&labelColor=20232a&color=007ec6" alt="crates.io version"/>
-  </a>
-  <a href="https://docs.rs/narrative-graph">
-    <img src="https://img.shields.io/docsrs/narrative-graph?style=flat-square&labelColor=20232a&color=007ec6" alt="docs.rs"/>
-  </a>
-  <a href="https://github.com/writerslogic/narrative-graph/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/writerslogic/narrative-graph?style=flat-square&labelColor=20232a&color=007ec6" alt="license"/>
-  </a>
-  <a href="https://github.com/writerslogic/narrative-graph">
-    <img src="https://img.shields.io/github/stars/writerslogic/narrative-graph?style=flat-square&labelColor=20232a&color=6a4c93" alt="stars"/>
-  </a>
-</p>
+[![CI](https://img.shields.io/github/actions/workflow/status/writerslogic/narrative-graph/ci.yml?branch=main&label=CI)](https://github.com/writerslogic/narrative-graph/actions/workflows/ci.yml) [![CodeQL](https://github.com/writerslogic/narrative-graph/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/writerslogic/narrative-graph/actions/workflows/codeql.yml) [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/writerslogic/narrative-graph)](https://securityscorecards.dev/viewer/?uri=github.com/writerslogic/narrative-graph) [![crates.io](https://img.shields.io/crates/v/narrative-graph.svg)](https://crates.io/crates/narrative-graph) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/writerslogic/narrative-graph/blob/main/LICENSE)
 
 <p align="center">
   <a href="#install">Install</a> &middot;
