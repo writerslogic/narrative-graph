@@ -16,12 +16,19 @@ status: draft
 # Rules:
 # - `A | x_of | B` means "A is B's x". "Lydia's aunt" is `aunt | aunt_of | Lydia`
 #   only if the aunt is named, e.g. `Mrs. Philips | aunt_of | Lydia`.
-# - Both sides must be a named person or place, or a pronoun whose referent
-#   is named in this sentence or the `~` line. Places relate to each other
+# - Each side is a named person or place, or a pronoun whose referent is
+#   named in this sentence or the `~` line. Write the name as the text writes
+#   it there ("Mr. Darcy", "Darcy", "Lizzy"). Places relate to each other
 #   too: "Longbourn was only one mile from Meryton" is
-#   `Longbourn | near | Meryton`. Write the name
-#   as the text writes it there ("Mr. Darcy", "Darcy", "Lizzy"). Skip a side
-#   that is only a description ("her mother", "the old man").
+#   `Longbourn | near | Meryton`.
+# - A person the sentence only describes goes in brackets, with their name
+#   after `=` if you know it from the book, or without if not:
+#   `[her mother = Mrs. Bennet] | mother_of | Elizabeth`,
+#   `[the old man] | servant_of | Mr. Heathcliff`. These are scored apart.
+#   Skip groups ("the young ladies", "her daughters"): one person per side.
+# - Interactions: `speaks_to` when one tells or says something to another,
+#   `meets` when they come together, `contacts` for a letter or message.
+#   Being in the same place is none of these.
 # - Label what the sentence states as true, including inside dialogue. An
 #   attitude or intention it states is a relation of its own: "looked for
 #   Wickham" is `looks_for`, "certain of meeting him" is `expects_to_meet`,
@@ -76,31 +83,37 @@ When Jane and Elizabeth were alone, the former, who had been cautious in her pra
 =
 Elizabeth | sister_of | Jane
 Jane | admires | Mr. Bingley
+Jane | speaks_to | Elizabeth
 implied Jane | sister_of | Elizabeth
 # "her sister" is Jane's sister, and Elizabeth is named; that Jane is hers too
 # is inferred. "admired him" is an attitude, so `admires`, not `loves`.
+# "expressed to her sister" is telling, so `speaks_to`: they were already
+# together ("alone"), so not `meets`, and no letter, so not `contacts`.
 
 @ 2 1342 79755 relation word | Pride and Prejudice
 ~ She had a sister married to a Mr. Philips, who had been a clerk to their father and succeeded him in the business, and a brother settled in London in a respectable line of trade.
 The village of Longbourn was only one mile from Meryton; a most convenient distance for the young ladies, who were usually tempted thither three or four times a week, to pay their duty to their aunt, and to a milliner’s shop just over the way.
 =
 Longbourn | near | Meryton
-# Two named places and a stated distance. "their aunt" is still skipped: the
-# nieces are "the young ladies", never named here.
+# Two named places and a stated distance. "their aunt" relates the aunt to a
+# group, "the young ladies", so it is skipped.
 
 @ 3 1342 106966 relation word | Pride and Prejudice
 ~ But that gentleman,” looking at Darcy, “seemed to think the country was nothing at all.”
 “Indeed, mamma, you are mistaken,” said Elizabeth, blushing for her mother.
 =
-# "her mother" is a description, not a name: skip it.
+[her mother = Mrs. Bennet] | mother_of | Elizabeth
+Elizabeth | speaks_to | [her mother = Mrs. Bennet]
+# "her mother" is only a description; the book tells you who she is. Her
+# reply ("Indeed, mamma, you are mistaken") is said to her mother.
 
 @ 4 1342 134605 names | Pride and Prejudice
 ~ In consequence of an agreement between the sisters, Elizabeth wrote the next morning to her mother, to beg that the carriage might be sent for them in the course of the day.
 But Mrs. Bennet, who had calculated on her daughters remaining at Netherfield till the following Tuesday, which would exactly finish Jane’s week, could not bring herself to receive them with pleasure before.
 =
 implied Jane | daughter_of | Mrs. Bennet
-# Jane being one of "her daughters" is inferred, not stated. The mother in the
-# `~` line is context only.
+# "her daughters" is a group, so it is skipped; Jane being one of them is
+# inferred from "Jane's week". The mother in the `~` line is context only.
 
 @ 5 1342 191593 names | Pride and Prejudice
 ~ [Illustration]

@@ -18,7 +18,10 @@
 //! missing vocabulary; the first is what the rules get wrong. Labels marked
 //! `implied` are what a reader infers rather than what the sentence says; they
 //! get their own recall and never lower the other two, and an extraction that
-//! matches one is not a false positive.
+//! matches one is not a false positive. A side in brackets is a person the
+//! sentence only describes ("[her mother = Mrs. Bennet]"); those labels are a
+//! third tier, scored the same way, and measure what alias and coreference
+//! work would add.
 //!
 //! Run `cargo test --release --test real_text_eval -- --include-ignored
 //! --nocapture` for the numbers, per relation and per miss.
@@ -61,13 +64,41 @@ const MUTUAL: &[&str] = &[
     "works_with",
 ];
 
+/// How a label is known, each scored on its own so that the inferred and the
+/// merely described never lower the score of what the sentence states.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Tier {
+    Stated,
+    /// Prefixed `implied`: inferred by a reader, not said.
+    Implied,
+    /// A side in brackets: a person the sentence only describes ("her
+    /// mother"), matched by the name after `=` when the labeller gave one.
+    Described,
+}
+
 #[derive(Debug)]
 struct Claim {
-    subject: String,
+    /// `None` for a description with no name: unmatchable until the library
+    /// can make a node of a description.
+    subject: Option<String>,
     relation: String,
-    object: String,
+    object: Option<String>,
     polarity: Polarity,
-    implied: bool,
+    tier: Tier,
+}
+
+/// A plain name, or `[description]` / `[description = Name]`.
+fn side(raw: &str) -> (Option<String>, bool) {
+    match raw.strip_prefix('[').and_then(|r| r.strip_suffix(']')) {
+        Some(inner) => (
+            inner
+                .split_once('=')
+                .map(|(_, name)| name.trim().to_string())
+                .filter(|name| !name.is_empty()),
+            true,
+        ),
+        None => (Some(raw.to_string()), false),
+    }
 }
 
 struct Item {
@@ -121,12 +152,21 @@ fn parse(labels: &str) -> (bool, Vec<Item>) {
                 parts.len() == 3 && parts.iter().all(|p| !p.is_empty()),
                 "item {number}: a claim is `A | relation | B`, got {line:?}"
             );
+            let (subject, subject_described) = side(parts[0]);
+            let (object, object_described) = side(parts[2]);
+            let tier = if subject_described || object_described {
+                Tier::Described
+            } else if implied {
+                Tier::Implied
+            } else {
+                Tier::Stated
+            };
             claims.push(Claim {
-                subject: parts[0].to_string(),
+                subject,
                 relation: parts[1].to_string(),
-                object: parts[2].to_string(),
+                object,
                 polarity,
-                implied,
+                tier,
             });
         }
 
@@ -204,10 +244,13 @@ fn matches(claim: &Claim, a: &AggregateTriple) -> bool {
     if claim.relation != a.relation || claim.polarity != a.polarity {
         return false;
     }
-    let forward = same_person(&claim.subject, &a.subject) && same_person(&claim.object, &a.object);
+    let (Some(subject), Some(object)) = (&claim.subject, &claim.object) else {
+        return false;
+    };
+    let forward = same_person(subject, &a.subject) && same_person(object, &a.object);
     let backward = MUTUAL.contains(&a.relation.as_str())
-        && same_person(&claim.subject, &a.object)
-        && same_person(&claim.object, &a.subject);
+        && same_person(subject, &a.object)
+        && same_person(object, &a.subject);
     forward || backward
 }
 
@@ -260,8 +303,7 @@ fn real_text_precision_and_recall() {
     let mut known_missed = 0;
     let mut known_gold = 0;
     let mut stated_gold = 0;
-    let mut implied_gold = 0;
-    let mut implied_found = 0;
+    let mut other_tiers: BTreeMap<Tier, (usize, usize)> = BTreeMap::new();
     let mut by_relation: BTreeMap<String, Tally> = BTreeMap::new();
     let mut report = Vec::new();
 
@@ -294,13 +336,14 @@ fn real_text_precision_and_recall() {
         }
         for claim in &item.claims {
             let found = extracted.iter().any(|a| matches(claim, a));
-            if claim.implied {
-                implied_gold += 1;
-                implied_found += usize::from(found);
+            if claim.tier != Tier::Stated {
+                let (gold, hit) = other_tiers.entry(claim.tier).or_default();
+                *gold += 1;
+                *hit += usize::from(found);
                 if !found {
                     report.push(format!(
-                        "  item {} missed (implied): {claim:?}",
-                        item.number
+                        "  item {} missed ({:?}): {claim:?}",
+                        item.number, claim.tier
                     ));
                 }
                 continue;
@@ -327,19 +370,21 @@ fn real_text_precision_and_recall() {
     let precision = ratio(overall.tp, overall.tp + overall.fp);
     let gold = stated_gold;
     let recall_all = ratio(gold - overall.missed, gold);
-    let recall_implied = ratio(implied_found, implied_gold);
     let recall_known = ratio(known_gold - known_missed, known_gold);
 
     println!(
-        "{} items, {gold} stated labels ({known_gold} with a rule), {implied_gold} implied; tp {} fp {} missed {}",
+        "{} items, {gold} stated labels ({known_gold} with a rule); tp {} fp {} missed {}",
         items.len(),
         overall.tp,
         overall.fp,
         overall.missed
     );
     println!(
-        "precision {precision:.3}  recall (relations with a rule) {recall_known:.3}  recall (all) {recall_all:.3}  recall (implied) {recall_implied:.3}"
+        "precision {precision:.3}  recall (relations with a rule) {recall_known:.3}  recall (all) {recall_all:.3}"
     );
+    for (tier, (gold, hit)) in &other_tiers {
+        println!("{tier:?}: {gold} labels, recall {:.3}", ratio(*hit, *gold));
+    }
     for (relation, t) in &by_relation {
         println!(
             "  {relation:<20} tp {:>3} fp {:>3} missed {:>3}",
