@@ -335,3 +335,11 @@ and `speaks_to` is the most frequent relation.
   hashed-feature linear model in pure Rust with embedded weights, behind an
   opt-in feature. Training text for shipped weights is public domain plus the
   author's own writing, not the commercial novels.
+- Target: recall of at least 0.7 over all tiers on the held-out half, with
+  precision of at least 0.8 once extractions are numerous enough to measure.
+  1.0 is not a meaningful goal: annotators disagree on fiction relations, and
+  half the items changed under the gpt-6.2-astra review.
+- Labels were reviewed by gpt-6.2-astra (public: 78 of 150 items changed;
+  private: 115 of 173). Removals mostly enforce the rule that only the target
+  sentence is labelled. After the review and the apostrophe fix: public 0/58
+  stated, private 2/32 stated with no false positives.
