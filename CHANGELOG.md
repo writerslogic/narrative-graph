@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Exact-phrase relation rules for marriage, romance, friendship, acquaintance,
+  work, study, residence, ownership, membership and contact; possessor-first
+  kinship ("Bram's daughter Odile", "his sister Elena", "Cass, my sister");
+  "x and y are <plural>"; a possessed noun with a prepositional tail
+  ("Marco's student for two terms"); and more relational nouns. See
+  `docs/ARCHITECTURE.md`.
+- `heuristic::Context`, with `extract_aggregates_in`, `extract_candidate_triples_in`
+  and `find_conflicts_in`: document-wide name evidence shared across calls, and an
+  optional named first-person narrator. The original entry points are unchanged.
+- `tests/synthetic_eval.rs`: a precision/recall score over hand-written fiction
+  paragraphs. See `docs/EVALUATION.md`.
+
 - A wholly lowercase `aliases` key is now a lexicon entry: the phrase is
   searched for in the text as a literal, word-bounded, case-insensitive match
   and becomes a mention of the mapped canonical name. This is what the option
@@ -23,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no capitalized word at all, so pronoun
   resolution is unchanged for a caller supplying no lowercase key; a pronoun
   covered by a lexicon mention is replaced by it.
+
+### Changed
+- A relation is no longer read across a quotation mark, a pronoun inside speech
+  is not resolved, and a pronoun outside speech does not take an antecedent from
+  inside it. A sentence opener ("Then", "The") is no longer a pronoun antecedent.
+- A comma now ends a capitalized run, so "Nora, Dev and Marco" is three names, not
+  `nora_dev` and `marco`. The typographic apostrophe is read as the possessive
+  clitic by the possessive rules.
+- `extract_entities` results carry two additional fields, `pronoun` and `quoted`.
 
 ### Fixed
 - A title leading a name is no longer part of the entity's identity. A

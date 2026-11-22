@@ -235,6 +235,38 @@ the phrasing its rule was written for. That is exactly the limit of what a
 suite written by the pattern author can tell you, and it is why this section
 exists.
 
+## Synthetic fiction set
+
+`tests/synthetic_eval.rs` scores extraction against paragraphs written for the
+file, none quoted from a manuscript. A case lists the claims its paragraph
+states; a claim counts only if (subject, relation, object, polarity) matches, so
+a wrong label is both a miss and a false positive. Negatives (no gold) are
+dialogue fragments crossing an attribution, a third party's possessive, common
+nouns, pronouns alone, modal and conditional phrasing, desire, questions, and
+verbs with other content between the mentions.
+
+Three sets run: *development* (written beside the rules and used to tune them),
+*held-out* (longer, dialogue-heavy paragraphs written afterwards; the first run
+exposed misses that were then fixed, so it is no longer untouched), and
+*narrator-context* (a shared `Context` with a named first-person narrator).
+`cargo test --test synthetic_eval -- --nocapture` prints every miss and false
+positive.
+
+| Set | Paragraphs | Gold | Before (precision / recall) | After (precision / recall) |
+|---|---|---|---|---|
+| development | 84 | 58 | 0.750 / 0.103 | 1.000 / 1.000 |
+| held-out | 30 | 21 | 1.000 / 0.048 | 1.000 / 0.905 |
+| narrator-context | 13 | 10 | n/a / 0.000 | 1.000 / 1.000 |
+| all | 127 | 89 | 0.778 / 0.079 | 1.000 / 0.978 |
+
+"Before" is the engine at `73a1969` over the same cases. The remaining misses
+are a subject elided across a coordinated verb ("divorced Bram ... and moved
+back to Tulsa") and a subject separated from its verb by a relative clause
+("Elena, who works for Marco, has never met Dev"). A set this size, written by
+the author of the rules, bounds nothing about real prose; its use is to catch
+regressions and to document which phrasings are read and which are not. The
+precision floor asserted in CI is 0.95 and the recall floor 0.85.
+
 ## What is not measured
 
 - **Precision at a sample size worth quoting.** Six adjudicated candidates is

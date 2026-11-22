@@ -273,6 +273,44 @@ not extracted, regardless of how clearly a human reader would infer them.
 remaps the relation if a canonical name was requested; otherwise the
 pattern's default relation name passes through unchanged.
 
+## Phrase rules, kin prefixes and the document context
+
+Beyond the possessive, genitive and verb rules above, `relations.rs` reads four
+more shapes. All four run after the older rules, so an existing claim keeps its
+label and rule name.
+
+- **Phrase rules** (`pack/phrases.rs`). The text between two mentions, once
+  fillers ("had", "never", "finally") and trailing determiners are peeled
+  off, must *equal* one listed phrase: `married`, `lives in`, `works for`,
+  `joined`, `owns`. Equal, not contains, so "met her friend Marco" is not
+  `meets`. Each rule constrains both mentions with a `Slot` (a person, a
+  place, a venue). `kinds.rs` classifies a mention from its own words (a title,
+  a gazetteer name, a head word such as "Diner" or "Club", a determiner in
+  front of it) and from the document register, and only ever rules a mention
+  out: an unclassified name is accepted where a person is wanted and refused
+  where a venue is.
+- **Kin prefix.** "Bram's daughter Odile" and "his sister Elena": the possessor
+  comes first and the relation reads `daughter_of(odile, bram)`. A possessive
+  pronoun is trusted only when it has one possible antecedent in the sentence
+  and agrees in gender with what the register knows.
+- **Pronoun possessor.** "Cass, my sister": the possessor is a pronoun after
+  the subject.
+- **Plural pair.** "Nora and Marco are siblings" and its negation.
+
+New rules also decline a clause opened by "if", "whether" or a modal, read no
+pair across a quotation mark (`quotes.rs`), and decline a pronoun that has a
+rival referent in its sentence. Inside speech a pronoun is never resolved, and
+outside it a pronoun never takes an antecedent from inside speech, so
+`"Thanks, Cass," she says` does not make Cass the speaker.
+
+`Context` (`context.rs`) is the optional, additive way to give extraction more
+than one paragraph. `Context::learn` feeds the register every paragraph before
+any is extracted, so a name's gender and type are settled by the whole book;
+`Context::with_narrator` names the first person so "I" and "my" outside speech
+resolve to a referent. `extract_aggregates_in`, `extract_candidate_triples_in`
+and `find_conflicts_in` take it; the original entry points are unchanged and
+use an empty context.
+
 ## Confidence scoring (`src/heuristic/cooccurrence.rs`)
 
 `score_confidence(rule, gap)` starts from a base score keyed on which pattern
