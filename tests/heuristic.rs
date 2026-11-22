@@ -1429,3 +1429,38 @@ fn an_apostrophe_before_a_capital_stays_inside_the_name() {
         assert!(!candidates[0].object.contains(['\'', '\u{2019}']), "{text}");
     }
 }
+
+#[test]
+fn a_tagged_speaker_speaks_to_the_name_they_address() {
+    let speaks = |text: &str| -> Vec<(String, String)> {
+        extract(text)
+            .into_iter()
+            .filter(|c| c.relation == "speaks_to")
+            .map(|c| (c.subject, c.object))
+            .collect()
+    };
+    let pair = |s: &str, o: &str| vec![(s.to_string(), o.to_string())];
+
+    assert_eq!(
+        speaks("\u{201C}Cathy, are you busy this afternoon?\u{201D} asked Heathcliff.\n\u{201C}No,\u{201D} said Cathy.\n\u{201C}Why?\u{201D} asked Heathcliff."),
+        pair("heathcliff", "cathy")
+    );
+    assert_eq!(
+        speaks("\"Well, Emma,\" Knightley said. \"I am going.\"\n\"Go,\" said Emma.\n\"I will,\" Knightley said."),
+        pair("knightley", "emma")
+    );
+    // One paragraph is one turn: the address in its second sentence counts.
+    assert_eq!(
+        speaks("\"I am tired,\" said Nora. \"Are you coming, Marco?\"\n\"Yes,\" said Marco.\n\"Good,\" said Nora."),
+        pair("nora", "marco")
+    );
+    // A name the speech is about, not addressed to.
+    assert!(speaks("\"I saw Marco at the dock,\" said Nora.").is_empty());
+    // Two tagged speakers in one paragraph: the listener is unknown.
+    assert!(speaks("\"Marco!\" said Nora, and Elena said, \"Hush, Dev.\"").is_empty());
+    // A listener needs evidence of being a person: a speaker tag of their
+    // own, or a title or pronoun elsewhere.
+    assert!(speaks("\"Come, Lizzy,\" said Nora.\n\"Go,\" said Nora.").is_empty());
+    // A new paragraph is a new turn.
+    assert!(speaks("\"Go,\" said Nora.\n\"Marco, wait.\"").is_empty());
+}

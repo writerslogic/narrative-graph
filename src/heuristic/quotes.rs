@@ -58,6 +58,14 @@ impl QuoteMap {
         }
     }
 
+    /// The spoken range `[open, close)` holding `pos`, quote marks included.
+    pub fn range_at(&self, pos: usize) -> Option<(usize, usize)> {
+        self.ranges
+            .iter()
+            .copied()
+            .find(|&(a, b)| a <= pos && pos < b)
+    }
+
     pub fn inside(&self, pos: usize) -> bool {
         self.ranges.iter().any(|&(a, b)| a <= pos && pos < b)
     }

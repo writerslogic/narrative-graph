@@ -1,6 +1,7 @@
 mod aggregate;
 mod context;
 mod cooccurrence;
+mod dialogue;
 mod entities;
 mod kinds;
 pub mod pack;
@@ -173,10 +174,19 @@ fn collect_candidates(
 
     let narrator = context.narrator();
     let mut quote_open = false;
+    let mut turn = dialogue::Turn::default();
+    // Hard-wrapped text breaks lines inside a paragraph and marks paragraphs
+    // with a blank line; otherwise each line is a paragraph.
+    let paragraph_break = if text.contains("\n\n") { 2 } else { 1 };
+    let mut found = Vec::new();
 
     for (sent_text, sent_start) in segment::split_sentences(text, pack) {
-        if text[previous_end..sent_start].contains('\n') {
+        let breaks = text[previous_end..sent_start].matches('\n').count();
+        if breaks > 0 {
             quote_open = false;
+        }
+        if breaks >= paragraph_break {
+            found.extend(turn.finish(&opts.ontology).into_iter().map(|r| (r, 0)));
         }
         if text[previous_end..sent_start]
             .matches('\n')
@@ -200,6 +210,7 @@ fn collect_candidates(
             narrator,
         );
         carried = entities::carried_referents(sent_text, &entities, pack);
+        turn.observe(sent_text, sent_start, &entities, &quotes, pack);
 
         if entities.is_empty() {
             continue;
@@ -211,40 +222,51 @@ fn collect_candidates(
             quotes: &quotes,
             mentions: &entities,
         };
-        let relations =
-            relations::extract_relations(sent_text, &entities, &opts.ontology, pack, &scope);
+        found.extend(
+            relations::extract_relations(sent_text, &entities, &opts.ontology, pack, &scope)
+                .into_iter()
+                .map(|r| (r, sent_start)),
+        );
+    }
+    found.extend(turn.finish(&opts.ontology).into_iter().map(|r| (r, 0)));
+    found.retain(|(r, _)| {
+        r.rule != dialogue::RULE
+            || (dialogue::is_voice(&r.subject, 2, &turn, &register)
+                && dialogue::is_voice(&r.object, 1, &turn, &register))
+    });
 
-        for rel in relations {
-            let confidence = cooccurrence::score_confidence(rel.base, rel.gap);
+    // Each span is relative to its offset: the sentence's start, or 0 for a
+    // paragraph-level candidate whose span is already absolute.
+    for (rel, offset) in found {
+        let confidence = cooccurrence::score_confidence(rel.base, rel.gap);
 
-            let key = (
-                rel.subject.as_str(),
-                rel.relation.as_str(),
-                rel.object.as_str(),
-            );
-            if confidence >= min_confidence && !rejected.contains(&key) {
-                let span = [sent_start + rel.span[0], sent_start + rel.span[1]];
-                // A rejection names a triple, not a stance: a caller rejecting
-                // a wrong claim means the claim, whichever way the text put it.
-                let polarity = match rel.stance {
-                    relations::Stance::Asserted => Polarity::Asserted,
-                    relations::Stance::Denied => Polarity::Denied,
-                    relations::Stance::Suspended => continue,
-                };
+        let key = (
+            rel.subject.as_str(),
+            rel.relation.as_str(),
+            rel.object.as_str(),
+        );
+        if confidence >= min_confidence && !rejected.contains(&key) {
+            let span = [offset + rel.span[0], offset + rel.span[1]];
+            // A rejection names a triple, not a stance: a caller rejecting
+            // a wrong claim means the claim, whichever way the text put it.
+            let polarity = match rel.stance {
+                relations::Stance::Asserted => Polarity::Asserted,
+                relations::Stance::Denied => Polarity::Denied,
+                relations::Stance::Suspended => continue,
+            };
 
-                candidates.push(Emitted {
-                    candidate: TripleCandidate {
-                        subject: rel.subject,
-                        relation: rel.relation,
-                        object: rel.object,
-                        confidence,
-                        span,
-                        rule: rel.rule,
-                    },
-                    polarity,
-                    single_filler: rel.single_filler,
-                });
-            }
+            candidates.push(Emitted {
+                candidate: TripleCandidate {
+                    subject: rel.subject,
+                    relation: rel.relation,
+                    object: rel.object,
+                    confidence,
+                    span,
+                    rule: rel.rule,
+                },
+                polarity,
+                single_filler: rel.single_filler,
+            });
         }
     }
 

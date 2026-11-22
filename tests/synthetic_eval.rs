@@ -247,7 +247,10 @@ const CASES: &[Case] = &[
     ),
     // Negatives: dialogue fragments crossing an attribution.
     case("\"Papa's stuck at work,\" Nora says.", &[]),
-    case("\"Thanks, Cass,\" Wren says.", &[]),
+    case(
+        "\"Thanks, Cass,\" Wren says.",
+        &[("wren", "speaks_to", "cass", A)],
+    ),
     case("\"I met Dev,\" Nora tells Marco.", &[]),
     case("\"Marco,\" Elena said, \"married Nora.\"", &[]),
     case("Cass said, \"He married Dev.\"", &[]),
