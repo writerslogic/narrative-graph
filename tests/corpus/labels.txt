@@ -20,9 +20,16 @@ status: draft
 #   whose person is named in this sentence or the `~` line. Write the name
 #   as the text writes it there ("Mr. Darcy", "Darcy", "Lizzy"). Skip a side
 #   that is only a description ("her mother", "the old man").
-# - Label what the sentence states as true, including inside dialogue. Skip
-#   what is only wished, asked, supposed, or conditional ("if she were his
-#   sister").
+# - Label what the sentence states as true, including inside dialogue. An
+#   attitude or intention it states is a relation of its own: "looked for
+#   Wickham" is `looks_for`, "certain of meeting him" is `expects_to_meet`,
+#   "admired him" is `admires`. Never label the event an attitude points at:
+#   expecting a meeting is not `meets`. Skip what is only asked, supposed or
+#   conditional ("if she were his sister").
+# - Prefix `implied ` for what a careful reader infers from this sentence and
+#   the `~` line alone, not from knowing the book: "Mrs. Bennet ... her
+#   daughters ... Jane's week" gives `implied Jane | daughter_of | Mrs. Bennet`.
+#   Implied labels are scored separately and never count against the library.
 # - Use the relation names below when one fits. If none fits, make one up in
 #   the same style (`fiancee_of`, `ward_of`); it is scored separately as a
 #   relation the library does not know yet.
@@ -66,8 +73,10 @@ status: draft
 When Jane and Elizabeth were alone, the former, who had been cautious in her praise of Mr. Bingley before, expressed to her sister how very much she admired him.
 =
 Elizabeth | sister_of | Jane
-# "her sister" is Jane's sister, and Elizabeth is named. "admired him" is not
-# love, so no `loves`.
+Jane | admires | Mr. Bingley
+implied Jane | sister_of | Elizabeth
+# "her sister" is Jane's sister, and Elizabeth is named; that Jane is hers too
+# is inferred. "admired him" is an attitude, so `admires`, not `loves`.
 
 @ 2 1342 79755 relation word | Pride and Prejudice
 ~ She had a sister married to a Mr. Philips, who had been a clerk to their father and succeeded him in the business, and a brother settled in London in a respectable line of trade.
@@ -85,21 +94,27 @@ The village of Longbourn was only one mile from Meryton; a most convenient dista
 ~ In consequence of an agreement between the sisters, Elizabeth wrote the next morning to her mother, to beg that the carriage might be sent for them in the course of the day.
 But Mrs. Bennet, who had calculated on her daughters remaining at Netherfield till the following Tuesday, which would exactly finish Jane’s week, could not bring herself to receive them with pleasure before.
 =
-# Jane being one of "her daughters" is implied, not stated. The mother in the
+implied Jane | daughter_of | Mrs. Bennet
+# Jane being one of "her daughters" is inferred, not stated. The mother in the
 # `~` line is context only.
 
 @ 5 1342 191593 names | Pride and Prejudice
 ~ [Illustration]
 Till Elizabeth entered the drawing-room at Netherfield, and looked in vain for Mr. Wickham among the cluster of red coats there assembled, a doubt of his being present had never occurred to her.
 =
-# Netherfield is a place, but "entered the drawing-room at" is none of the
-# listed relations; looking for Wickham is not meeting him.
+Elizabeth | looks_for | Mr. Wickham
+Elizabeth | visits | Netherfield
+# Looking for him is stated even though she fails; it is not `meets`.
 
 @ 6 1342 191788 random | Pride and Prejudice
 ~ Till Elizabeth entered the drawing-room at Netherfield, and looked in vain for Mr. Wickham among the cluster of red coats there assembled, a doubt of his being present had never occurred to her.
 The certainty of meeting him had not been checked by any of those recollections that might not unreasonably have alarmed her.
 =
-# "the certainty of meeting him" is an expectation, not a meeting.
+Elizabeth | expects_to_meet | Mr. Wickham
+implied Elizabeth | knows | Mr. Wickham
+# "her" and "him" are Elizabeth and Wickham, named in the `~` line. The
+# expectation is stated; the meeting is not, so no `meets`. Expecting to meet
+# a named man implies she already knows him.
 
 @ 7 1342 230313 names | Pride and Prejudice
 ~ My reasons for believing it are briefly these:--It does not appear to me that my hand is unworthy of your acceptance, or that the establishment I can offer would be any other than highly desirable.

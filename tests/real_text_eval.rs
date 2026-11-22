@@ -13,9 +13,12 @@
 //! named two unrelated ways ("Lizzy", "Elizabeth") counts as a miss: alias
 //! resolution is not built yet.
 //!
-//! Recall is reported twice: over labels whose relation the library has a
-//! rule for, and over all labels. The gap between them is missing vocabulary;
-//! the first is what the rules get wrong.
+//! Recall over stated labels is reported twice: over labels whose relation the
+//! library has a rule for, and over all of them. The gap between them is
+//! missing vocabulary; the first is what the rules get wrong. Labels marked
+//! `implied` are what a reader infers rather than what the sentence says; they
+//! get their own recall and never lower the other two, and an extraction that
+//! matches one is not a false positive.
 //!
 //! Run `cargo test --release --test real_text_eval -- --include-ignored
 //! --nocapture` for the numbers, per relation and per miss.
@@ -63,6 +66,7 @@ struct Claim {
     relation: String,
     object: String,
     polarity: Polarity,
+    implied: bool,
 }
 
 struct Item {
@@ -103,6 +107,10 @@ fn parse(labels: &str) -> (bool, Vec<Item>) {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
+            let (implied, line) = match line.strip_prefix("implied ") {
+                Some(rest) => (true, rest),
+                None => (false, line),
+            };
             let (polarity, rest) = match line.strip_prefix("not ") {
                 Some(rest) => (Polarity::Denied, rest),
                 None => (Polarity::Asserted, line),
@@ -117,6 +125,7 @@ fn parse(labels: &str) -> (bool, Vec<Item>) {
                 relation: parts[1].to_string(),
                 object: parts[2].to_string(),
                 polarity,
+                implied,
             });
         }
 
@@ -249,6 +258,9 @@ fn real_text_precision_and_recall() {
     let mut overall = Tally::default();
     let mut known_missed = 0;
     let mut known_gold = 0;
+    let mut stated_gold = 0;
+    let mut implied_gold = 0;
+    let mut implied_found = 0;
     let mut by_relation: BTreeMap<String, Tally> = BTreeMap::new();
     let mut report = Vec::new();
 
@@ -280,9 +292,22 @@ fn real_text_precision_and_recall() {
             }
         }
         for claim in &item.claims {
+            let found = extracted.iter().any(|a| matches(claim, a));
+            if claim.implied {
+                implied_gold += 1;
+                implied_found += usize::from(found);
+                if !found {
+                    report.push(format!(
+                        "  item {} missed (implied): {claim:?}",
+                        item.number
+                    ));
+                }
+                continue;
+            }
             let is_known = known.contains(claim.relation.as_str());
             known_gold += usize::from(is_known);
-            if !extracted.iter().any(|a| matches(claim, a)) {
+            stated_gold += 1;
+            if !found {
                 overall.missed += 1;
                 known_missed += usize::from(is_known);
                 by_relation
@@ -299,19 +324,20 @@ fn real_text_precision_and_recall() {
     }
 
     let precision = ratio(overall.tp, overall.tp + overall.fp);
-    let gold = items.iter().map(|i| i.claims.len()).sum::<usize>();
+    let gold = stated_gold;
     let recall_all = ratio(gold - overall.missed, gold);
+    let recall_implied = ratio(implied_found, implied_gold);
     let recall_known = ratio(known_gold - known_missed, known_gold);
 
     println!(
-        "{} items, {gold} labels ({known_gold} with a rule); tp {} fp {} missed {}",
+        "{} items, {gold} stated labels ({known_gold} with a rule), {implied_gold} implied; tp {} fp {} missed {}",
         items.len(),
         overall.tp,
         overall.fp,
         overall.missed
     );
     println!(
-        "precision {precision:.3}  recall (relations with a rule) {recall_known:.3}  recall (all) {recall_all:.3}"
+        "precision {precision:.3}  recall (relations with a rule) {recall_known:.3}  recall (all) {recall_all:.3}  recall (implied) {recall_implied:.3}"
     );
     for (relation, t) in &by_relation {
         println!(
