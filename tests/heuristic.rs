@@ -1409,3 +1409,23 @@ fn analyze_returns_what_the_separate_calls_return() {
     );
     assert!(!analysis.conflicts.is_empty());
 }
+
+#[test]
+fn an_apostrophe_before_a_capital_stays_inside_the_name() {
+    for (text, subject) in [
+        (
+            "Goodwin O\u{2019}Leary is Eibhlín\u{2019}s grandson.",
+            "goodwin_o\u{2019}leary",
+        ),
+        ("Liam O'Brien is Nora's brother.", "liam_o'brien"),
+        (
+            "Anne D\u{2019}Arcy is Blanche\u{2019}s sister.",
+            "anne_d\u{2019}arcy",
+        ),
+    ] {
+        let candidates = extract(text);
+        assert_eq!(candidates.len(), 1, "{text}: {candidates:?}");
+        assert_eq!(candidates[0].subject, subject, "{text}");
+        assert!(!candidates[0].object.contains(['\'', '\u{2019}']), "{text}");
+    }
+}

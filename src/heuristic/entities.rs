@@ -239,6 +239,20 @@ fn is_separator(c: char) -> bool {
 /// names, and "Dev, Marco's brother" is a name, a comma and a possessor, not a
 /// person called `dev_marco`; a run that survives a comma merges the first
 /// name of every list in fiction into the second.
+/// An apostrophe between a letter and a capital, as in "O’Leary" or
+/// "D'Arcy", where it is part of the name rather than a possessive.
+fn joins_name(text: &str, at: usize, c: char) -> bool {
+    matches!(c, '\'' | '\u{2019}')
+        && text[..at]
+            .chars()
+            .next_back()
+            .is_some_and(char::is_alphabetic)
+        && text[at + c.len_utf8()..]
+            .chars()
+            .next()
+            .is_some_and(char::is_uppercase)
+}
+
 fn is_hard_break(c: char) -> bool {
     matches!(
         c,
@@ -279,7 +293,8 @@ fn extract_capitalized_entities(text: &str, pack: &LanguagePack) -> Vec<EntityCa
     for (byte_pos, c) in text.char_indices() {
         // The typographic apostrophe separates like the straight one; Gutenberg texts
         // use it throughout, so "Blanche’s" must not normalize to `blanche’s`.
-        let is_sep = c.is_whitespace() || is_separator(c);
+        // Between a letter and a capital it is inside the name: "O’Leary".
+        let is_sep = c.is_whitespace() || (is_separator(c) && !joins_name(text, byte_pos, c));
 
         if is_sep {
             if !current_word.is_empty() {
