@@ -14,7 +14,7 @@ pub struct Scope<'a> {
 }
 
 /// A relation found between two entities, with the span it was found in and
-/// the character gap between the entities (used to weight confidence).
+/// the byte gap between the entities (used to weight confidence).
 pub struct RelationCandidate {
     pub subject: String,
     pub relation: String,
@@ -26,6 +26,9 @@ pub struct RelationCandidate {
     pub stance: Stance,
 }
 
+/// Widest byte gap between two mentions any rule reads across.
+const MAX_GAP_BYTES: usize = 30;
+
 /// Extract relations between entity pairs in the same sentence/clause.
 pub fn extract_relations(
     text: &str,
@@ -36,15 +39,14 @@ pub fn extract_relations(
 ) -> Vec<RelationCandidate> {
     let mut relations = Vec::new();
 
-    // Only check forward entity pairs (left-to-right in text)
-    // to avoid bidirectional extraction
-    for i in 0..entities.len() {
-        for j in (i + 1)..entities.len() {
-            let subj = &entities[i];
-            let obj = &entities[j];
+    debug_assert!(entities.windows(2).all(|w| w[0].start <= w[1].start));
 
-            // Check for verb-phrase patterns between these entities
-            // Subject comes before object in text
+    for (i, subj) in entities.iter().enumerate() {
+        for obj in &entities[i + 1..] {
+            // Mentions are ordered by start, so the gap only grows from here.
+            if obj.start >= subj.end && obj.start - subj.end > MAX_GAP_BYTES {
+                break;
+            }
             // A pronoun carries its antecedent's normalized name, so the same
             // referent can appear twice in the pair loop.
             if subj.normalized == obj.normalized {
@@ -89,10 +91,10 @@ struct PatternMatch {
 }
 
 impl PatternMatch {
-    fn new(relation: &str, rule: &str, base: f32, gap: usize) -> Self {
+    fn new(relation: &str, rule: impl Into<String>, base: f32, gap: usize) -> Self {
         Self {
             relation: relation.to_string(),
-            rule: rule.to_string(),
+            rule: rule.into(),
             base,
             gap,
             swapped: false,
@@ -338,17 +340,16 @@ fn of_genitive_noun<'a>(between: &'a str, pack: &LanguagePack) -> Option<&'a str
         }
     };
 
-    let mut words: Vec<&str> = rest.split_whitespace().collect();
-    if words.pop()? != pack.genitive_link {
+    let mut words = rest.split_whitespace();
+    if words.next_back()? != pack.genitive_link {
         return None;
     }
-    let noun = words.pop()?;
+    let noun = words.next_back()?;
     // A negator is admitted alongside the modifiers so that "x is not the
     // sister of y" reaches the rule at all. Which claim it makes is the
     // caller's question; `assertion_stance` has already read the same window.
     words
-        .iter()
-        .all(|word| pack.appositive_modifiers.contains(word) || pack.negators.contains(word))
+        .all(|word| pack.appositive_modifiers.contains(&word) || pack.negators.contains(&word))
         .then_some(noun)
 }
 
@@ -404,8 +405,7 @@ fn find_relation_pattern(
     let (start, end) = (subj.end, obj.start);
     let gap = end - start;
 
-    // Only process if entities are within reasonable distance (30 chars for direct relations)
-    if gap > 30 {
+    if gap > MAX_GAP_BYTES {
         return None;
     }
 
@@ -694,7 +694,7 @@ fn match_plural_pair(
     {
         return None;
     }
-    let mut found = PatternMatch::new(relation, &format!("plural-{word}-pattern"), *base, gap);
+    let mut found = PatternMatch::new(relation, format!("plural-{word}-pattern"), *base, gap);
     if denied {
         found = found.stance(Stance::Denied);
     }
@@ -752,9 +752,7 @@ fn match_kin_prefix(
     } else {
         *base
     };
-    Some(
-        PatternMatch::new(relation, &format!("kin-prefix-{noun}-pattern"), base, gap).swapped(true),
-    )
+    Some(PatternMatch::new(relation, format!("kin-prefix-{noun}-pattern"), base, gap).swapped(true))
 }
 
 /// "x, my <noun>" and "x is her <noun>": the possessor is a pronoun after the
@@ -806,7 +804,7 @@ fn match_pronoun_possessive(
             base - 0.12
         };
         return Some(
-            PatternMatch::new(relation, &format!("pronoun-{noun}-pattern"), base, gap)
+            PatternMatch::new(relation, format!("pronoun-{noun}-pattern"), base, gap)
                 .span_end(obj.end + noun_end),
         );
     }
@@ -863,7 +861,7 @@ fn match_rules(
                 continue;
             }
             return Some(
-                PatternMatch::new(relation, &format!("possessive-{noun}-pattern"), *base, gap)
+                PatternMatch::new(relation, format!("possessive-{noun}-pattern"), *base, gap)
                     .span_end(phrase_start + noun_end),
             );
         }
@@ -879,7 +877,7 @@ fn match_rules(
             {
                 return Some(PatternMatch::new(
                     relation,
-                    &format!("of-genitive-{noun}-pattern"),
+                    format!("of-genitive-{noun}-pattern"),
                     *base,
                     gap,
                 ));
@@ -901,7 +899,7 @@ fn match_rules(
                     continue;
                 }
                 return Some(
-                    PatternMatch::new(relation, &format!("possessive-{noun}-pattern"), *base, gap)
+                    PatternMatch::new(relation, format!("possessive-{noun}-pattern"), *base, gap)
                         .swapped(true),
                 );
             }
@@ -943,6 +941,9 @@ fn match_verb_rules(between: &str, rules: &[VerbRule], gap: usize) -> Option<Pat
 /// Normalize a relation type against an optional caller-supplied ontology.
 /// If the relation is in the ontology map, return the mapped value; otherwise return as-is.
 pub fn normalize_relation(rel: &str, ontology: &BTreeMap<String, String>) -> String {
+    if ontology.is_empty() {
+        return rel.to_string();
+    }
     let rel_lower = rel.to_lowercase();
 
     if let Some(canonical) = ontology.get(&rel_lower) {

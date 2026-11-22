@@ -12,6 +12,7 @@ mod segment;
 use crate::types::{AggregateTriple, Conflict, Options, Polarity, TripleCandidate};
 use crate::Result;
 use pack::LanguagePack;
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub use context::Context;
@@ -106,15 +107,15 @@ fn collect_candidates(
     pack: &LanguagePack,
     context: &Context,
 ) -> Result<Vec<(TripleCandidate, Polarity)>> {
-    if text.is_empty() {
-        return Ok(vec![]);
-    }
-
     let min_confidence = opts.min_confidence.unwrap_or(0.0);
     if !(0.0..=1.0).contains(&min_confidence) {
         return Err(crate::NarrativeGraphError::InvalidConfidenceThreshold(
             min_confidence,
         ));
+    }
+
+    if text.is_empty() {
+        return Ok(vec![]);
     }
 
     // Consulted per candidate, so it is built once rather than scanned linearly
@@ -149,7 +150,11 @@ fn collect_candidates(
         if text[previous_end..sent_start].contains('\n') {
             quote_open = false;
         }
-        if text[previous_end..sent_start].matches('\n').count() > 1 {
+        if text[previous_end..sent_start]
+            .matches('\n')
+            .nth(1)
+            .is_some()
+        {
             carried.clear();
         }
         previous_end = sent_start + sent_text.len();
@@ -195,9 +200,9 @@ fn collect_candidates(
                 // A rejection names a triple, not a stance: a caller rejecting
                 // a wrong claim means the claim, whichever way the text put it.
                 let polarity = match rel.stance {
+                    relations::Stance::Asserted => Polarity::Asserted,
                     relations::Stance::Denied => Polarity::Denied,
-                    // `extract_relations` emits nothing for a suspended window.
-                    _ => Polarity::Asserted,
+                    relations::Stance::Suspended => continue,
                 };
 
                 candidates.push((
@@ -219,22 +224,50 @@ fn collect_candidates(
 }
 
 fn dedup_candidates(candidates: &mut Vec<TripleCandidate>) {
-    let mut best: BTreeMap<(String, String, String), TripleCandidate> = BTreeMap::new();
-
-    for candidate in candidates.drain(..) {
-        let key = (
-            candidate.subject.clone(),
-            candidate.relation.clone(),
-            candidate.object.clone(),
-        );
-        best.entry(key)
-            .and_modify(|best_cand| {
-                if candidate.confidence > best_cand.confidence {
-                    *best_cand = candidate.clone();
-                }
-            })
-            .or_insert(candidate);
+    struct Best {
+        confidence: f32,
+        span: [usize; 2],
+        rule: String,
     }
 
-    *candidates = best.into_values().collect();
+    let mut best: BTreeMap<(String, String, String), Best> = BTreeMap::new();
+
+    for candidate in candidates.drain(..) {
+        let TripleCandidate {
+            subject,
+            relation,
+            object,
+            confidence,
+            span,
+            rule,
+        } = candidate;
+        let evidence = Best {
+            confidence,
+            span,
+            rule,
+        };
+        // Strict `>`: the first candidate wins a tie.
+        match best.entry((subject, relation, object)) {
+            Entry::Vacant(entry) => {
+                entry.insert(evidence);
+            }
+            Entry::Occupied(mut entry) => {
+                if evidence.confidence > entry.get().confidence {
+                    entry.insert(evidence);
+                }
+            }
+        }
+    }
+
+    candidates.extend(
+        best.into_iter()
+            .map(|((subject, relation, object), b)| TripleCandidate {
+                subject,
+                relation,
+                object,
+                confidence: b.confidence,
+                span: b.span,
+                rule: b.rule,
+            }),
+    );
 }

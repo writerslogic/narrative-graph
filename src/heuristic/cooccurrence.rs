@@ -29,13 +29,13 @@ pub mod base {
 }
 
 /// Scale a pattern's base confidence by how close the subject and object are
-/// in the source text (`gap`: chars between the end of the subject mention and
+/// in the source text (`gap`: bytes between the end of the subject mention and
 /// the start of the object mention).
 ///
 /// Closer entities are less likely to be an accidental co-occurrence, so gap
 /// distance scales the base score down as the gap widens.
 pub fn score_confidence(base: f32, gap: usize) -> f32 {
-    // gap is already bounded to <= 30 by the caller; scale the last 15 chars
+    // gap is already bounded to <= 30 by the caller; scale the last 15 bytes
     // of that range down to a floor of 0.85x base, so a close match keeps the
     // full base score and a far one loses up to 15%.
     let proximity_penalty = (gap.saturating_sub(15) as f32 / 15.0).min(1.0) * 0.15;

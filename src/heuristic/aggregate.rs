@@ -8,7 +8,8 @@
 
 use super::pack::LanguagePack;
 use crate::types::{AggregateTriple, Conflict, ConflictKind, Polarity, TripleCandidate};
-use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, HashMap};
 
 /// Merge candidates that restate the same fact, keeping all their evidence.
 ///
@@ -22,41 +23,56 @@ use std::collections::BTreeMap;
 /// `extract_candidate_triples` keeps its own alphabetical order, which callers
 /// and the documented example output depend on; nothing here touches it.
 pub fn aggregate(candidates: Vec<(TripleCandidate, Polarity)>) -> Vec<AggregateTriple> {
-    let mut merged: BTreeMap<(String, String, String, Polarity), AggregateTriple> = BTreeMap::new();
+    struct Evidence {
+        confidence: f32,
+        spans: Vec<[usize; 2]>,
+        rules: Vec<String>,
+    }
+
+    let mut merged: BTreeMap<(String, String, String, Polarity), Evidence> = BTreeMap::new();
 
     for (candidate, polarity) in candidates {
-        let key = (
-            candidate.subject.clone(),
-            candidate.relation.clone(),
-            candidate.object.clone(),
-            polarity,
-        );
-        match merged.get_mut(&key) {
-            Some(entry) => {
-                entry.confidence = entry.confidence.max(candidate.confidence);
-                entry.spans.push(candidate.span);
-                if !entry.rules.contains(&candidate.rule) {
-                    entry.rules.push(candidate.rule);
+        let TripleCandidate {
+            subject,
+            relation,
+            object,
+            confidence,
+            span,
+            rule,
+        } = candidate;
+        match merged.entry((subject, relation, object, polarity)) {
+            Entry::Occupied(mut entry) => {
+                let entry = entry.get_mut();
+                entry.confidence = entry.confidence.max(confidence);
+                entry.spans.push(span);
+                if !entry.rules.contains(&rule) {
+                    entry.rules.push(rule);
                 }
             }
-            None => {
-                merged.insert(
-                    key,
-                    AggregateTriple {
-                        subject: candidate.subject,
-                        relation: candidate.relation,
-                        object: candidate.object,
-                        polarity,
-                        confidence: candidate.confidence,
-                        spans: vec![candidate.span],
-                        rules: vec![candidate.rule],
-                    },
-                );
+            Entry::Vacant(entry) => {
+                entry.insert(Evidence {
+                    confidence,
+                    spans: vec![span],
+                    rules: vec![rule],
+                });
             }
         }
     }
 
-    let mut aggregates: Vec<AggregateTriple> = merged.into_values().collect();
+    let mut aggregates: Vec<AggregateTriple> = merged
+        .into_iter()
+        .map(
+            |((subject, relation, object, polarity), evidence)| AggregateTriple {
+                subject,
+                relation,
+                object,
+                polarity,
+                confidence: evidence.confidence,
+                spans: evidence.spans,
+                rules: evidence.rules,
+            },
+        )
+        .collect();
     // Candidates arrive in document order, so each `spans` vector is already
     // ascending; only the aggregates themselves need ordering.
     sort_by_first_span(&mut aggregates);
@@ -82,39 +98,51 @@ pub fn aggregate(candidates: Vec<(TripleCandidate, Polarity)>) -> Vec<AggregateT
 /// under every character arc in the book. Ordering those two is what
 /// `extract_aggregates` already gives a caller.
 pub fn find_conflicts(aggregates: &[AggregateTriple], pack: &LanguagePack) -> Vec<Conflict> {
-    let mut conflicts = Vec::new();
-
-    for (i, left) in aggregates.iter().enumerate() {
-        for right in &aggregates[i + 1..] {
-            let kind = if left.subject == right.subject
-                && left.relation == right.relation
-                && left.object == right.object
-                && left.polarity != right.polarity
-            {
-                ConflictKind::Denial
-            } else if left.polarity == Polarity::Asserted
-                && right.polarity == Polarity::Asserted
-                && left.relation == right.relation
-                && left.object == right.object
-                && left.subject != right.subject
-                && pack
-                    .single_filler_relations
-                    .contains(&left.relation.as_str())
-            {
-                ConflictKind::Cardinality
-            } else {
-                continue;
-            };
-
-            conflicts.push(Conflict {
-                kind,
-                left: left.clone(),
-                right: right.clone(),
-            });
+    // Only aggregates sharing these keys can conflict, so grouping replaces a
+    // scan of every pair. Indices are pushed in ascending order.
+    let mut by_fact: HashMap<(&str, &str, &str), Vec<usize>> = HashMap::new();
+    let mut by_slot: HashMap<(&str, &str), Vec<usize>> = HashMap::new();
+    for (i, a) in aggregates.iter().enumerate() {
+        by_fact
+            .entry((&a.subject, &a.relation, &a.object))
+            .or_default()
+            .push(i);
+        if a.polarity == Polarity::Asserted
+            && pack.single_filler_relations.contains(&a.relation.as_str())
+        {
+            by_slot.entry((&a.relation, &a.object)).or_default().push(i);
         }
     }
 
-    conflicts
+    let mut pairs: Vec<(usize, usize, ConflictKind)> = Vec::new();
+    for group in by_fact.values() {
+        for (n, &i) in group.iter().enumerate() {
+            for &j in &group[n + 1..] {
+                if aggregates[i].polarity != aggregates[j].polarity {
+                    pairs.push((i, j, ConflictKind::Denial));
+                }
+            }
+        }
+    }
+    // Aggregates are unique per (triple, polarity), so every asserted pair in a
+    // slot names two different subjects and never also forms a denial.
+    for group in by_slot.values() {
+        for (n, &i) in group.iter().enumerate() {
+            for &j in &group[n + 1..] {
+                pairs.push((i, j, ConflictKind::Cardinality));
+            }
+        }
+    }
+    pairs.sort_unstable_by_key(|&(i, j, _)| (i, j));
+
+    pairs
+        .into_iter()
+        .map(|(i, j, kind)| Conflict {
+            kind,
+            left: aggregates[i].clone(),
+            right: aggregates[j].clone(),
+        })
+        .collect()
 }
 
 /// Order by where the document first states each claim, breaking ties on the

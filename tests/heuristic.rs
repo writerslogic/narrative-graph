@@ -84,6 +84,22 @@ fn test_confidence_threshold() {
 }
 
 #[test]
+fn an_invalid_threshold_is_rejected_even_for_empty_text() {
+    for threshold in [-0.1, 1.1, f32::NAN] {
+        let opts = Options {
+            min_confidence: Some(threshold),
+            ..Default::default()
+        };
+        for text in ["", "Elena is Marco's sister."] {
+            assert!(
+                extract_candidate_triples(text, &opts).is_err(),
+                "{threshold} {text:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn test_multiple_relations_same_sentence() {
     let text = "Elena is Marco's sister. Marco mentors Dev, who works at the Archive.";
     let opts = Options::default();

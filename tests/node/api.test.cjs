@@ -93,6 +93,10 @@ test('rejects an out-of-range minConfidence', () => {
   assert.throws(() => {
     extractCandidateTriplesNapi('Marco mentors Dev.', { minConfidence: 1.5 })
   }, /confidence threshold/i)
+  // Rounds to 1.0 as f32, so it must be checked before narrowing.
+  assert.throws(() => {
+    extractCandidateTriplesNapi('', { minConfidence: 1.00000001 })
+  }, /confidence threshold/i)
 })
 
 test('suppresses a rejected triple and leaves every other one', () => {
