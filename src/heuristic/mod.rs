@@ -158,11 +158,8 @@ fn collect_candidates(
         .collect();
 
     let mut candidates = Vec::new();
-    // The referents the previous sentence named, for a pronoun in this one
-    // that has no antecedent of its own. Cleared at a paragraph break: a
-    // pronoun chain does not cross one, and a paragraph is the coarsest
-    // boundary the pipeline can actually see — it has no notion of a scene
-    // break or a POV change, so this is the closest stand-in for both.
+    // Referents named by the previous sentence, for pronouns with no antecedent
+    // of their own. Cleared at paragraph breaks.
     let mut carried: Vec<String> = Vec::new();
     let mut previous_end = 0usize;
 
@@ -217,7 +214,6 @@ fn collect_candidates(
         let relations =
             relations::extract_relations(sent_text, &entities, &opts.ontology, pack, &scope);
 
-        // Score by rule strength and entity proximity within the sentence
         for rel in relations {
             let confidence = cooccurrence::score_confidence(rel.base, rel.gap);
 

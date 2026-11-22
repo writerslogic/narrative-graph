@@ -1,7 +1,6 @@
 use narrative_graph::{extract_candidate_triples, Options, Result};
 
 fn main() -> Result<()> {
-    // Test simple cases first
     println!("=== Test 1: Simple possessive ===");
     let text1 = "Elena is Marco's sister.";
     let opts = Options::default();
@@ -21,7 +20,6 @@ fn main() -> Result<()> {
         println!("  {} --{}-> {}", c.subject, c.relation, c.object);
     }
 
-    // Example from the README
     println!("\n=== Test 3: README example ===");
     let text = "Elena is Marco's sister. Marco mentors Dev, who works at the Archive.";
     let candidates = extract_candidate_triples(text, &opts)?;

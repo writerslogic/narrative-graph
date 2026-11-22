@@ -85,11 +85,8 @@ impl Entry {
                 Self::wins(self.personal(), self.thing())
                     && Self::wins(self.feminine, self.masculine)
             }
-            // IMPORTANT: "it" needs positive evidence of a thing, not merely
-            // the absence of evidence of a person. Most of the "it"s in
-            // narrative prose stand for a clause or an unnamed object, and a
-            // referent the text never marked as a thing is the wrong home for
-            // all of them.
+            // "it" needs positive evidence of a thing, not just absence of evidence
+            // of a person.
             PronounClass::Neuter => Self::wins(self.thing(), self.personal()),
             PronounClass::Plural => false,
         }

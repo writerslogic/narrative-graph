@@ -86,11 +86,9 @@ pub fn extract_entities_in(
 ) -> Vec<EntityCandidate> {
     let mut entities = Vec::new();
 
-    // Find capitalized sequences (multi-word proper nouns and single capitalized words)
     let entities_from_capitalization = extract_capitalized_entities(text, pack);
     entities.extend(entities_from_capitalization);
 
-    // Resolve aliases: any mention in the aliases map becomes the mapped canonical name
     for entity in &mut entities {
         if let Some(canonical) = aliases.get(&entity.text) {
             entity.normalized = canonical.clone();
@@ -124,10 +122,8 @@ pub fn extract_entities_in(
         entity.quoted = quotes.inside(entity.start);
     }
 
-    // IMPORTANT: every mention is kept. Collapsing repeated mentions of one
-    // referent hides the second relation in "Elena is Marco's sister and Marco
-    // mentors Elena." `extract_relations` skips pairs that share a referent,
-    // and `dedup_candidates` collapses triples that repeat.
+    // Every mention is kept: collapsing repeats of one referent would hide the
+    // second relation in "Elena is Marco's sister and Marco mentors Elena."
     entities
 }
 
@@ -152,11 +148,8 @@ fn strip_honorifics<'a>(entity: &'a str, pack: &LanguagePack) -> &'a str {
     let mut rest = entity;
 
     while let Some((head, tail)) = rest.split_once(' ') {
-        // Stop while one name word would be left: that word is a bare given
-        // name or surname, and the title is the only thing separating it from
-        // everyone else who shares it. A particle is not one of those words —
-        // "Lady de Bourgh" reduced to `de_bourgh` names the surname two people
-        // share, which is the error the particle list exists to prevent.
+        // Keep at least one name word after the title: a bare given name or
+        // surname is ambiguous without it. A particle is not a name word.
         if name_word_count(tail, pack) < 2 || !is_title_word(head, tail.split(' ').next(), pack) {
             break;
         }
@@ -185,10 +178,8 @@ fn is_sentence_start(text: &str, word_start: usize) -> bool {
             quoted = true;
             continue;
         }
-        // IMPORTANT: a quotation opening after the attribution comma starts a
-        // sentence too. `Elena said, "She is Marco's student."` is where a
-        // capitalized pronoun actually occurs in fiction, and the comma is the
-        // only thing before it.
+        // A quotation opening after an attribution comma also starts a sentence:
+        // `Elena said, "She is Marco's student."`
         return ".!?\u{2026}".contains(c) || (quoted && c == ',');
     }
 
@@ -220,13 +211,8 @@ fn push_entity(
     end: usize,
     pack: &LanguagePack,
 ) {
-    // IMPORTANT: a pronoun is never a proper name, wherever it is capitalized.
-    // `SENTENCE_OPENERS` catches one that opens a sentence; one mid-sentence
-    // ("Elena said that She is Marco's sister") reached here and became a node
-    // named `she`, which names nobody, alongside the correct mention.
-    // A deictic pronoun is excluded for a sharper reason: "I" is capitalized in
-    // every sentence of first-person narration, so `i` becomes a node naming
-    // whoever is talking, and the carry then offers it to the next sentence.
+    // A pronoun is never a proper name, even capitalized mid-sentence. First-person
+    // "I" would otherwise become a node for whoever is narrating.
     let is_pronoun = |list: &[&str]| list.iter().any(|p| run.eq_ignore_ascii_case(p));
     if is_pronoun(pack.pronouns) || is_pronoun(pack.deictic_pronouns) {
         return;
@@ -291,12 +277,8 @@ fn extract_capitalized_entities(text: &str, pack: &LanguagePack) -> Vec<EntityCa
     let mut pending_particles = String::new();
 
     for (byte_pos, c) in text.char_indices() {
-        // IMPORTANT: the typographic apostrophe separates exactly as the
-        // straight one does. Without it "Blanche’s" is one capitalized run and
-        // normalizes to `blanche’s`, a node that never unifies with any other
-        // mention of her — and Gutenberg texts are typeset with the curly form
-        // throughout, so this is the common case in real prose, not the rare
-        // one. `find_pronoun_antecedent` already strips both.
+        // The typographic apostrophe separates like the straight one; Gutenberg texts
+        // use it throughout, so "Blanche’s" must not normalize to `blanche’s`.
         let is_sep = c.is_whitespace() || is_separator(c);
 
         if is_sep {
@@ -699,7 +681,6 @@ fn find_pronoun_antecedent(
         .filter(|m| m.end <= pronoun.start && !quotes.inside(m.start))
         .max_by_key(|m| m.end);
 
-    // Simple heuristic: find the most recent capitalized entity before this pronoun
     let before_pronoun = &text[..pronoun.start];
 
     for (offset, word) in words_with_offsets(before_pronoun).into_iter().rev() {
@@ -713,11 +694,8 @@ fn find_pronoun_antecedent(
         let word = word.split(['\'', '\u{2019}']).next().unwrap_or(word);
         let word = word.trim_matches(|c: char| !c.is_alphanumeric());
 
-        // IMPORTANT: a capitalized pronoun is not an antecedent. "She runs it"
-        // would otherwise resolve "it" to the word "She" and put a graph node
-        // named `she` in the output, which names nobody — and it would hide
-        // the pronoun that has no antecedent here from the cross-sentence
-        // fallback, which is the only thing that can resolve it.
+        // A capitalized pronoun is not an antecedent; leaving it unresolved here lets
+        // the cross-sentence fallback handle it.
         let is_pronoun = pack.pronouns.iter().any(|p| word.eq_ignore_ascii_case(p));
 
         // IMPORTANT: a word capitalized only because a sentence starts there is
