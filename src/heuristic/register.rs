@@ -97,7 +97,7 @@ impl Entry {
 }
 
 /// Every name the document uses, with what it says about each.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Register {
     entries: BTreeMap<String, Entry>,
 }
@@ -197,6 +197,20 @@ impl Register {
                 PronounClass::Plural => {}
             }
         }
+    }
+
+    /// Whether the document's own evidence says `name` is a person.
+    pub fn is_person(&self, name: &str) -> bool {
+        self.entries
+            .get(name)
+            .is_some_and(|e| Entry::wins(e.personal(), e.thing()))
+    }
+
+    /// Whether the document's own evidence says `name` is a place or thing.
+    pub fn is_thing(&self, name: &str) -> bool {
+        self.entries
+            .get(name)
+            .is_some_and(|e| Entry::wins(e.thing(), e.personal()))
     }
 
     /// Whether `referent` may be what `pronoun` refers to.

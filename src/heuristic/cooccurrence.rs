@@ -12,6 +12,17 @@ pub mod base {
     /// A direct verb between the two mentions.
     pub const VERB: f32 = 0.78;
 
+    /// An exact-phrase rule whose verb states the relation outright
+    /// ("married", "lives in").
+    pub const PHRASE_FACTUAL: f32 = 0.78;
+
+    /// An exact-phrase rule naming a feeling or stance ("loves", "friends with").
+    pub const PHRASE_STANCE: f32 = 0.68;
+
+    /// An exact-phrase rule naming an event rather than a standing relation
+    /// ("met", "kissed", "taught"): true when narrated, but not a lasting fact.
+    pub const PHRASE_EVENT: f32 = 0.62;
+
     /// A relative clause, which puts more text between the mentions and more
     /// ways for the attachment to be wrong.
     pub const RELATIVE_CLAUSE: f32 = 0.70;

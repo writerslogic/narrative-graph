@@ -1488,7 +1488,7 @@ fn a_typographic_apostrophe_separates_a_mention_as_a_straight_one_does() {
 fn a_cross_sentence_pronoun_agrees_in_gender() {
     // Nearest-first would take Mr. Darcy, who is named first. The document
     // says he is male and that "she" is therefore not him.
-    let text = "Mr. Darcy greeted Mrs. Bennet. She works at the Archive.";
+    let text = "Mr. Darcy watched Mrs. Bennet. She works at the Archive.";
     let candidates =
         extract_candidate_triples(text, &Options::default()).expect("extraction failed");
 
@@ -1552,4 +1552,119 @@ fn a_plural_pronoun_never_links_across_a_sentence() {
         candidates.iter().all(|c| c.subject != "mr_darcy"),
         "a plural pronoun claimed a single referent: {candidates:?}"
     );
+}
+
+#[test]
+fn a_comma_ends_a_name_so_a_list_is_not_one_person() {
+    let text = "Dev, Marco's younger brother, left early.";
+    let found = extract_candidate_triples(text, &Options::default()).expect("extraction failed");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        (&*found[0].subject, &*found[0].relation, &*found[0].object),
+        ("dev", "brother_of", "marco")
+    );
+    let names: Vec<_> = extract_entities("Nora, Dev and Marco came.", &Default::default())
+        .into_iter()
+        .map(|e| e.normalized)
+        .collect();
+    assert_eq!(names, ["nora", "dev", "marco"]);
+}
+
+#[test]
+fn a_relation_is_not_read_across_a_quotation_mark() {
+    for text in [
+        "\"Papa's stuck at work,\" Nora says.",
+        "\"Marco,\" Elena said, \"married Nora.\"",
+        "Cass said, \"He married Dev.\"",
+    ] {
+        let found = extract_aggregates(text, &Options::default()).expect("extraction failed");
+        assert!(found.is_empty(), "{text}: {found:?}");
+    }
+    // A statement made whole inside one quotation is still the speaker's claim.
+    let spoken = extract_aggregates(
+        "\"Elena is Marco's sister,\" Dev said.",
+        &Options::default(),
+    )
+    .expect("extraction failed");
+    assert_eq!(spoken.len(), 1);
+}
+
+#[test]
+fn a_vocative_inside_speech_is_not_the_speaker_a_pronoun_names() {
+    let text = "\"Thanks, Cass,\" she says. Then she kisses Hollis.";
+    let found = extract_aggregates(text, &Options::default()).expect("extraction failed");
+    assert!(
+        found.iter().all(|a| a.subject != "cass"),
+        "the listener was taken for the speaker: {found:?}"
+    );
+}
+
+#[test]
+fn a_sentence_opener_is_not_a_pronoun_antecedent() {
+    let text = "Then she married Dev.";
+    let found = extract_aggregates(text, &Options::default()).expect("extraction failed");
+    assert!(found.iter().all(|a| a.subject != "then"), "{found:?}");
+}
+
+#[test]
+fn a_phrase_rule_reads_only_the_exact_window_between_the_mentions() {
+    let opts = Options::default();
+    let claims = |text: &str| {
+        extract_aggregates(text, &opts)
+            .expect("extraction failed")
+            .into_iter()
+            .map(|a| (a.subject, a.relation, a.object, a.polarity))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        claims("Nora married Dev."),
+        [(
+            "nora".into(),
+            "spouse_of".into(),
+            "dev".into(),
+            Polarity::Asserted
+        )]
+    );
+    assert_eq!(
+        claims("Nora never married Dev."),
+        [(
+            "nora".into(),
+            "spouse_of".into(),
+            "dev".into(),
+            Polarity::Denied
+        )]
+    );
+    for text in [
+        "Nora met her friend Dev.",
+        "Nora wanted to marry Dev.",
+        "If Nora married Dev, she left.",
+        "Did Nora marry Dev?",
+        "Nora met Dev's sister.",
+        "Nora loves Paris.",
+        "Nora owns Dev.",
+    ] {
+        assert!(claims(text).is_empty(), "{text}: {:?}", claims(text));
+    }
+}
+
+#[test]
+fn a_narrator_context_resolves_the_first_person_outside_speech_only() {
+    use narrative_graph::extract_aggregates_in;
+    use narrative_graph::heuristic::Context;
+
+    let context = Context::default().with_narrator("wren");
+    let opts = Options::default();
+    let found = extract_aggregates_in("I live with Cass.", &opts, &context).expect("failed");
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        (&*found[0].subject, &*found[0].relation, &*found[0].object),
+        ("wren", "lives_with", "cass")
+    );
+    // Without a narrator the first person is never a mention, as before.
+    assert!(extract_aggregates("I live with Cass.", &opts)
+        .expect("failed")
+        .is_empty());
+    let spoken = extract_aggregates_in("\"I live with Cass,\" Marco says.", &opts, &context)
+        .expect("failed");
+    assert!(spoken.is_empty(), "{spoken:?}");
 }

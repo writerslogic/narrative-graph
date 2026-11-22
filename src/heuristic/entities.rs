@@ -1,4 +1,5 @@
 use super::pack::LanguagePack;
+use super::quotes::QuoteMap;
 use super::register::Register;
 use std::collections::BTreeMap;
 
@@ -9,6 +10,11 @@ pub struct EntityCandidate {
     pub normalized: String,
     pub start: usize,
     pub end: usize,
+    /// The mention is a pronoun (or the narrator's first person) resolved to a
+    /// referent, not a name the text spells out.
+    pub pronoun: bool,
+    /// The mention sits inside quoted speech.
+    pub quoted: bool,
 }
 
 /// Extract entities from a sentence with the pipeline's own language pack and
@@ -51,6 +57,33 @@ pub fn extract_entities_with(
     carried: &[String],
     register: &Register,
 ) -> Vec<EntityCandidate> {
+    extract_entities_in(
+        text,
+        aliases,
+        pack,
+        carried,
+        register,
+        &QuoteMap::default(),
+        None,
+    )
+}
+
+/// `extract_entities_with` that also knows which bytes are spoken and who the
+/// first person is.
+///
+/// IMPORTANT: a pronoun inside speech is never resolved, and one outside speech
+/// never takes an antecedent from inside it. `"Thanks, Cass," she says` has
+/// the vocative nearest the pronoun, and linking `she` to `Cass` records the
+/// listener as the speaker.
+pub fn extract_entities_in(
+    text: &str,
+    aliases: &BTreeMap<String, String>,
+    pack: &LanguagePack,
+    carried: &[String],
+    register: &Register,
+    quotes: &QuoteMap,
+    narrator: Option<&str>,
+) -> Vec<EntityCandidate> {
     let mut entities = Vec::new();
 
     // Find capitalized sequences (multi-word proper nouns and single capitalized words)
@@ -75,7 +108,11 @@ pub fn extract_entities_with(
         &from_lexicon,
         carried,
         register,
+        quotes,
     ));
+    if let Some(narrator) = narrator {
+        entities.extend(first_person_mentions(text, pack, narrator, quotes));
+    }
 
     entities.extend(from_lexicon);
 
@@ -83,6 +120,9 @@ pub fn extract_entities_with(
     // is not in text order until sorted. `extract_relations` pairs entities by
     // index and treats the earlier index as the subject.
     entities.sort_by_key(|e| e.start);
+    for entity in &mut entities {
+        entity.quoted = quotes.inside(entity.start);
+    }
 
     // IMPORTANT: every mention is kept. Collapsing repeated mentions of one
     // referent hides the second relation in "Elena is Marco's sister and Marco
@@ -194,8 +234,21 @@ fn push_entity(
         normalized: normalize_entity(strip_honorifics(run, pack)),
         start,
         end,
+        pronoun: false,
+        quoted: false,
     });
 }
+
+/// Characters that end a word. A period is here but not in `HARD_BREAKS`:
+/// "Mrs. Bennet" and "J. R. R. Tolkien" are one run across it.
+const SEPARATORS: &str = ",.!?;:\u{2014}'\u{2019}\u{2018}\"\u{201C}\u{201D}()[]";
+
+/// Characters that end the name as well as the word. IMPORTANT: a comma between
+/// two capitalized words does not join them. "Nora, Dev and Marco" is three
+/// names, and "Dev, Marco's brother" is a name, a comma and a possessor, not a
+/// person called `dev_marco`; a run that survives a comma merges the first
+/// name of every list in fiction into the second.
+const HARD_BREAKS: &str = ",!?;:\u{2014}'\u{2019}\u{2018}\"\u{201C}\u{201D}()[]";
 
 fn extract_capitalized_entities(text: &str, pack: &LanguagePack) -> Vec<EntityCandidate> {
     let mut entities = Vec::new();
@@ -220,7 +273,7 @@ fn extract_capitalized_entities(text: &str, pack: &LanguagePack) -> Vec<EntityCa
         // mention of her — and Gutenberg texts are typeset with the curly form
         // throughout, so this is the common case in real prose, not the rare
         // one. `find_pronoun_antecedent` already strips both.
-        let is_sep = c.is_whitespace() || ",.!?;:—'\u{2019}\"".contains(c);
+        let is_sep = c.is_whitespace() || SEPARATORS.contains(c);
 
         if is_sep {
             if !current_word.is_empty() {
@@ -260,6 +313,11 @@ fn extract_capitalized_entities(text: &str, pack: &LanguagePack) -> Vec<EntityCa
                     pending_particles.clear();
                 }
                 current_word.clear();
+            }
+            if HARD_BREAKS.contains(c) && !current_entity.is_empty() {
+                push_entity(&mut entities, &current_entity, start_idx, entity_end, pack);
+                current_entity.clear();
+                pending_particles.clear();
             }
         } else {
             if current_word.is_empty() {
@@ -356,6 +414,8 @@ fn lexicon_mentions(
                 normalized: canonical.clone(),
                 start,
                 end,
+                pronoun: false,
+                quoted: false,
             });
         }
     }
@@ -464,6 +524,7 @@ fn resolve_pronouns(
     lexicon: &[EntityCandidate],
     carried: &[String],
     register: &Register,
+    quotes: &QuoteMap,
 ) -> Vec<EntityCandidate> {
     let mut resolved = Vec::new();
     let mut used: Vec<&str> = Vec::new();
@@ -471,6 +532,9 @@ fn resolve_pronouns(
     // A lexicon mention covering the pronoun's own offsets replaces it: the
     // caller named that referent outright, which beats resolving one.
     for pronoun in extract_pronouns(text, pack) {
+        if quotes.inside(pronoun.start) {
+            continue;
+        }
         let covered = lexicon
             .iter()
             .any(|m| pronoun.start < m.end && m.start < pronoun.end);
@@ -478,7 +542,7 @@ fn resolve_pronouns(
             continue;
         }
 
-        let antecedent = match find_pronoun_antecedent(text, &pronoun, lexicon, pack) {
+        let antecedent = match find_pronoun_antecedent(text, &pronoun, lexicon, pack, quotes) {
             Some(antecedent) => antecedent,
             None => {
                 // The first referent the previous sentence named that agrees
@@ -498,10 +562,55 @@ fn resolve_pronouns(
             normalized: antecedent,
             start: pronoun.start,
             end: pronoun.end,
+            pronoun: true,
+            quoted: false,
         });
     }
 
     resolved
+}
+
+/// The first person as a mention of the narrator, outside speech only: inside
+/// a quotation "I" is whoever is speaking, which this pass cannot know.
+fn first_person_mentions(
+    text: &str,
+    pack: &LanguagePack,
+    narrator: &str,
+    quotes: &QuoteMap,
+) -> Vec<EntityCandidate> {
+    let mut found = Vec::new();
+    let mut word_start: Option<usize> = None;
+    let sentinel = std::iter::once((text.len(), ' '));
+    for (byte_pos, c) in text.char_indices().chain(sentinel) {
+        if c.is_alphabetic() {
+            word_start.get_or_insert(byte_pos);
+            continue;
+        }
+        let Some(start) = word_start.take() else {
+            continue;
+        };
+        let word = &text[start..byte_pos];
+        // "I'm" and "I'll" read as "I" followed by a clitic; a word that
+        // continues past an apostrophe into letters is not a lone "i" only when
+        // it is something else ("ill" never reaches here: the walk is by
+        // alphabetic run).
+        if pack
+            .first_person_pronouns
+            .iter()
+            .any(|p| word.eq_ignore_ascii_case(p))
+            && !quotes.inside(start)
+        {
+            found.push(EntityCandidate {
+                text: word.to_string(),
+                normalized: narrator.to_string(),
+                start,
+                end: byte_pos,
+                pronoun: true,
+                quoted: false,
+            });
+        }
+    }
+    found
 }
 
 /// The referents this sentence names outright, in order and without repeats,
@@ -532,7 +641,12 @@ pub fn carried_referents(
             .starts_with(['s', 'S'])
             && sentence[entity.end..].starts_with(['\u{2019}', '\'']);
 
-        if is_pronoun || is_possessor || carried.contains(&entity.normalized) {
+        if is_pronoun
+            || entity.pronoun
+            || entity.quoted
+            || is_possessor
+            || carried.contains(&entity.normalized)
+        {
             continue;
         }
         carried.push(entity.normalized.clone());
@@ -554,16 +668,20 @@ fn find_pronoun_antecedent(
     pronoun: &Pronoun,
     lexicon: &[EntityCandidate],
     pack: &LanguagePack,
+    quotes: &QuoteMap,
 ) -> Option<String> {
     let nearest_lexicon = lexicon
         .iter()
-        .filter(|m| m.end <= pronoun.start)
+        .filter(|m| m.end <= pronoun.start && !quotes.inside(m.start))
         .max_by_key(|m| m.end);
 
     // Simple heuristic: find the most recent capitalized entity before this pronoun
     let before_pronoun = &text[..pronoun.start];
 
     for (offset, word) in words_with_offsets(before_pronoun).into_iter().rev() {
+        if quotes.inside(offset) {
+            continue;
+        }
         // IMPORTANT: strip the possessive clitic and surrounding punctuation.
         // `extract_capitalized_entities` treats them as separators, so leaving
         // them here yields a second, misspelled referent ("marco's") that
@@ -578,7 +696,16 @@ fn find_pronoun_antecedent(
         // fallback, which is the only thing that can resolve it.
         let is_pronoun = pack.pronouns.iter().any(|p| word.eq_ignore_ascii_case(p));
 
-        if !is_pronoun && word.chars().next().is_some_and(|c| c.is_uppercase()) && word.len() > 1 {
+        // IMPORTANT: a word capitalized only because a sentence starts there is
+        // not a name. "Then she greets Dev" would otherwise resolve `she` to
+        // `then`.
+        let positional = opens_sentence_by_position(text, word, offset, pack);
+
+        if !is_pronoun
+            && !positional
+            && word.chars().next().is_some_and(|c| c.is_uppercase())
+            && word.len() > 1
+        {
             return match nearest_lexicon {
                 Some(m) if m.end > offset => Some(m.normalized.clone()),
                 _ => Some(normalize_entity(word)),

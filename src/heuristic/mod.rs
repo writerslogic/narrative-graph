@@ -1,7 +1,10 @@
 mod aggregate;
+mod context;
 mod cooccurrence;
 mod entities;
+mod kinds;
 pub mod pack;
+mod quotes;
 mod register;
 mod relations;
 mod segment;
@@ -11,6 +14,7 @@ use crate::Result;
 use pack::LanguagePack;
 use std::collections::{BTreeMap, BTreeSet};
 
+pub use context::Context;
 pub use entities::extract_entities;
 pub use relations::normalize_relation;
 
@@ -20,11 +24,22 @@ pub use relations::normalize_relation;
 /// and this output has nowhere to say so, which is why it is dropped here and
 /// kept by `extract_aggregates`, whose type carries the polarity.
 pub fn extract_candidate_triples(text: &str, opts: &Options) -> Result<Vec<TripleCandidate>> {
-    let mut candidates: Vec<TripleCandidate> = collect_candidates(text, opts, &pack::ENGLISH)?
-        .into_iter()
-        .filter(|(_, polarity)| *polarity == Polarity::Asserted)
-        .map(|(candidate, _)| candidate)
-        .collect();
+    extract_candidate_triples_in(text, opts, &Context::default())
+}
+
+/// `extract_candidate_triples` with what a [`Context`] has learned about the
+/// names in the rest of the manuscript.
+pub fn extract_candidate_triples_in(
+    text: &str,
+    opts: &Options,
+    context: &Context,
+) -> Result<Vec<TripleCandidate>> {
+    let mut candidates: Vec<TripleCandidate> =
+        collect_candidates(text, opts, &pack::ENGLISH, context)?
+            .into_iter()
+            .filter(|(_, polarity)| *polarity == Polarity::Asserted)
+            .map(|(candidate, _)| candidate)
+            .collect();
     // Deduplicate: keep highest confidence for each (subj, rel, obj) triple
     dedup_candidates(&mut candidates);
     Ok(candidates)
@@ -37,7 +52,22 @@ pub fn extract_candidate_triples(text: &str, opts: &Options) -> Result<Vec<Tripl
 /// the collapse at the end differs. Use this to ask what a manuscript claims
 /// overall, and that one to ask what each sentence claims.
 pub fn extract_aggregates(text: &str, opts: &Options) -> Result<Vec<AggregateTriple>> {
-    let candidates = collect_candidates(text, opts, &pack::ENGLISH)?;
+    extract_aggregates_in(text, opts, &Context::default())
+}
+
+/// `extract_aggregates` with what a [`Context`] has learned about the names in
+/// the rest of the manuscript, and who the first person is.
+///
+/// Call it once per paragraph with one shared context to get the effect of
+/// reading the whole book: a name's gender, and whether it is a person or a
+/// place, are settled by every paragraph that mentions it, not by the one
+/// being extracted.
+pub fn extract_aggregates_in(
+    text: &str,
+    opts: &Options,
+    context: &Context,
+) -> Result<Vec<AggregateTriple>> {
+    let candidates = collect_candidates(text, opts, &pack::ENGLISH, context)?;
     Ok(aggregate::aggregate(candidates))
 }
 
@@ -53,7 +83,12 @@ pub fn extract_aggregates(text: &str, opts: &Options) -> Result<Vec<AggregateTri
 /// `extract_aggregates` already puts the two in the order the story states
 /// them.
 pub fn find_conflicts(text: &str, opts: &Options) -> Result<Vec<Conflict>> {
-    let aggregates = extract_aggregates(text, opts)?;
+    find_conflicts_in(text, opts, &Context::default())
+}
+
+/// `find_conflicts` with a shared [`Context`].
+pub fn find_conflicts_in(text: &str, opts: &Options, context: &Context) -> Result<Vec<Conflict>> {
+    let aggregates = extract_aggregates_in(text, opts, context)?;
     Ok(aggregate::find_conflicts(&aggregates, &pack::ENGLISH))
 }
 
@@ -69,6 +104,7 @@ fn collect_candidates(
     text: &str,
     opts: &Options,
     pack: &LanguagePack,
+    context: &Context,
 ) -> Result<Vec<(TripleCandidate, Polarity)>> {
     if text.is_empty() {
         return Ok(vec![]);
@@ -102,21 +138,34 @@ fn collect_candidates(
     // name's evidence — a title on it, a determiner in front of it, a capital
     // no sentence boundary explains — can appear anywhere in the document, and
     // a register built as the pipeline went would miss whatever came later.
-    let mut register = register::Register::default();
-    for (sent_text, _) in segment::split_sentences(text, pack) {
-        let mentions = entities::mentions_for_register(sent_text, pack);
-        let pronouns = entities::pronouns_for_register(sent_text, pack);
-        register.observe(sent_text, &mentions, &pronouns, pack);
-    }
+    // The caller's context seeds it, so evidence from other paragraphs counts.
+    let mut register = context.register().clone();
+    context::observe_text(&mut register, text, pack);
+
+    let narrator = context.narrator();
+    let mut quote_open = false;
 
     for (sent_text, sent_start) in segment::split_sentences(text, pack) {
+        if text[previous_end..sent_start].contains('\n') {
+            quote_open = false;
+        }
         if text[previous_end..sent_start].matches('\n').count() > 1 {
             carried.clear();
         }
         previous_end = sent_start + sent_text.len();
 
-        let entities =
-            entities::extract_entities_with(sent_text, &opts.aliases, pack, &carried, &register);
+        let quotes = quotes::QuoteMap::scan(sent_text, quote_open);
+        quote_open = quotes.open_at_end;
+
+        let entities = entities::extract_entities_in(
+            sent_text,
+            &opts.aliases,
+            pack,
+            &carried,
+            &register,
+            &quotes,
+            narrator,
+        );
         carried = entities::carried_referents(sent_text, &entities, pack);
 
         if entities.is_empty() {
@@ -124,7 +173,13 @@ fn collect_candidates(
         }
 
         // Look for relations between entity pairs in the same clause
-        let relations = relations::extract_relations(sent_text, &entities, &opts.ontology, pack);
+        let scope = relations::Scope {
+            register: &register,
+            quotes: &quotes,
+            mentions: &entities,
+        };
+        let relations =
+            relations::extract_relations(sent_text, &entities, &opts.ontology, pack, &scope);
 
         // Score by rule strength and entity proximity within the sentence
         for rel in relations {
