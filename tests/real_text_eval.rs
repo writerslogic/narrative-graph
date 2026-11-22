@@ -50,6 +50,7 @@ const MUTUAL: &[&str] = &[
     "lives_with",
     "lover_of",
     "meets",
+    "near",
     "neighbor_of",
     "partner_of",
     "rival_of",

@@ -16,8 +16,10 @@ status: draft
 # Rules:
 # - `A | x_of | B` means "A is B's x". "Lydia's aunt" is `aunt | aunt_of | Lydia`
 #   only if the aunt is named, e.g. `Mrs. Philips | aunt_of | Lydia`.
-# - Both sides must be a named person (or place, for works_at), or a pronoun
-#   whose person is named in this sentence or the `~` line. Write the name
+# - Both sides must be a named person or place, or a pronoun whose referent
+#   is named in this sentence or the `~` line. Places relate to each other
+#   too: "Longbourn was only one mile from Meryton" is
+#   `Longbourn | near | Meryton`. Write the name
 #   as the text writes it there ("Mr. Darcy", "Darcy", "Lizzy"). Skip a side
 #   that is only a description ("her mother", "the old man").
 # - Label what the sentence states as true, including inside dialogue. An
@@ -33,8 +35,8 @@ status: draft
 # - Use the relation names below when one fits. If none fits, make one up in
 #   the same style (`fiancee_of`, `ward_of`); it is scored separately as a
 #   relation the library does not know yet.
-# - Mutual relations (friend_of, cousin_of, spouse_of, knows, meets ...) only
-#   need one direction. Kin terms with a sex (sister_of, son_of) do not.
+# - Mutual relations (friend_of, cousin_of, spouse_of, knows, meets, near ...)
+#   only need one direction. Kin terms with a sex (sister_of, son_of) do not.
 # - Do not run the library on these sentences before labelling, and do not
 #   edit the `@`, `~` or sentence lines: the test checks them against the book.
 # - When unsure, write your best guess and add `?` at the end of the line;
@@ -82,7 +84,9 @@ implied Jane | sister_of | Elizabeth
 ~ She had a sister married to a Mr. Philips, who had been a clerk to their father and succeeded him in the business, and a brother settled in London in a respectable line of trade.
 The village of Longbourn was only one mile from Meryton; a most convenient distance for the young ladies, who were usually tempted thither three or four times a week, to pay their duty to their aunt, and to a milliner’s shop just over the way.
 =
-# "their aunt": the nieces are "the young ladies", never named here.
+Longbourn | near | Meryton
+# Two named places and a stated distance. "their aunt" is still skipped: the
+# nieces are "the young ladies", never named here.
 
 @ 3 1342 106966 relation word | Pride and Prejudice
 ~ But that gentleman,” looking at Darcy, “seemed to think the country was nothing at all.”
