@@ -1,0 +1,7 @@
+catherine_de_bourgh	widow_of	lewis_de_bourgh	Asserted	1	141887	of-genitive-widow-pattern
+catherine_de_bourgh	sister_of	anne_darcy	Asserted	1	181527	plural-sisters-pattern
+mr_bingley	knows	mr_wickham	Denied	1	205308	phrase-know
+lizzy	spouse_of	mr_collins	Asserted	1	234419	phrase-marry
+charlotte	wife_of	mr_collins	Asserted	1	263130	of-genitive-wife-pattern
+colonel_fitzwilliam	son_of	fitzwilliam	Asserted	1	341317	of-genitive-son-pattern
+miss_darcy	daughter_of	mr_darcy	Asserted	1	416679	of-genitive-daughter-pattern

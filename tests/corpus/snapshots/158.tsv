@@ -1,0 +1,6 @@
+john	loves	emma	Asserted	1	66989	phrase-love
+knightley	knows	mr_elton	Asserted	1	102616	phrase-know
+mr_elton	lover_of	harriet	Asserted	1	235077	of-genitive-lover-pattern
+mrs_bragge	acquaintance_of	mrs_suckling	Asserted	1	658995	of-genitive-acquaintance-pattern
+mrs_weston	kissed	weston	Asserted	1	729415	phrase-kiss
+mrs_elton	meets	elton	Asserted	1	838488	phrase-meet

@@ -41,6 +41,9 @@ jobs:
     - name: Run Tests
       run: cargo test --all-features --verbose
 
+    - name: Corpus snapshots and real-text eval
+      run: cargo test --release --test corpus --test real_text_eval -- --include-ignored
+
   msrv:
     runs-on: ubuntu-latest
     steps:
