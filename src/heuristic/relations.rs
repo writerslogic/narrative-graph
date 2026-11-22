@@ -24,6 +24,9 @@ pub struct RelationCandidate {
     pub base: f32,
     pub gap: usize,
     pub stance: Stance,
+    /// Whether the rule's own relation admits one subject per object, read
+    /// before the caller's ontology renames it.
+    pub single_filler: bool,
 }
 
 /// Widest byte gap between two mentions any rule reads across.
@@ -60,6 +63,7 @@ pub fn extract_relations(
             if let Some(m) = find_relation_pattern(text, subj, obj, pack, scope) {
                 let (s, o) = if m.swapped { (obj, subj) } else { (subj, obj) };
                 relations.push(RelationCandidate {
+                    single_filler: pack.single_filler_relations.contains(&m.relation.as_str()),
                     subject: s.normalized.clone(),
                     relation: normalize_relation(&m.relation, ontology),
                     object: o.normalized.clone(),
@@ -413,17 +417,18 @@ fn find_relation_pattern(
 
     // IMPORTANT: a question is suspended, never denied. "Did Elena mentor
     // Marco?" does not claim the relation and does not deny it either.
-    // IMPORTANT: a denial is read from a wider window than an assertion. The
-    // suspender in "If Elena is not Marco's sister" sits before the subject, so
-    // the text between the mentions reads as a flat denial and a conflict check
-    // would take it for one. An assertion is deliberately left on the narrow
-    // window: widening it would drop claims the extractor has always made, and
-    // the same sentence opener does not make "Elena is Marco's sister" false.
+    // A denial is also suspended by "to" or a capitalized suspender before the
+    // subject, which `conditioned_before` below does not count.
     let stance = match assertion_stance(between, pack) {
         Stance::Denied if suspended_before(text, subj.start, pack) => Stance::Suspended,
         other => other,
     };
     if stance == Stance::Suspended || ends_in_question(text, obj.end) {
+        return None;
+    }
+
+    // A clause opened by a suspender states nothing, whichever rule reads it.
+    if conditioned_before(text, subj.start, pack) {
         return None;
     }
 
@@ -435,8 +440,7 @@ fn find_relation_pattern(
         }
     }
 
-    if conditioned_before(text, subj.start, pack)
-        || !usable_mention(subj, pack)
+    if !usable_mention(subj, pack)
         || !usable_mention(obj, pack)
         || !pronoun_is_unambiguous(subj, pack, scope)
         || !pronoun_is_unambiguous(obj, pack, scope)
@@ -456,13 +460,21 @@ fn find_relation_pattern(
 }
 
 /// Whether a suspending word opens the clause the subject sits in: "If Nora
-/// married Dev, ..." and "Wren asked if she loved Dev" state nothing. The
-/// rules written before phrase rules read only the window between the mentions
-/// for an assertion, and keep doing so; every rule added since reads this too.
-/// A lowercase "may" is a modal and a capitalized one a name, so only the
+/// married Dev, ..." and "Wren asked if she loved Dev" state nothing, in either
+/// polarity. A lowercase "may" is a modal and a capitalized one a name, so only the
 /// lowercase form counts, except at the start of the sentence.
 fn conditioned_before(text: &str, from: usize, pack: &LanguagePack) -> bool {
-    text[..from]
+    // A suspender governs its own clause. Reading past a semicolon, dash or
+    // quotation mark reaches a clause the segmenter failed to split off.
+    let prefix = &text[..from];
+    let clause_start = prefix
+        .rfind([
+            ';', ':', '\u{2014}', '"', '\u{201C}', '\u{201D}', '\u{2018}',
+        ])
+        .map(|i| i + prefix[i..].chars().next().map_or(1, char::len_utf8))
+        .max(prefix.rfind("--").map(|i| i + 2))
+        .unwrap_or(0);
+    text[clause_start..from]
         .split(|c: char| !c.is_alphabetic())
         .enumerate()
         .any(|(index, word)| {

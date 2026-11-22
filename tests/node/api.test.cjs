@@ -6,6 +6,8 @@ const {
   extractAggregatesNapi,
   extractCandidateTriplesNapi,
   findConflictsNapi,
+  analyzeNapi,
+  analyzeAsyncNapi,
 } = require('../../index.js')
 
 test('extracts a possessive-sister relation with a confident score', () => {
@@ -158,4 +160,24 @@ test('links a pronoun to a referent the previous sentence named', () => {
     'Mrs. Bennet joined the Archive. He works at it.',
   )
   assert.equal(mismatched.length, 0)
+})
+
+test('spans are UTF-16 offsets that slice the JavaScript string', () => {
+  const text = "Élena met Dev. Élena is Marco\u2019s sister. \u{1F600} Marco mentors Dev."
+  const candidates = extractCandidateTriplesNapi(text)
+  assert.ok(candidates.length >= 2)
+  for (const c of candidates) {
+    const slice = text.slice(c.span[0], c.span[1]).toLowerCase()
+    assert.ok(slice.startsWith(c.subject.replace(/_/g, ' ')) || slice.startsWith(c.object.replace(/_/g, ' ')), slice)
+  }
+})
+
+test('analyze returns the three results, synchronously and on the worker pool', async () => {
+  const text = "Ann is Zoe's mother. Bea is Zoe's mother. Marco mentors Dev."
+  const sync = analyzeNapi(text)
+  assert.deepEqual(sync.candidates, extractCandidateTriplesNapi(text))
+  assert.deepEqual(sync.aggregates, extractAggregatesNapi(text))
+  assert.deepEqual(sync.conflicts, findConflictsNapi(text))
+  assert.deepEqual(await analyzeAsyncNapi(text), sync)
+  assert.throws(() => analyzeAsyncNapi(text, { minConfidence: 2 }), /confidence threshold/i)
 })

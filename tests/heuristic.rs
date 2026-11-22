@@ -1684,3 +1684,73 @@ fn a_narrator_context_resolves_the_first_person_outside_speech_only() {
         .expect("failed");
     assert!(spoken.is_empty(), "{spoken:?}");
 }
+
+#[test]
+fn a_conditional_suspends_its_own_clause_in_either_polarity() {
+    let opts = Options::default();
+    for text in [
+        "If Elena is Marco's sister, the will is void.",
+        "If Elena is not Marco's sister, the will stands.",
+        "\"If Elena is Marco's sister, say so.\"",
+    ] {
+        let aggregates = extract_aggregates(text, &opts).unwrap();
+        assert!(aggregates.is_empty(), "{text:?} yielded {aggregates:?}");
+    }
+    // The suspender governs its clause, not one past a semicolon.
+    let candidates =
+        extract_candidate_triples("Dev might stay; Elena is Marco's sister.", &opts).unwrap();
+    assert_eq!(candidates.len(), 1, "{candidates:?}");
+}
+
+#[test]
+fn the_one_subject_constraint_follows_the_rule_not_the_ontology_label() {
+    let ontology = |pairs: &[(&str, &str)]| Options {
+        ontology: pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+        ..Default::default()
+    };
+    let cardinality = |text: &str, opts: &Options| {
+        find_conflicts(text, opts)
+            .unwrap()
+            .iter()
+            .filter(|c| c.kind == ConflictKind::Cardinality)
+            .count()
+    };
+    let mothers = "Ann is Zoe's mother. Bea is Zoe's mother.";
+    assert_eq!(
+        cardinality(mothers, &ontology(&[("mother_of", "parent")])),
+        1
+    );
+    let sisters = "Ann is Zoe's sister. Bea is Zoe's sister.";
+    assert_eq!(
+        cardinality(sisters, &ontology(&[("sister_of", "mother_of")])),
+        0
+    );
+    // Merged from a constrained and an unconstrained rule: unconstrained.
+    let merged = "Ann is Zoe's mother. Bea is Zoe's sister. Ann is Zoe's sister.";
+    let opts = ontology(&[("mother_of", "kin"), ("sister_of", "kin")]);
+    assert_eq!(cardinality(merged, &opts), 0);
+}
+
+#[test]
+fn analyze_returns_what_the_separate_calls_return() {
+    let text = "Ann is Zoe's mother. Bea is Zoe's mother. Ann is not Zoe's mother. \
+                Marco mentors Dev, who works at the Archive.";
+    let opts = Options::default();
+    let analysis = narrative_graph::analyze(text, &opts).unwrap();
+    assert_eq!(
+        format!("{:?}", analysis.candidates),
+        format!("{:?}", extract_candidate_triples(text, &opts).unwrap())
+    );
+    assert_eq!(
+        format!("{:?}", analysis.aggregates),
+        format!("{:?}", extract_aggregates(text, &opts).unwrap())
+    );
+    assert_eq!(
+        format!("{:?}", analysis.conflicts),
+        format!("{:?}", find_conflicts(text, &opts).unwrap())
+    );
+    assert!(!analysis.conflicts.is_empty());
+}

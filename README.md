@@ -111,6 +111,7 @@ Every candidate carries a confidence score from the extraction rule's pattern st
 | `AggregateTriple { subject, relation, object, polarity, confidence, spans, rules }` | One fact with every span that stated it; `confidence` is the best of them, and repetition does not raise it |
 | `find_conflicts(text, &Options)` | Claims a passage makes that cannot both be true: a fact and its denial, or two subjects where the relation admits one |
 | `Conflict { kind, left, right }` | Both sides with their evidence; the crate does not decide which one the manuscript meant |
+| `analyze(text, &Options)` | Candidates, aggregates and conflicts from one pass, as `Analysis { candidates, aggregates, conflicts }` |
 
 </details>
 
@@ -131,6 +132,11 @@ Installed alongside the crate (`cargo install narrative-graph --features cli` pr
 | Function | What it does |
 |----------|-------------|
 | `extractCandidateTriplesNapi(text, opts?)` | Run the heuristic pipeline over a passage |
+| `extractAggregatesNapi(text, opts?)` / `findConflictsNapi(text, opts?)` | Per-fact aggregates and conflicts, as in Rust |
+| `analyzeNapi(text, opts?)` | All three results from one pass |
+| `analyzeAsyncNapi(text, opts?)` | `analyzeNapi` on the libuv worker pool; returns a `Promise` and leaves the calling thread free |
+
+Spans in Node are UTF-16 code unit offsets, so `text.slice(span[0], span[1])` returns the evidence. The Rust API reports UTF-8 byte offsets; the two differ on non-ASCII text.
 
 `opts` accepts `aliases`, `minConfidence`, `rejections`, and `ontology`. Full TypeScript definitions ship in the package (`index.d.ts`), generated from the Rust types via `ts-rs` — treat them as the source of truth over this table.
 

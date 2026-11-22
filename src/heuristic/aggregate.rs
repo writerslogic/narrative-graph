@@ -6,7 +6,7 @@
 //! "what does each sentence claim", and `extract_aggregates` answers "what does
 //! the document claim, and where does it say so".
 
-use super::pack::LanguagePack;
+use super::Emitted;
 use crate::types::{AggregateTriple, Conflict, ConflictKind, Polarity, TripleCandidate};
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap};
@@ -22,16 +22,26 @@ use std::collections::{BTreeMap, HashMap};
 ///
 /// `extract_candidate_triples` keeps its own alphabetical order, which callers
 /// and the documented example output depend on; nothing here touches it.
-pub fn aggregate(candidates: Vec<(TripleCandidate, Polarity)>) -> Vec<AggregateTriple> {
+///
+/// The second vector says, per aggregate, whether every candidate behind it came
+/// from a single-filler relation, which `find_conflicts` needs and the public
+/// type does not carry.
+pub fn aggregate(candidates: Vec<Emitted>) -> (Vec<AggregateTriple>, Vec<bool>) {
     struct Evidence {
         confidence: f32,
         spans: Vec<[usize; 2]>,
         rules: Vec<String>,
+        single_filler: bool,
     }
 
     let mut merged: BTreeMap<(String, String, String, Polarity), Evidence> = BTreeMap::new();
 
-    for (candidate, polarity) in candidates {
+    for Emitted {
+        candidate,
+        polarity,
+        single_filler,
+    } in candidates
+    {
         let TripleCandidate {
             subject,
             relation,
@@ -45,6 +55,7 @@ pub fn aggregate(candidates: Vec<(TripleCandidate, Polarity)>) -> Vec<AggregateT
                 let entry = entry.get_mut();
                 entry.confidence = entry.confidence.max(confidence);
                 entry.spans.push(span);
+                entry.single_filler &= single_filler;
                 if !entry.rules.contains(&rule) {
                     entry.rules.push(rule);
                 }
@@ -54,29 +65,33 @@ pub fn aggregate(candidates: Vec<(TripleCandidate, Polarity)>) -> Vec<AggregateT
                     confidence,
                     spans: vec![span],
                     rules: vec![rule],
+                    single_filler,
                 });
             }
         }
     }
 
-    let mut aggregates: Vec<AggregateTriple> = merged
+    let mut aggregates: Vec<(AggregateTriple, bool)> = merged
         .into_iter()
-        .map(
-            |((subject, relation, object, polarity), evidence)| AggregateTriple {
-                subject,
-                relation,
-                object,
-                polarity,
-                confidence: evidence.confidence,
-                spans: evidence.spans,
-                rules: evidence.rules,
-            },
-        )
+        .map(|((subject, relation, object, polarity), evidence)| {
+            (
+                AggregateTriple {
+                    subject,
+                    relation,
+                    object,
+                    polarity,
+                    confidence: evidence.confidence,
+                    spans: evidence.spans,
+                    rules: evidence.rules,
+                },
+                evidence.single_filler,
+            )
+        })
         .collect();
     // Candidates arrive in document order, so each `spans` vector is already
     // ascending; only the aggregates themselves need ordering.
     sort_by_first_span(&mut aggregates);
-    aggregates
+    aggregates.into_iter().unzip()
 }
 
 /// Claims the passage makes that cannot both be true.
@@ -97,7 +112,13 @@ pub fn aggregate(candidates: Vec<(TripleCandidate, Polarity)>) -> Vec<AggregateT
 /// a narrative does, and reporting it would bury the real continuity errors
 /// under every character arc in the book. Ordering those two is what
 /// `extract_aggregates` already gives a caller.
-pub fn find_conflicts(aggregates: &[AggregateTriple], pack: &LanguagePack) -> Vec<Conflict> {
+///
+/// IMPORTANT: the cardinality check reads `single_filler`, set from the rule's
+/// relation before the ontology renamed it. Renaming `mother_of` keeps the
+/// constraint, and mapping another relation onto the same label does not
+/// acquire it; an aggregate merged from both is unconstrained.
+pub fn find_conflicts(aggregates: &[AggregateTriple], single_filler: &[bool]) -> Vec<Conflict> {
+    debug_assert_eq!(aggregates.len(), single_filler.len());
     // Only aggregates sharing these keys can conflict, so grouping replaces a
     // scan of every pair. Indices are pushed in ascending order.
     let mut by_fact: HashMap<(&str, &str, &str), Vec<usize>> = HashMap::new();
@@ -107,9 +128,7 @@ pub fn find_conflicts(aggregates: &[AggregateTriple], pack: &LanguagePack) -> Ve
             .entry((&a.subject, &a.relation, &a.object))
             .or_default()
             .push(i);
-        if a.polarity == Polarity::Asserted
-            && pack.single_filler_relations.contains(&a.relation.as_str())
-        {
+        if a.polarity == Polarity::Asserted && single_filler[i] {
             by_slot.entry((&a.relation, &a.object)).or_default().push(i);
         }
     }
@@ -147,8 +166,8 @@ pub fn find_conflicts(aggregates: &[AggregateTriple], pack: &LanguagePack) -> Ve
 
 /// Order by where the document first states each claim, breaking ties on the
 /// triple so the order is total and reproducible.
-fn sort_by_first_span(aggregates: &mut [AggregateTriple]) {
-    aggregates.sort_by(|a, b| {
+fn sort_by_first_span(aggregates: &mut [(AggregateTriple, bool)]) {
+    aggregates.sort_by(|(a, _), (b, _)| {
         a.spans[0].cmp(&b.spans[0]).then_with(|| {
             (&a.subject, &a.relation, &a.object, a.polarity).cmp(&(
                 &b.subject,

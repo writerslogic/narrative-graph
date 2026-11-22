@@ -699,6 +699,8 @@ if (!nativeBinding) {
 }
 
 module.exports = nativeBinding
+module.exports.analyzeAsyncNapi = nativeBinding.analyzeAsyncNapi
+module.exports.analyzeNapi = nativeBinding.analyzeNapi
 module.exports.extractAggregatesNapi = nativeBinding.extractAggregatesNapi
 module.exports.extractCandidateTriplesNapi = nativeBinding.extractCandidateTriplesNapi
 module.exports.findConflictsNapi = nativeBinding.findConflictsNapi

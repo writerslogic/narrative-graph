@@ -203,8 +203,11 @@ fn opens_sentence_by_position(
     word_start: usize,
     pack: &LanguagePack,
 ) -> bool {
+    // The openers are ASCII, so an ASCII-case-insensitive compare matches
+    // what lowercasing the word would, without allocating.
     pack.sentence_openers
-        .contains(&word.to_lowercase().as_str())
+        .iter()
+        .any(|opener| word.eq_ignore_ascii_case(opener))
         && is_sentence_start(text, word_start)
 }
 
@@ -239,16 +242,37 @@ fn push_entity(
     });
 }
 
-/// Characters that end a word. A period is here but not in `HARD_BREAKS`:
-/// "Mrs. Bennet" and "J. R. R. Tolkien" are one run across it.
-const SEPARATORS: &str = ",.!?;:\u{2014}'\u{2019}\u{2018}\"\u{201C}\u{201D}()[]";
+/// Whether `c` ends a word. A period does but is not a hard break: "Mrs.
+/// Bennet" and "J. R. R. Tolkien" are one run across it.
+fn is_separator(c: char) -> bool {
+    c == '.' || is_hard_break(c)
+}
 
-/// Characters that end the name as well as the word. IMPORTANT: a comma between
+/// Whether `c` ends the name as well as the word. IMPORTANT: a comma between
 /// two capitalized words does not join them. "Nora, Dev and Marco" is three
 /// names, and "Dev, Marco's brother" is a name, a comma and a possessor, not a
 /// person called `dev_marco`; a run that survives a comma merges the first
 /// name of every list in fiction into the second.
-const HARD_BREAKS: &str = ",!?;:\u{2014}'\u{2019}\u{2018}\"\u{201C}\u{201D}()[]";
+fn is_hard_break(c: char) -> bool {
+    matches!(
+        c,
+        ',' | '!'
+            | '?'
+            | ';'
+            | ':'
+            | '\u{2014}'
+            | '\''
+            | '\u{2019}'
+            | '\u{2018}'
+            | '"'
+            | '\u{201C}'
+            | '\u{201D}'
+            | '('
+            | ')'
+            | '['
+            | ']'
+    )
+}
 
 fn extract_capitalized_entities(text: &str, pack: &LanguagePack) -> Vec<EntityCandidate> {
     let mut entities = Vec::new();
@@ -273,7 +297,7 @@ fn extract_capitalized_entities(text: &str, pack: &LanguagePack) -> Vec<EntityCa
         // mention of her — and Gutenberg texts are typeset with the curly form
         // throughout, so this is the common case in real prose, not the rare
         // one. `find_pronoun_antecedent` already strips both.
-        let is_sep = c.is_whitespace() || SEPARATORS.contains(c);
+        let is_sep = c.is_whitespace() || is_separator(c);
 
         if is_sep {
             if !current_word.is_empty() {
@@ -314,7 +338,7 @@ fn extract_capitalized_entities(text: &str, pack: &LanguagePack) -> Vec<EntityCa
                 }
                 current_word.clear();
             }
-            if HARD_BREAKS.contains(c) && !current_entity.is_empty() {
+            if is_hard_break(c) && !current_entity.is_empty() {
                 push_entity(&mut entities, &current_entity, start_idx, entity_end, pack);
                 current_entity.clear();
                 pending_particles.clear();

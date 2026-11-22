@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `analyze` / `analyze_in` and `analyzeNapi`: candidates, aggregates and conflicts
+  from one pipeline run. `analyzeAsyncNapi` runs it on the libuv worker pool.
 - Exact-phrase relation rules for marriage, romance, friendship, acquaintance,
   work, study, residence, ownership, membership and contact; possessor-first
   kinship ("Bram's daughter Odile", "his sister Elena", "Cass, my sister");
@@ -37,6 +39,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   covered by a lexicon mention is replaced by it.
 
 ### Changed
+- Node spans are UTF-16 code unit offsets, which `String.prototype.slice`
+  takes. They were UTF-8 byte offsets and selected the wrong text after any
+  non-ASCII character. The Rust API still reports byte offsets.
+- A suspender opening the subject's clause ("If Elena is Marco's sister, ...")
+  now suspends every rule, so the positive conditional is no longer asserted.
+  The scan stops at a semicolon, colon, dash or quotation mark.
+- The one-subject check behind cardinality conflicts reads the rule's relation
+  before the ontology renames it: renaming `mother_of` keeps the constraint,
+  and mapping another relation onto that label does not acquire it.
+- An invalid `min_confidence` is rejected even for empty text, by the CLI
+  instead of being treated as no threshold, and in Node before narrowing to
+  `f32`, with `InvalidArg`.
+- The CLI rejects an unknown `--format`, buffers output, and exits cleanly on
+  a closed pipe.
+- Conflict detection groups aggregates by fact instead of comparing every
+  pair, and extraction allocates less. Whole-book extraction is about a third
+  faster with identical output.
 - A relation is no longer read across a quotation mark, a pronoun inside speech
   is not resolved, and a pronoun outside speech does not take an antecedent from
   inside it. A sentence opener ("Then", "The") is no longer a pronoun antecedent.

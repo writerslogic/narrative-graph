@@ -9,7 +9,7 @@ mod register;
 mod relations;
 mod segment;
 
-use crate::types::{AggregateTriple, Conflict, Options, Polarity, TripleCandidate};
+use crate::types::{AggregateTriple, Analysis, Conflict, Options, Polarity, TripleCandidate};
 use crate::Result;
 use pack::LanguagePack;
 use std::collections::btree_map::Entry;
@@ -38,10 +38,9 @@ pub fn extract_candidate_triples_in(
     let mut candidates: Vec<TripleCandidate> =
         collect_candidates(text, opts, &pack::ENGLISH, context)?
             .into_iter()
-            .filter(|(_, polarity)| *polarity == Polarity::Asserted)
-            .map(|(candidate, _)| candidate)
+            .filter(|e| e.polarity == Polarity::Asserted)
+            .map(|e| e.candidate)
             .collect();
-    // Deduplicate: keep highest confidence for each (subj, rel, obj) triple
     dedup_candidates(&mut candidates);
     Ok(candidates)
 }
@@ -69,7 +68,7 @@ pub fn extract_aggregates_in(
     context: &Context,
 ) -> Result<Vec<AggregateTriple>> {
     let candidates = collect_candidates(text, opts, &pack::ENGLISH, context)?;
-    Ok(aggregate::aggregate(candidates))
+    Ok(aggregate::aggregate(candidates).0)
 }
 
 /// Find the claims in a passage that cannot both be true.
@@ -89,8 +88,40 @@ pub fn find_conflicts(text: &str, opts: &Options) -> Result<Vec<Conflict>> {
 
 /// `find_conflicts` with a shared [`Context`].
 pub fn find_conflicts_in(text: &str, opts: &Options, context: &Context) -> Result<Vec<Conflict>> {
-    let aggregates = extract_aggregates_in(text, opts, context)?;
-    Ok(aggregate::find_conflicts(&aggregates, &pack::ENGLISH))
+    let candidates = collect_candidates(text, opts, &pack::ENGLISH, context)?;
+    let (aggregates, single_filler) = aggregate::aggregate(candidates);
+    Ok(aggregate::find_conflicts(&aggregates, &single_filler))
+}
+
+/// Candidates, aggregates and conflicts from one run of the pipeline: the same
+/// three results the separate functions return, for a third of the work.
+pub fn analyze(text: &str, opts: &Options) -> Result<Analysis> {
+    analyze_in(text, opts, &Context::default())
+}
+
+/// `analyze` with a shared [`Context`].
+pub fn analyze_in(text: &str, opts: &Options, context: &Context) -> Result<Analysis> {
+    let emitted = collect_candidates(text, opts, &pack::ENGLISH, context)?;
+    let mut candidates: Vec<TripleCandidate> = emitted
+        .iter()
+        .filter(|e| e.polarity == Polarity::Asserted)
+        .map(|e| e.candidate.clone())
+        .collect();
+    dedup_candidates(&mut candidates);
+    let (aggregates, single_filler) = aggregate::aggregate(emitted);
+    let conflicts = aggregate::find_conflicts(&aggregates, &single_filler);
+    Ok(Analysis {
+        candidates,
+        aggregates,
+        conflicts,
+    })
+}
+
+/// One rule firing, before any collapse.
+pub(crate) struct Emitted {
+    candidate: TripleCandidate,
+    polarity: Polarity,
+    single_filler: bool,
 }
 
 /// Every candidate the rules fire on, in document order and with repeats
@@ -106,7 +137,7 @@ fn collect_candidates(
     opts: &Options,
     pack: &LanguagePack,
     context: &Context,
-) -> Result<Vec<(TripleCandidate, Polarity)>> {
+) -> Result<Vec<Emitted>> {
     let min_confidence = opts.min_confidence.unwrap_or(0.0);
     if !(0.0..=1.0).contains(&min_confidence) {
         return Err(crate::NarrativeGraphError::InvalidConfidenceThreshold(
@@ -205,8 +236,8 @@ fn collect_candidates(
                     relations::Stance::Suspended => continue,
                 };
 
-                candidates.push((
-                    TripleCandidate {
+                candidates.push(Emitted {
+                    candidate: TripleCandidate {
                         subject: rel.subject,
                         relation: rel.relation,
                         object: rel.object,
@@ -215,7 +246,8 @@ fn collect_candidates(
                         rule: rel.rule,
                     },
                     polarity,
-                ));
+                    single_filler: rel.single_filler,
+                });
             }
         }
     }
