@@ -39,7 +39,6 @@ fn main() -> anyhow::Result<()> {
             min_confidence,
             format,
         } => {
-            // Read input
             let text = if input == "-" {
                 let mut buffer = String::new();
                 io::stdin().read_to_string(&mut buffer)?;
@@ -48,7 +47,6 @@ fn main() -> anyhow::Result<()> {
                 fs::read_to_string(&input)?
             };
 
-            // Extract
             let opts = Options {
                 aliases: Default::default(),
                 min_confidence: if min_confidence > 0.0 {
@@ -62,7 +60,6 @@ fn main() -> anyhow::Result<()> {
 
             let candidates = extract_candidate_triples(&text, &opts)?;
 
-            // Output
             match format.as_str() {
                 "json" => {
                     let json = serde_json::to_string_pretty(&candidates)?;

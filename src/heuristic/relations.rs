@@ -24,15 +24,11 @@ pub fn extract_relations(
 ) -> Vec<RelationCandidate> {
     let mut relations = Vec::new();
 
-    // Only check forward entity pairs (left-to-right in text)
-    // to avoid bidirectional extraction
     for i in 0..entities.len() {
         for j in (i + 1)..entities.len() {
             let subj = &entities[i];
             let obj = &entities[j];
 
-            // Check for verb-phrase patterns between these entities
-            // Subject comes before object in text
             // A pronoun carries its antecedent's normalized name, so the same
             // referent can appear twice in the pair loop.
             if subj.normalized == obj.normalized {
@@ -360,7 +356,6 @@ fn find_relation_pattern(
     let (start, end) = (subj.end, obj.start);
     let gap = end - start;
 
-    // Only process if entities are within reasonable distance (30 chars for direct relations)
     if gap > 30 {
         return None;
     }
@@ -369,12 +364,8 @@ fn find_relation_pattern(
 
     // IMPORTANT: a question is suspended, never denied. "Did Elena mentor
     // Marco?" does not claim the relation and does not deny it either.
-    // IMPORTANT: a denial is read from a wider window than an assertion. The
-    // suspender in "If Elena is not Marco's sister" sits before the subject, so
-    // the text between the mentions reads as a flat denial and a conflict check
-    // would take it for one. An assertion is deliberately left on the narrow
-    // window: widening it would drop claims the extractor has always made, and
-    // the same sentence opener does not make "Elena is Marco's sister" false.
+    // A denial is read from a wider window than an assertion, so a suspender
+    // before the subject ("If Elena is not Marco's sister") is not read as one.
     let stance = match assertion_stance(between, pack) {
         Stance::Denied if suspended_before(text, subj.start, pack) => Stance::Suspended,
         other => other,

@@ -25,7 +25,6 @@ pub fn extract_candidate_triples(text: &str, opts: &Options) -> Result<Vec<Tripl
         .filter(|(_, polarity)| *polarity == Polarity::Asserted)
         .map(|(candidate, _)| candidate)
         .collect();
-    // Deduplicate: keep highest confidence for each (subj, rel, obj) triple
     dedup_candidates(&mut candidates);
     Ok(candidates)
 }
@@ -90,18 +89,13 @@ fn collect_candidates(
         .collect();
 
     let mut candidates = Vec::new();
-    // The referents the previous sentence named, for a pronoun in this one
-    // that has no antecedent of its own. Cleared at a paragraph break: a
-    // pronoun chain does not cross one, and a paragraph is the coarsest
-    // boundary the pipeline can actually see — it has no notion of a scene
-    // break or a POV change, so this is the closest stand-in for both.
+    // Referents named by the previous sentence, for pronouns with no antecedent
+    // of their own. Cleared at paragraph breaks.
     let mut carried: Vec<String> = Vec::new();
     let mut previous_end = 0usize;
 
-    // IMPORTANT: built over the whole text before any pronoun is resolved. A
-    // name's evidence — a title on it, a determiner in front of it, a capital
-    // no sentence boundary explains — can appear anywhere in the document, and
-    // a register built as the pipeline went would miss whatever came later.
+    // Built over the whole text before pronoun resolution: a name's evidence can
+    // appear anywhere in the document.
     let mut register = register::Register::default();
     for (sent_text, _) in segment::split_sentences(text, pack) {
         let mentions = entities::mentions_for_register(sent_text, pack);
@@ -123,10 +117,8 @@ fn collect_candidates(
             continue;
         }
 
-        // Look for relations between entity pairs in the same clause
         let relations = relations::extract_relations(sent_text, &entities, &opts.ontology, pack);
 
-        // Score by rule strength and entity proximity within the sentence
         for rel in relations {
             let confidence = cooccurrence::score_confidence(rel.base, rel.gap);
 
