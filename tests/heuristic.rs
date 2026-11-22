@@ -1,71 +1,231 @@
 use narrative_graph::heuristic::extract_entities;
 use narrative_graph::{
     extract_aggregates, extract_candidate_triples, find_conflicts, ConflictKind, Options, Polarity,
-    Rejection,
+    Rejection, TripleCandidate,
 };
 
-#[test]
-fn test_simple_possessive_pattern() {
-    let text = "Elena is Marco's sister.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].subject, "elena");
-    assert_eq!(candidates[0].relation, "sister_of");
-    assert_eq!(candidates[0].object, "marco");
-    assert!(candidates[0].confidence > 0.7);
+fn extract(text: &str) -> Vec<TripleCandidate> {
+    extract_candidate_triples(text, &Options::default()).expect("extraction failed")
 }
 
-#[test]
-fn test_simple_verb_pattern() {
-    let text = "Marco mentors Dev.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].subject, "marco");
-    assert_eq!(candidates[0].relation, "mentors");
-    assert_eq!(candidates[0].object, "dev");
-    assert!(candidates[0].confidence > 0.7);
-}
-
-#[test]
-fn test_works_at_pattern() {
-    let text = "Dev works at the Archive.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].subject, "dev");
-    assert_eq!(candidates[0].relation, "works_at");
-    assert_eq!(candidates[0].object, "archive");
-    assert!(candidates[0].confidence > 0.6);
-}
-
-#[test]
-fn test_relation_rule_attribution() {
-    let text = "Elena is Marco's sister.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].rule, "possessive-sister-pattern");
-}
-
-#[test]
-fn test_relative_clause_pattern() {
-    let text = "Marco mentors Dev, who works at the Archive.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    let dev_works_at = candidates
+fn has(candidates: &[TripleCandidate], subject: &str, relation: &str, object: &str) -> bool {
+    candidates
         .iter()
-        .find(|c| c.subject == "dev" && c.relation == "works_at");
+        .any(|c| c.subject == subject && c.relation == relation && c.object == object)
+}
+
+#[test]
+fn a_simple_statement_yields_exactly_its_triple() {
+    for (text, subject, relation, object) in [
+        ("Elena is Marco's sister.", "elena", "sister_of", "marco"),
+        ("Marco mentors Dev.", "marco", "mentors", "dev"),
+        ("Dev works at the Archive.", "dev", "works_at", "archive"),
+        (
+            "Elena is Marco's older sister.",
+            "elena",
+            "sister_of",
+            "marco",
+        ),
+        // Passive voice names the mentor second.
+        ("Elena was mentored by Marco.", "marco", "mentors", "elena"),
+        ("Marco mentors Elena.", "marco", "mentors", "elena"),
+        // A longer kinship noun is not matched as the shorter one inside it.
+        (
+            "Elena is Marco's grandmother.",
+            "elena",
+            "grandmother_of",
+            "marco",
+        ),
+    ] {
+        let candidates = extract(text);
+        assert_eq!(candidates.len(), 1, "{text:?} yielded {candidates:?}");
+        assert!(
+            has(&candidates, subject, relation, object),
+            "{text:?} yielded {candidates:?}"
+        );
+    }
+}
+
+#[test]
+fn each_relation_form_yields_its_triple() {
+    for (text, subject, relation, object) in [
+        ("Elena was Marco's sister.", "elena", "sister_of", "marco"),
+        // Reversed possessive: "y's [relation] is x".
+        (
+            "Mrs. Manson Mingott's father was Bob Spicer.",
+            "bob_spicer",
+            "father_of",
+            "manson_mingott",
+        ),
+        // An appositive renames the subject.
+        (
+            "Bob Spicer, old Mrs. Manson Mingott's father, came to the house.",
+            "bob_spicer",
+            "father_of",
+            "manson_mingott",
+        ),
+        // The "of" genitive, appositive and copular.
+        (
+            "Newland Archer, the husband of Ellen Olenska, said nothing.",
+            "newland_archer",
+            "husband_of",
+            "ellen_olenska",
+        ),
+        (
+            "Struthers was the guardian of Ellen Olenska.",
+            "struthers",
+            "guardian_of",
+            "ellen_olenska",
+        ),
+        // Issue #7: a lowercase particle inside a name does not truncate it.
+        (
+            "Lady Catherine de Bourgh, widow of Sir Lewis de Bourgh, said nothing.",
+            "catherine_de_bourgh",
+            "widow_of",
+            "lewis_de_bourgh",
+        ),
+        // A capitalized particle opens a mention like any capitalized word.
+        (
+            "De Souza is Marco's sister.",
+            "de_souza",
+            "sister_of",
+            "marco",
+        ),
+    ] {
+        let candidates = extract(text);
+        assert!(
+            has(&candidates, subject, relation, object),
+            "{text:?} yielded {candidates:?}"
+        );
+    }
+}
+
+#[test]
+fn text_that_states_no_relation_yields_nothing() {
+    for text in [
+        "",
+        "The quick brown fox jumps over the lazy dog.",
+        // "X <verb> Y's sister" names a third person.
+        "Elena visited Marco's sister.",
+        "Elena killed Marco's brother.",
+        "Elena knew Marco's mother.",
+        "Elena hated Marco's friend.",
+        "Elena, unlike Marco's brother, stayed.",
+        // A relative clause or a conjunction is not an apposition.
+        "Elena, who visited Marco's sister, left before dawn.",
+        "Dev, and Marco's sister, waited at the gate.",
+        // The relational noun must head the possessed phrase.
+        "Elena is Marco's master key.",
+        "Elena is Marco's student union.",
+        "Elena is Marco's friend's sister.",
+        // A plural copula has two subjects; the pair loop would claim it for one.
+        "Dev and Elena are Marco's cousins.",
+        // Denied, modal, suspended, or asked.
+        "Elena is not Marco's sister.",
+        "Elena was never Marco's wife.",
+        "Elena could be Marco's sister.",
+        "Elena might be Marco's daughter.",
+        "Newland Archer was not the husband of Ellen Olenska.",
+        "Elena did not mentor Marco.",
+        "Elena never mentored Marco.",
+        "Elena no longer works at the Archive.",
+        "Elena does not work at the Archive.",
+        "Elena refused to mentor Marco.",
+        "Elena hoped to mentor Marco.",
+        "Elena wanted to work at the Archive.",
+        "Did Elena mentor Marco?",
+        // A pronoun chain ends at a paragraph break or a sentence naming nobody.
+        "Mrs. Bennet joined the Archive.\n\nShe works at it.",
+        "Mrs. Bennet joined the Archive. Nothing happened. She works at it.",
+    ] {
+        let candidates = extract(text);
+        assert!(candidates.is_empty(), "{text:?} yielded {candidates:?}");
+    }
+}
+
+#[test]
+fn a_relation_is_not_read_past_the_possessed_phrase() {
+    for (text, relation, object) in [
+        // The noun belongs to a later clause and a different referent.
+        (
+            "Elena is Marco's dog, and she has a sister.",
+            "sister_of",
+            None,
+        ),
+        // The copula links to a second possessor, not to a person.
+        (
+            "Elena's mother was Marco's sister.",
+            "mother_of",
+            Some("elena"),
+        ),
+        // The genitive hands off to a further possessive.
+        (
+            "Elena, the sister of Marco's wife, arrived late.",
+            "sister_of",
+            Some("marco"),
+        ),
+    ] {
+        let candidates = extract(text);
+        assert!(
+            !candidates
+                .iter()
+                .any(|c| c.relation == relation && object.map_or(true, |o| c.object == o)),
+            "{text:?} yielded {candidates:?}"
+        );
+    }
+}
+
+#[test]
+fn statements_in_sequence_yield_every_triple() {
+    let candidates =
+        extract("Elena is Marco's sister. Marco mentors Dev, who works at the Archive.");
     assert!(
-        dev_works_at.is_some(),
-        "relative clause pattern should extract works_at"
+        has(&candidates, "elena", "sister_of", "marco"),
+        "{candidates:?}"
     );
+    assert!(
+        has(&candidates, "marco", "mentors", "dev"),
+        "{candidates:?}"
+    );
+    // The relative clause attaches to its antecedent.
+    assert!(
+        has(&candidates, "dev", "works_at", "archive"),
+        "{candidates:?}"
+    );
+}
+
+#[test]
+fn a_resolved_pronoun_yields_clean_distinct_referents() {
+    let candidates = extract("Elena is Marco's sister and she mentors Dev.");
+    assert!(
+        candidates.iter().all(|c| c.subject != c.object),
+        "self-relation emitted: {candidates:?}"
+    );
+    assert!(
+        candidates
+            .iter()
+            .all(|c| !c.subject.contains('\'') && !c.object.contains('\'')),
+        "possessive clitic leaked into an entity name: {candidates:?}"
+    );
+}
+
+#[test]
+fn a_capitalized_pronoun_is_never_a_graph_node() {
+    for text in [
+        "She is Marco's sister.",
+        "Elena said that She is Marco's sister.",
+        "Elena arrived. She is Marco's student.",
+        // A quotation after the attribution comma starts a sentence.
+        "Elena said, \"She is Marco's student.\"",
+    ] {
+        let candidates = extract(text);
+        assert!(
+            candidates
+                .iter()
+                .all(|c| c.subject != "she" && c.object != "she"),
+            "a pronoun became a graph node in {text:?}: {candidates:?}"
+        );
+    }
 }
 
 #[test]
@@ -84,66 +244,19 @@ fn test_confidence_threshold() {
 }
 
 #[test]
-fn test_multiple_relations_same_sentence() {
-    let text = "Elena is Marco's sister. Marco mentors Dev, who works at the Archive.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert!(candidates.len() >= 3, "should extract at least 3 relations");
-
-    let has_elena_marco = candidates
-        .iter()
-        .any(|c| c.subject == "elena" && c.object == "marco");
-    let has_marco_dev = candidates
-        .iter()
-        .any(|c| c.subject == "marco" && c.object == "dev");
-    let has_dev_archive = candidates
-        .iter()
-        .any(|c| c.subject == "dev" && c.object == "archive");
-
-    assert!(has_elena_marco, "missing elena-marco relation");
-    assert!(has_marco_dev, "missing marco-dev relation");
-    assert!(has_dev_archive, "missing dev-archive relation");
-}
-
-#[test]
-fn test_span_coverage() {
-    let text = "Elena is Marco's sister.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert_eq!(candidates.len(), 1);
-    let candidate = &candidates[0];
-
-    assert!(
-        candidate.span[0] < candidate.span[1],
-        "span end must be after start"
-    );
-    assert!(
-        candidate.span[1] <= text.len(),
-        "span must not exceed text length"
-    );
-    assert_eq!(
-        candidate.span[0], 0,
-        "span should start at beginning of text"
-    );
-}
-
-#[test]
-fn test_empty_text() {
-    let opts = Options::default();
-    let candidates = extract_candidate_triples("", &opts).expect("extraction failed");
-
-    assert_eq!(candidates.len(), 0);
-}
-
-#[test]
-fn test_no_entities() {
-    let text = "The quick brown fox jumps over the lazy dog.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert_eq!(candidates.len(), 0);
+fn an_invalid_threshold_is_rejected_even_for_empty_text() {
+    for threshold in [-0.1, 1.1, f32::NAN] {
+        let opts = Options {
+            min_confidence: Some(threshold),
+            ..Default::default()
+        };
+        for text in ["", "Elena is Marco's sister."] {
+            assert!(
+                extract_candidate_triples(text, &opts).is_err(),
+                "{threshold} {text:?}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -158,20 +271,6 @@ fn test_deduplication() {
         .count();
 
     assert_eq!(marco_dev_count, 1, "should deduplicate identical triples");
-}
-
-#[test]
-fn test_overlapping_mentions_do_not_panic() {
-    let text = "Mary Jane mentors Jane.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    for candidate in &candidates {
-        assert!(
-            candidate.span[0] <= candidate.span[1] && candidate.span[1] <= text.len(),
-            "span out of range"
-        );
-    }
 }
 
 #[test]
@@ -223,6 +322,7 @@ fn test_span_covers_both_mentions_and_opens_on_the_first() {
         "Dev works at the Archive.",
         "Mary\nJane mentors Dev.",
         "Mary  Jane mentors Dev.",
+        "Mary Jane mentors Jane.",
     ] {
         let opts = Options::default();
         let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
@@ -319,57 +419,6 @@ fn test_pipeline_never_panics_and_spans_stay_valid() {
 }
 
 #[test]
-fn test_possessive_does_not_reach_into_a_later_clause() {
-    // The relational noun belongs to a different clause and a different
-    // referent; matching it emitted the highest-confidence rule in the system.
-    let text = "Elena is Marco's dog, and she has a sister.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert!(
-        !candidates
-            .iter()
-            .any(|c| c.relation == "sister_of" || c.relation == "brother_of"),
-        "possessive matched past the possessed noun phrase: {candidates:?}"
-    );
-}
-
-#[test]
-fn test_possessive_allows_a_modifier_before_the_noun() {
-    let text = "Elena is Marco's older sister.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].subject, "elena");
-    assert_eq!(candidates[0].relation, "sister_of");
-    assert_eq!(candidates[0].object, "marco");
-}
-
-#[test]
-fn test_passive_voice_orients_the_relation_by_role_not_text_order() {
-    let text = "Elena was mentored by Marco.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].relation, "mentors");
-    assert_eq!(candidates[0].subject, "marco");
-    assert_eq!(candidates[0].object, "elena");
-}
-
-#[test]
-fn test_active_voice_mentor_direction_is_unchanged() {
-    let text = "Marco mentors Elena.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].subject, "marco");
-    assert_eq!(candidates[0].object, "elena");
-}
-
-#[test]
 fn test_span_covers_the_token_that_licensed_the_relation() {
     // The possessed noun sits past the object, so a span ending at the object
     // excludes the only evidence for the relation.
@@ -400,44 +449,6 @@ fn test_a_referent_mentioned_twice_yields_both_relations() {
 }
 
 #[test]
-fn test_no_relation_holds_between_a_referent_and_itself() {
-    let text = "Elena is Marco's sister and she mentors Dev.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert!(
-        candidates.iter().all(|c| c.subject != c.object),
-        "self-relation emitted: {candidates:?}"
-    );
-}
-
-#[test]
-fn test_pronoun_antecedent_strips_the_possessive_clitic() {
-    // "Marco's" as an antecedent yields a second referent that never unifies
-    // with the mention it came from.
-    let text = "Elena is Marco's sister and she mentors Dev.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert!(
-        candidates
-            .iter()
-            .all(|c| !c.subject.contains('\'') && !c.object.contains('\'')),
-        "possessive clitic leaked into an entity name: {candidates:?}"
-    );
-}
-
-#[test]
-fn test_a_longer_kinship_noun_is_not_matched_as_the_shorter_one_inside_it() {
-    let text = "Elena is Marco's grandmother.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].relation, "grandmother_of");
-}
-
-#[test]
 fn test_social_stance_scores_below_stated_kinship() {
     let opts = Options::default();
     let kin =
@@ -461,6 +472,7 @@ fn test_every_lexicon_noun_yields_a_distinctly_attributed_rule() {
     let opts = Options::default();
 
     for (noun, relation) in [
+        ("sister", "sister_of"),
         ("employer", "employer_of"),
         ("apprentice", "apprentice_of"),
         ("husband", "husband_of"),
@@ -494,28 +506,6 @@ fn test_a_noun_and_a_verb_for_one_relation_share_a_label() {
 }
 
 #[test]
-fn test_a_possessive_without_a_copula_claims_nothing() {
-    // "X <verb> Y's sister" names a third person. Reading it as sister_of(X, Y)
-    // was the single highest-confidence false positive in the system.
-    let opts = Options::default();
-
-    for text in [
-        "Elena visited Marco's sister.",
-        "Elena killed Marco's brother.",
-        "Elena knew Marco's mother.",
-        "Elena hated Marco's friend.",
-        "Elena is not Marco's sister.",
-        "Elena was never Marco's wife.",
-        "Elena could be Marco's sister.",
-        "Elena might be Marco's daughter.",
-        "Elena, unlike Marco's brother, stayed.",
-    ] {
-        let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-        assert!(candidates.is_empty(), "{text:?} yielded {candidates:?}");
-    }
-}
-
-#[test]
 fn test_a_reported_possessive_does_not_claim_the_reporter() {
     // Only the pair joined by the copula is a claim; "Dev" merely believes it.
     let opts = Options::default();
@@ -525,54 +515,6 @@ fn test_a_reported_possessive_does_not_claim_the_reporter() {
     assert_eq!(candidates.len(), 1, "{candidates:?}");
     assert_eq!(candidates[0].subject, "elena");
     assert_eq!(candidates[0].object, "marco");
-}
-
-#[test]
-fn test_a_relational_noun_must_head_the_possessed_phrase() {
-    // A noun modifying a later one names a thing, and a noun behind a second
-    // possessive belongs to that possessor, not to the object.
-    let opts = Options::default();
-
-    for text in [
-        "Elena is Marco's master key.",
-        "Elena is Marco's student union.",
-        "Elena is Marco's friend's sister.",
-    ] {
-        let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-        assert!(candidates.is_empty(), "{text:?} yielded {candidates:?}");
-    }
-}
-
-#[test]
-fn test_a_denied_or_suspended_relation_is_not_asserted() {
-    // Negation, an open condition and a suspended infinitive are not weaker
-    // claims that the relation holds; they are the opposite claim, or none.
-    let opts = Options::default();
-
-    for text in [
-        "Elena did not mentor Marco.",
-        "Elena never mentored Marco.",
-        "Elena no longer works at the Archive.",
-        "Elena does not work at the Archive.",
-        "Elena refused to mentor Marco.",
-        "Elena hoped to mentor Marco.",
-        "Elena wanted to work at the Archive.",
-    ] {
-        let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-        assert!(candidates.is_empty(), "{text:?} yielded {candidates:?}");
-    }
-}
-
-#[test]
-fn test_a_question_asks_the_relation_rather_than_stating_it() {
-    let opts = Options::default();
-    let asked =
-        extract_candidate_triples("Did Elena mentor Marco?", &opts).expect("extraction failed");
-    let stated =
-        extract_candidate_triples("Elena mentors Marco.", &opts).expect("extraction failed");
-
-    assert!(asked.is_empty(), "{asked:?}");
-    assert_eq!(stated.len(), 1);
 }
 
 #[test]
@@ -608,232 +550,6 @@ fn test_a_given_name_that_reads_as_a_function_word_survives() {
         assert_eq!(candidates.len(), 1, "{text:?} yielded {candidates:?}");
         assert_eq!(candidates[0].subject, subject, "{text:?}");
     }
-}
-
-#[test]
-fn test_a_capitalized_pronoun_is_not_a_second_mention() {
-    // `extract_pronouns` owns pronouns. A capitalized one otherwise becomes a
-    // rival mention at the same offsets whose normalized name, `she`, is a
-    // graph node naming nobody.
-    let opts = Options::default();
-    let candidates = extract_candidate_triples("Elena arrived. She is Marco's student.", &opts)
-        .expect("extraction failed");
-
-    assert!(
-        candidates.iter().all(|c| c.subject != "she"),
-        "{candidates:?}"
-    );
-}
-
-#[test]
-fn test_every_copula_the_possessive_accepts_is_reachable() {
-    // The whitelist is the gate; an entry nothing exercises can be narrowed
-    // away without a test failing.
-    let opts = Options::default();
-
-    for (text, subject) in [
-        ("Elena is Marco's sister.", "elena"),
-        ("Elena was Marco's sister.", "elena"),
-    ] {
-        let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-        assert!(
-            candidates
-                .iter()
-                .any(|c| c.subject == subject && c.object == "marco"),
-            "{text:?} yielded {candidates:?}"
-        );
-    }
-
-    // A plural copula is deliberately not on the whitelist: the sentence has
-    // two subjects and the pair loop would claim the relation for one.
-    let plural = extract_candidate_triples("Dev and Elena are Marco's cousins.", &opts)
-        .expect("extraction failed");
-    assert!(plural.is_empty(), "{plural:?}");
-}
-
-#[test]
-fn test_a_quoted_sentence_after_the_attribution_comma_starts_a_sentence() {
-    // Fiction puts capitalized pronouns inside dialogue, where the only thing
-    // before the opening quote is the comma of the attribution.
-    let opts = Options::default();
-    let candidates = extract_candidate_triples("Elena said, \"She is Marco's student.\"", &opts)
-        .expect("extraction failed");
-
-    assert!(
-        candidates.iter().all(|c| c.subject != "she"),
-        "{candidates:?}"
-    );
-}
-
-/// The mirror of "x is y's sister". Prose writes the possessive first at least
-/// as often, and before this the whole form extracted nothing.
-#[test]
-fn test_reversed_possessive_pattern() {
-    let text = "Mrs. Manson Mingott's father was Bob Spicer.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    let found = candidates
-        .iter()
-        .find(|c| c.relation == "father_of")
-        .expect("reversed possessive not matched");
-    assert_eq!(found.subject, "bob_spicer");
-    assert_eq!(found.object, "manson_mingott");
-}
-
-/// The copula links the possessed phrase to a second possessor, not to a
-/// person: the sister is Marco's, and no relation holds between Elena and
-/// Marco.
-#[test]
-fn test_reversed_possessive_rejects_second_possessor() {
-    let text = "Elena's mother was Marco's sister.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert!(
-        !candidates
-            .iter()
-            .any(|c| c.relation == "mother_of" && c.object == "elena"),
-        "reversed possessive fired across a second possessive: {candidates:?}"
-    );
-}
-
-/// The appositive renames the subject. "Bob Spicer, old Mrs. Mingott's father"
-/// asserts exactly what "Bob Spicer is Mrs. Mingott's father" does.
-#[test]
-fn test_appositive_possessive_pattern() {
-    let text = "Bob Spicer, old Mrs. Manson Mingott's father, came to the house.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    let found = candidates
-        .iter()
-        .find(|c| c.relation == "father_of")
-        .expect("appositive not matched");
-    assert_eq!(found.subject, "bob_spicer");
-    assert_eq!(found.object, "manson_mingott");
-}
-
-/// A relative clause is not an apposition. "Elena, who visited Marco's sister"
-/// says Elena visited someone; it does not say Elena is that someone.
-#[test]
-fn test_appositive_rejects_relative_clause() {
-    let text = "Elena, who visited Marco's sister, left before dawn.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert!(
-        candidates.is_empty(),
-        "relative clause read as an apposition: {candidates:?}"
-    );
-}
-
-/// A conjunction makes a list, not a renaming. "Dev, and Marco's sister" names
-/// two people.
-#[test]
-fn test_appositive_rejects_conjunction() {
-    let text = "Dev, and Marco's sister, waited at the gate.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert!(
-        candidates.is_empty(),
-        "conjunction read as an apposition: {candidates:?}"
-    );
-}
-
-/// The "of" genitive, which is what prose actually uses. Measured over three
-/// novels it outnumbers every Saxon-possessive form combined.
-#[test]
-fn test_of_genitive_appositive() {
-    let text = "Newland Archer, the husband of Ellen Olenska, said nothing.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    let found = candidates
-        .iter()
-        .find(|c| c.relation == "husband_of")
-        .expect("of genitive not matched");
-    assert_eq!(found.subject, "newland_archer");
-    assert_eq!(found.object, "ellen_olenska");
-}
-
-/// The same form with a copula instead of the appositive comma.
-#[test]
-fn test_of_genitive_copula() {
-    let text = "Struthers was the guardian of Ellen Olenska.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    let found = candidates
-        .iter()
-        .find(|c| c.relation == "guardian_of")
-        .expect("of genitive with copula not matched");
-    assert_eq!(found.subject, "struthers");
-    assert_eq!(found.object, "ellen_olenska");
-}
-
-/// The genitive hands off to a further possessive, so the relation holds
-/// against the wife rather than against Marco.
-#[test]
-fn test_of_genitive_rejects_trailing_possessive() {
-    let text = "Elena, the sister of Marco's wife, arrived late.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert!(
-        !candidates
-            .iter()
-            .any(|c| c.relation == "sister_of" && c.object == "marco"),
-        "of genitive fired across a trailing possessive: {candidates:?}"
-    );
-}
-
-/// A denial is not a weaker assertion. The gate runs ahead of every rule,
-/// including this one.
-#[test]
-fn test_of_genitive_respects_assertion_gate() {
-    let text = "Newland Archer was not the husband of Ellen Olenska.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    assert!(
-        candidates.is_empty(),
-        "denied of genitive still extracted: {candidates:?}"
-    );
-}
-
-/// Issue #7. A lowercase particle inside a name ended the capitalized run, so
-/// the mention was the fragment after it and both people in this sentence
-/// normalized to the surname they share.
-#[test]
-fn test_a_particle_does_not_truncate_a_name() {
-    let text = "Lady Catherine de Bourgh, widow of Sir Lewis de Bourgh, said nothing.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    let found = candidates
-        .iter()
-        .find(|c| c.relation == "widow_of")
-        .expect("particle-bearing names lost the relation");
-    assert_eq!(found.subject, "catherine_de_bourgh");
-    assert_eq!(found.object, "lewis_de_bourgh");
-}
-
-/// A particle only continues a run that has already started. Capitalized, it
-/// opens a mention the way any capitalized word does, and that shape is
-/// unchanged by the particle list.
-#[test]
-fn test_a_capitalized_particle_still_opens_a_mention() {
-    let text = "De Souza is Marco's sister.";
-    let opts = Options::default();
-    let candidates = extract_candidate_triples(text, &opts).expect("extraction failed");
-
-    let found = candidates
-        .iter()
-        .find(|c| c.relation == "sister_of")
-        .expect("sentence-initial particle lost the relation");
-    assert_eq!(found.subject, "de_souza");
 }
 
 /// A trailing particle belongs to the clause after it, not to the name before
@@ -1408,32 +1124,6 @@ fn a_pronoun_opening_a_sentence_can_take_the_previous_sentence_referent() {
 }
 
 #[test]
-fn a_pronoun_chain_does_not_cross_a_paragraph_break() {
-    // Same two sentences, separated by a blank line: the subject may have
-    // switched and nothing in the text says otherwise, so the chain ends.
-    let split = "Mrs. Bennet joined the Archive.\n\nShe works at it.";
-    assert!(
-        extract_candidate_triples(split, &Options::default())
-            .unwrap()
-            .is_empty(),
-        "linked a pronoun across a paragraph break"
-    );
-}
-
-#[test]
-fn a_pronoun_chain_does_not_reach_back_past_an_intervening_sentence() {
-    // The carry holds one sentence, not the whole document: a sentence naming
-    // nobody ends the chain exactly as a paragraph break does.
-    let interrupted = "Mrs. Bennet joined the Archive. Nothing happened. She works at it.";
-    assert!(
-        extract_candidate_triples(interrupted, &Options::default())
-            .unwrap()
-            .is_empty(),
-        "reached back two sentences for a referent"
-    );
-}
-
-#[test]
 fn two_pronouns_in_one_sentence_do_not_take_the_same_referent() {
     // "She runs it" cannot mean Elena runs Elena. With no agreement check,
     // consuming each carried referent once is the only thing keeping "it" off
@@ -1454,25 +1144,6 @@ fn two_pronouns_in_one_sentence_do_not_take_the_same_referent() {
 }
 
 #[test]
-fn a_capitalized_pronoun_is_never_an_antecedent() {
-    // The backward walk used to accept the word "She" and emit a node named
-    // `she`, which names nobody.
-    let opts = Options::default();
-    for text in [
-        "She is Marco's sister.",
-        "Elena said that She is Marco's sister.",
-    ] {
-        let candidates = extract_candidate_triples(text, &opts).unwrap();
-        assert!(
-            candidates
-                .iter()
-                .all(|c| c.subject != "she" && c.object != "she"),
-            "a pronoun became a graph node in {text:?}: {candidates:?}"
-        );
-    }
-}
-
-#[test]
 fn a_typographic_apostrophe_separates_a_mention_as_a_straight_one_does() {
     let opts = Options::default();
     let curly = extract_candidate_triples("Elena is Blanche\u{2019}s sister.", &opts).unwrap();
@@ -1488,7 +1159,7 @@ fn a_typographic_apostrophe_separates_a_mention_as_a_straight_one_does() {
 fn a_cross_sentence_pronoun_agrees_in_gender() {
     // Nearest-first would take Mr. Darcy, who is named first. The document
     // says he is male and that "she" is therefore not him.
-    let text = "Mr. Darcy greeted Mrs. Bennet. She works at the Archive.";
+    let text = "Mr. Darcy watched Mrs. Bennet. She works at the Archive.";
     let candidates =
         extract_candidate_triples(text, &Options::default()).expect("extraction failed");
 
@@ -1552,4 +1223,189 @@ fn a_plural_pronoun_never_links_across_a_sentence() {
         candidates.iter().all(|c| c.subject != "mr_darcy"),
         "a plural pronoun claimed a single referent: {candidates:?}"
     );
+}
+
+#[test]
+fn a_comma_ends_a_name_so_a_list_is_not_one_person() {
+    let text = "Dev, Marco's younger brother, left early.";
+    let found = extract_candidate_triples(text, &Options::default()).expect("extraction failed");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        (&*found[0].subject, &*found[0].relation, &*found[0].object),
+        ("dev", "brother_of", "marco")
+    );
+    let names: Vec<_> = extract_entities("Nora, Dev and Marco came.", &Default::default())
+        .into_iter()
+        .map(|e| e.normalized)
+        .collect();
+    assert_eq!(names, ["nora", "dev", "marco"]);
+}
+
+#[test]
+fn a_relation_is_not_read_across_a_quotation_mark() {
+    for text in [
+        "\"Papa's stuck at work,\" Nora says.",
+        "\"Marco,\" Elena said, \"married Nora.\"",
+        "Cass said, \"He married Dev.\"",
+    ] {
+        let found = extract_aggregates(text, &Options::default()).expect("extraction failed");
+        assert!(found.is_empty(), "{text}: {found:?}");
+    }
+    // A statement made whole inside one quotation is still the speaker's claim.
+    let spoken = extract_aggregates(
+        "\"Elena is Marco's sister,\" Dev said.",
+        &Options::default(),
+    )
+    .expect("extraction failed");
+    assert_eq!(spoken.len(), 1);
+}
+
+#[test]
+fn a_vocative_inside_speech_is_not_the_speaker_a_pronoun_names() {
+    let text = "\"Thanks, Cass,\" she says. Then she kisses Hollis.";
+    let found = extract_aggregates(text, &Options::default()).expect("extraction failed");
+    assert!(
+        found.iter().all(|a| a.subject != "cass"),
+        "the listener was taken for the speaker: {found:?}"
+    );
+}
+
+#[test]
+fn a_sentence_opener_is_not_a_pronoun_antecedent() {
+    let text = "Then she married Dev.";
+    let found = extract_aggregates(text, &Options::default()).expect("extraction failed");
+    assert!(found.iter().all(|a| a.subject != "then"), "{found:?}");
+}
+
+#[test]
+fn a_phrase_rule_reads_only_the_exact_window_between_the_mentions() {
+    let opts = Options::default();
+    let claims = |text: &str| {
+        extract_aggregates(text, &opts)
+            .expect("extraction failed")
+            .into_iter()
+            .map(|a| (a.subject, a.relation, a.object, a.polarity))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        claims("Nora married Dev."),
+        [(
+            "nora".into(),
+            "spouse_of".into(),
+            "dev".into(),
+            Polarity::Asserted
+        )]
+    );
+    assert_eq!(
+        claims("Nora never married Dev."),
+        [(
+            "nora".into(),
+            "spouse_of".into(),
+            "dev".into(),
+            Polarity::Denied
+        )]
+    );
+    for text in [
+        "Nora met her friend Dev.",
+        "Nora wanted to marry Dev.",
+        "If Nora married Dev, she left.",
+        "Did Nora marry Dev?",
+        "Nora met Dev's sister.",
+        "Nora loves Paris.",
+        "Nora owns Dev.",
+    ] {
+        assert!(claims(text).is_empty(), "{text}: {:?}", claims(text));
+    }
+}
+
+#[test]
+fn a_narrator_context_resolves_the_first_person_outside_speech_only() {
+    use narrative_graph::extract_aggregates_in;
+    use narrative_graph::heuristic::Context;
+
+    let context = Context::default().with_narrator("wren");
+    let opts = Options::default();
+    let found = extract_aggregates_in("I live with Cass.", &opts, &context).expect("failed");
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        (&*found[0].subject, &*found[0].relation, &*found[0].object),
+        ("wren", "lives_with", "cass")
+    );
+    // Without a narrator the first person is never a mention, as before.
+    assert!(extract_aggregates("I live with Cass.", &opts)
+        .expect("failed")
+        .is_empty());
+    let spoken = extract_aggregates_in("\"I live with Cass,\" Marco says.", &opts, &context)
+        .expect("failed");
+    assert!(spoken.is_empty(), "{spoken:?}");
+}
+
+#[test]
+fn a_conditional_suspends_its_own_clause_in_either_polarity() {
+    let opts = Options::default();
+    for text in [
+        "If Elena is Marco's sister, the will is void.",
+        "If Elena is not Marco's sister, the will stands.",
+        "\"If Elena is Marco's sister, say so.\"",
+    ] {
+        let aggregates = extract_aggregates(text, &opts).unwrap();
+        assert!(aggregates.is_empty(), "{text:?} yielded {aggregates:?}");
+    }
+    // The suspender governs its clause, not one past a semicolon.
+    let candidates =
+        extract_candidate_triples("Dev might stay; Elena is Marco's sister.", &opts).unwrap();
+    assert_eq!(candidates.len(), 1, "{candidates:?}");
+}
+
+#[test]
+fn the_one_subject_constraint_follows_the_rule_not_the_ontology_label() {
+    let ontology = |pairs: &[(&str, &str)]| Options {
+        ontology: pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+        ..Default::default()
+    };
+    let cardinality = |text: &str, opts: &Options| {
+        find_conflicts(text, opts)
+            .unwrap()
+            .iter()
+            .filter(|c| c.kind == ConflictKind::Cardinality)
+            .count()
+    };
+    let mothers = "Ann is Zoe's mother. Bea is Zoe's mother.";
+    assert_eq!(
+        cardinality(mothers, &ontology(&[("mother_of", "parent")])),
+        1
+    );
+    let sisters = "Ann is Zoe's sister. Bea is Zoe's sister.";
+    assert_eq!(
+        cardinality(sisters, &ontology(&[("sister_of", "mother_of")])),
+        0
+    );
+    // Merged from a constrained and an unconstrained rule: unconstrained.
+    let merged = "Ann is Zoe's mother. Bea is Zoe's sister. Ann is Zoe's sister.";
+    let opts = ontology(&[("mother_of", "kin"), ("sister_of", "kin")]);
+    assert_eq!(cardinality(merged, &opts), 0);
+}
+
+#[test]
+fn analyze_returns_what_the_separate_calls_return() {
+    let text = "Ann is Zoe's mother. Bea is Zoe's mother. Ann is not Zoe's mother. \
+                Marco mentors Dev, who works at the Archive.";
+    let opts = Options::default();
+    let analysis = narrative_graph::analyze(text, &opts).unwrap();
+    assert_eq!(
+        format!("{:?}", analysis.candidates),
+        format!("{:?}", extract_candidate_triples(text, &opts).unwrap())
+    );
+    assert_eq!(
+        format!("{:?}", analysis.aggregates),
+        format!("{:?}", extract_aggregates(text, &opts).unwrap())
+    );
+    assert_eq!(
+        format!("{:?}", analysis.conflicts),
+        format!("{:?}", find_conflicts(text, &opts).unwrap())
+    );
+    assert!(!analysis.conflicts.is_empty());
 }

@@ -154,87 +154,40 @@ mod tests {
     }
 
     #[test]
-    fn splits_plain_sentences() {
-        assert_eq!(
-            texts("Elena went home. Marco stayed."),
-            vec!["Elena went home.", "Marco stayed."]
-        );
-    }
-
-    #[test]
-    fn offsets_point_at_the_sentence_in_the_source() {
-        let text = "Elena went home. Marco stayed.";
-        for (sentence, offset) in split_sentences(text, &ENGLISH) {
-            assert_eq!(&text[offset..offset + sentence.len()], sentence);
+    fn splits_at_each_sentence_boundary() {
+        for (input, expected) in [
+            (
+                "Elena went home. Marco stayed.",
+                vec!["Elena went home.", "Marco stayed."],
+            ),
+            (
+                "\"Get out!\" Elena ran.",
+                vec!["\"Get out!\"", "Elena ran."],
+            ),
+            ("What?! Really.", vec!["What?!", "Really."]),
+            (
+                "\"Get out,\" Marco said. Elena left.",
+                vec!["\"Get out,\" Marco said.", "Elena left."],
+            ),
+        ] {
+            assert_eq!(texts(input), expected, "{input:?}");
         }
     }
 
     #[test]
-    fn does_not_split_on_honorifics() {
-        assert_eq!(texts("Dr. Smith went home."), vec!["Dr. Smith went home."]);
-        assert_eq!(
-            texts("Mrs. Chen met Lt. Vasquez at the dock."),
-            vec!["Mrs. Chen met Lt. Vasquez at the dock."]
-        );
-    }
-
-    #[test]
-    fn does_not_split_on_initials() {
-        assert_eq!(
-            texts("J. R. R. Tolkien wrote it."),
-            vec!["J. R. R. Tolkien wrote it."]
-        );
-    }
-
-    #[test]
-    fn does_not_split_inside_an_ellipsis() {
-        assert_eq!(
-            texts("She paused... then left."),
-            vec!["She paused... then left."]
-        );
-    }
-
-    #[test]
-    fn does_not_split_on_a_decimal_number() {
-        assert_eq!(texts("It cost 3.5 credits."), vec!["It cost 3.5 credits."]);
-    }
-
-    #[test]
-    fn keeps_dialogue_attribution_with_its_quote() {
-        assert_eq!(
-            texts("\"Who are you?\" she asked."),
-            vec!["\"Who are you?\" she asked."]
-        );
-        assert_eq!(
-            texts("\"Get out,\" Marco said. Elena left."),
-            vec!["\"Get out,\" Marco said.", "Elena left."]
-        );
-    }
-
-    #[test]
-    fn splits_after_a_closing_quote_when_a_new_sentence_follows() {
-        assert_eq!(
-            texts("\"Get out!\" Elena ran."),
-            vec!["\"Get out!\"", "Elena ran."]
-        );
-    }
-
-    #[test]
-    fn treats_a_terminator_run_as_one_boundary() {
-        assert_eq!(texts("What?! Really."), vec!["What?!", "Really."]);
-    }
-
-    #[test]
-    fn does_not_split_on_an_em_dash() {
-        assert_eq!(
-            texts("He turned—she was gone."),
-            vec!["He turned—she was gone."]
-        );
-    }
-
-    #[test]
-    fn handles_text_with_no_terminator() {
-        assert_eq!(texts("Elena went home"), vec!["Elena went home"]);
+    fn keeps_a_sentence_whole_without_a_boundary() {
+        for input in [
+            "Dr. Smith went home.",
+            "Mrs. Chen met Lt. Vasquez at the dock.",
+            "J. R. R. Tolkien wrote it.",
+            "She paused... then left.",
+            "It cost 3.5 credits.",
+            "\"Who are you?\" she asked.",
+            "He turned—she was gone.",
+            "Elena went home",
+        ] {
+            assert_eq!(texts(input), vec![input]);
+        }
     }
 
     #[test]
@@ -244,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_offsets_through_multibyte_text() {
+    fn offsets_point_at_the_sentence_in_the_source() {
         let text = "Élena went home. Marco—her brother—stayed.";
         for (sentence, offset) in split_sentences(text, &ENGLISH) {
             assert_eq!(&text[offset..offset + sentence.len()], sentence);

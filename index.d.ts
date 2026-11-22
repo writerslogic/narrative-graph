@@ -2,6 +2,16 @@
 /* eslint-disable */
 
 /**
+ * `analyzeNapi` on the libuv worker pool, so a long manuscript does not block
+ * the calling JavaScript thread. Options are validated before the task is
+ * queued.
+ */
+export declare function analyzeAsyncNapi(text: string, opts?: NapiOptions | undefined | null): Promise<NapiAnalysis>
+
+/** Candidates, aggregates and conflicts from one pass over the text. */
+export declare function analyzeNapi(text: string, opts?: NapiOptions | undefined | null): NapiAnalysis
+
+/**
  * One fact as the whole passage states it, with every supporting span.
  * Ordered by first span, so two facts about the same pair can be read in the
  * order the story states them.
@@ -23,8 +33,15 @@ export interface NapiAggregateTriple {
   /** "asserted" or "denied". */
   polarity: string
   confidence: number
+  /** `[start, end)` in UTF-16 code units. */
   spans: Array<Array<number>>
   rules: Array<string>
+}
+
+export interface NapiAnalysis {
+  candidates: Array<NapiTripleCandidate>
+  aggregates: Array<NapiAggregateTriple>
+  conflicts: Array<NapiConflict>
 }
 
 export interface NapiConflict {
@@ -52,6 +69,7 @@ export interface NapiTripleCandidate {
   relation: string
   object: string
   confidence: number
+  /** `[start, end)` in UTF-16 code units. */
   span: Array<number>
   rule: string
 }

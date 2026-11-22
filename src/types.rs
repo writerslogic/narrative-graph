@@ -182,3 +182,14 @@ pub struct SpannedTriple {
     /// The actual text from input[span[0]..span[1]].
     pub text: String,
 }
+
+/// Everything one pass over a passage yields: what `extract_candidate_triples`,
+/// `extract_aggregates` and `find_conflicts` return separately.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "bindings", derive(ts_rs::TS), ts(export))]
+pub struct Analysis {
+    pub candidates: Vec<TripleCandidate>,
+    pub aggregates: Vec<AggregateTriple>,
+    pub conflicts: Vec<Conflict>,
+}

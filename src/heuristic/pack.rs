@@ -20,6 +20,9 @@
 
 use super::cooccurrence::base;
 
+mod names;
+mod phrases;
+
 /// A verb-phrase rule: a marker that must appear between the two mentions,
 /// optionally a second one, and the relation that follows from both.
 pub struct VerbRule {
@@ -33,6 +36,35 @@ pub struct VerbRule {
     pub relation: &'static str,
     pub rule: &'static str,
     pub base: f32,
+}
+
+/// What a mention must be for a phrase rule to apply to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Slot {
+    /// Anything not positively known to be a place, organization or thing.
+    Person,
+    /// Anything not positively known to be a person.
+    Place,
+    /// Positively a place or organization by its own words.
+    Venue,
+    /// No constraint.
+    Any,
+}
+
+/// A phrase rule: the whole text between two mentions, once fillers and
+/// trailing determiners are peeled off, equals one of `phrases`. See
+/// `pack/phrases.rs`.
+pub struct PhraseRule {
+    pub phrases: &'static [&'static str],
+    pub relation: &'static str,
+    pub rule: &'static str,
+    pub base: f32,
+    /// What the earlier mention must be, and the later one. Read in text order,
+    /// independent of `passive`.
+    pub subject: Slot,
+    pub object: Slot,
+    /// The relation's subject is the later mention.
+    pub passive: bool,
 }
 
 /// Everything the pipeline reads as vocabulary for one language.
@@ -97,6 +129,39 @@ pub struct LanguagePack {
     pub verb_rules: &'static [VerbRule],
     /// Rules read from the same text once `relative_opener` is present.
     pub relative_rules: &'static [VerbRule],
+    /// Exact-phrase rules between two mentions.
+    pub phrase_rules: &'static [PhraseRule],
+    /// Words peeled from the front of the text between mentions before a
+    /// phrase rule is compared.
+    pub phrase_fillers: &'static [&'static str],
+    /// Words peeled from the end of it.
+    pub phrase_trailers: &'static [&'static str],
+    /// Last words of a multi-word mention that name a place.
+    pub place_heads: &'static [&'static str],
+    /// Last words of a multi-word mention that name an organization.
+    pub org_heads: &'static [&'static str],
+    /// First words of a multi-word mention that name a place.
+    pub place_leads: &'static [&'static str],
+    /// Whole names that are places.
+    pub place_names: &'static [&'static str],
+    /// Whole names that are capitalized things: languages, faiths, address terms.
+    pub thing_names: &'static [&'static str],
+    /// Possessive determiners that stand for a possessor named elsewhere.
+    pub possessive_pronouns: &'static [&'static str],
+    /// First-person pronouns, resolved only when the caller names the narrator.
+    pub first_person_pronouns: &'static [&'static str],
+    /// Plural relational nouns for "x and y are <plural>", as (noun, relation, base).
+    pub plural_nouns: &'static [(&'static str, &'static str, f32)],
+    /// The copulas that introduce a plural noun or adjective.
+    pub plural_copulas: &'static [&'static str],
+    /// Words allowed between the copula and a plural noun: "are old friends".
+    pub plural_modifiers: &'static [&'static str],
+    /// Closed-class words that may follow an object pronoun, closing the phrase
+    /// it ends: "met her at the station".
+    pub object_followers: &'static [&'static str],
+    /// Words that may follow a possessed relational noun without making it a
+    /// modifier of a later noun: "Marco's student for two terms".
+    pub possessive_tails: &'static [&'static str],
 }
 
 /// The pack the pipeline runs with. Selecting a different one is a caller-facing
@@ -175,6 +240,56 @@ pub static ENGLISH: LanguagePack = LanguagePack {
     relative_opener: ", who ",
     verb_rules: VERB_RULES,
     relative_rules: RELATIVE_RULES,
+    phrase_rules: phrases::PHRASE_RULES,
+    phrase_fillers: phrases::PHRASE_FILLERS,
+    phrase_trailers: phrases::PHRASE_TRAILERS,
+    place_heads: names::PLACE_HEADS,
+    org_heads: names::ORG_HEADS,
+    place_leads: names::PLACE_LEADS,
+    place_names: names::PLACE_NAMES,
+    thing_names: names::THING_NAMES,
+    possessive_pronouns: &["his", "her", "my", "our"],
+    first_person_pronouns: &["i", "me", "my", "mine", "myself", "our"],
+    plural_nouns: PLURAL_NOUNS,
+    plural_copulas: &["are", "were"],
+    plural_modifiers: &[
+        "close", "longtime", "lifelong", "very", "great", "real", "true",
+    ],
+    object_followers: &[
+        "at",
+        "in",
+        "on",
+        "to",
+        "with",
+        "for",
+        "from",
+        "and",
+        "but",
+        "as",
+        "when",
+        "after",
+        "before",
+        "while",
+        "again",
+        "once",
+        "too",
+        "there",
+        "here",
+        "today",
+        "later",
+        "that",
+        "because",
+        "until",
+        "by",
+        "outside",
+        "inside",
+        "yesterday",
+        "tonight",
+    ],
+    possessive_tails: &[
+        "for", "since", "during", "until", "when", "while", "before", "after", "at", "in", "from",
+        "once", "then", "now", "there", "here", "too", "again", "as", "by", "that", "who",
+    ],
 };
 
 /// Words that are capitalized at the start of a sentence by position alone.
@@ -250,6 +365,8 @@ const HONORIFICS: &[&str] = &[
     "mr", "mrs", "ms", "miss", "mister", "dr", "doctor", "sir", "dame", "lady", "lord",
     "captain", "capt", "colonel", "col", "reverend", "rev", "professor", "prof",
     "sergeant", "sgt", "lieutenant", "admiral", "bishop", "cardinal",
+    "judge", "dean", "officer", "detective", "inspector", "senator", "governor", "mayor",
+    "coach", "pastor", "principal", "nurse", "deputy",
     "hon", "honourable", "honorable",
 ];
 
@@ -285,6 +402,30 @@ const ABBREVIATIONS: &[&str] = &[
 /// types. The rule name stays `possessive-<noun>-pattern`, so attribution
 /// remains per-noun. Matching is whole-word, so entries are order-independent.
 const POSSESSIVE_NOUNS: &[(&str, &str, f32)] = &[
+    // Hyphenated nouns first: a stem ("wife") also matches inside them, and the
+    // first noun that heads the phrase wins.
+    (
+        "mother-in-law",
+        "mother_in_law_of",
+        base::POSSESSIVE_FACTUAL,
+    ),
+    (
+        "father-in-law",
+        "father_in_law_of",
+        base::POSSESSIVE_FACTUAL,
+    ),
+    (
+        "sister-in-law",
+        "sister_in_law_of",
+        base::POSSESSIVE_FACTUAL,
+    ),
+    (
+        "brother-in-law",
+        "brother_in_law_of",
+        base::POSSESSIVE_FACTUAL,
+    ),
+    ("ex-wife", "ex_wife_of", base::POSSESSIVE_FACTUAL),
+    ("ex-husband", "ex_husband_of", base::POSSESSIVE_FACTUAL),
     // Kinship and role: the possessive states the relation outright.
     ("sister", "sister_of", base::POSSESSIVE_FACTUAL),
     ("brother", "brother_of", base::POSSESSIVE_FACTUAL),
@@ -302,6 +443,45 @@ const POSSESSIVE_NOUNS: &[(&str, &str, f32)] = &[
     ("niece", "niece_of", base::POSSESSIVE_FACTUAL),
     ("nephew", "nephew_of", base::POSSESSIVE_FACTUAL),
     ("widow", "widow_of", base::POSSESSIVE_FACTUAL),
+    ("stepmother", "stepmother_of", base::POSSESSIVE_FACTUAL),
+    ("stepfather", "stepfather_of", base::POSSESSIVE_FACTUAL),
+    ("stepdaughter", "stepdaughter_of", base::POSSESSIVE_FACTUAL),
+    ("stepson", "stepson_of", base::POSSESSIVE_FACTUAL),
+    ("stepsister", "stepsister_of", base::POSSESSIVE_FACTUAL),
+    ("stepbrother", "stepbrother_of", base::POSSESSIVE_FACTUAL),
+    (
+        "granddaughter",
+        "granddaughter_of",
+        base::POSSESSIVE_FACTUAL,
+    ),
+    ("grandson", "grandson_of", base::POSSESSIVE_FACTUAL),
+    ("godmother", "godmother_of", base::POSSESSIVE_FACTUAL),
+    ("godfather", "godfather_of", base::POSSESSIVE_FACTUAL),
+    ("godson", "godson_of", base::POSSESSIVE_FACTUAL),
+    ("goddaughter", "goddaughter_of", base::POSSESSIVE_FACTUAL),
+    ("twin", "twin_of", base::POSSESSIVE_FACTUAL),
+    ("fiance", "fiance_of", base::POSSESSIVE_FACTUAL),
+    ("fiancee", "fiance_of", base::POSSESSIVE_FACTUAL),
+    ("girlfriend", "girlfriend_of", base::POSSESSIVE_FACTUAL),
+    ("boyfriend", "boyfriend_of", base::POSSESSIVE_FACTUAL),
+    ("partner", "partner_of", base::POSSESSIVE_STANCE),
+    ("boss", "boss_of", base::POSSESSIVE_FACTUAL),
+    ("colleague", "colleague_of", base::POSSESSIVE_STANCE),
+    ("coworker", "coworker_of", base::POSSESSIVE_STANCE),
+    ("roommate", "roommate_of", base::POSSESSIVE_STANCE),
+    ("classmate", "classmate_of", base::POSSESSIVE_STANCE),
+    ("neighbor", "neighbor_of", base::POSSESSIVE_STANCE),
+    ("neighbour", "neighbor_of", base::POSSESSIVE_STANCE),
+    ("landlord", "landlord_of", base::POSSESSIVE_FACTUAL),
+    ("tenant", "tenant_of", base::POSSESSIVE_FACTUAL),
+    ("patient", "patient_of", base::POSSESSIVE_FACTUAL),
+    ("doctor", "doctor_of", base::POSSESSIVE_FACTUAL),
+    ("therapist", "therapist_of", base::POSSESSIVE_FACTUAL),
+    ("lawyer", "lawyer_of", base::POSSESSIVE_FACTUAL),
+    ("client", "client_of", base::POSSESSIVE_FACTUAL),
+    ("assistant", "assistant_of", base::POSSESSIVE_FACTUAL),
+    ("sponsor", "sponsor_of", base::POSSESSIVE_FACTUAL),
+    ("ex", "ex_of", base::POSSESSIVE_FACTUAL),
     ("guardian", "guardian_of", base::POSSESSIVE_FACTUAL),
     ("employer", "employer_of", base::POSSESSIVE_FACTUAL),
     ("servant", "servant_of", base::POSSESSIVE_FACTUAL),
@@ -320,6 +500,29 @@ const POSSESSIVE_NOUNS: &[(&str, &str, f32)] = &[
     ("companion", "companion_of", base::POSSESSIVE_STANCE),
     ("ally", "ally_of", base::POSSESSIVE_STANCE),
     ("acquaintance", "acquaintance_of", base::POSSESSIVE_STANCE),
+];
+
+/// Plural nouns for "x and y are <plural>". "married" is an adjective, listed
+/// because it states the same fact the same way.
+const PLURAL_NOUNS: &[(&str, &str, f32)] = &[
+    ("sisters", "sister_of", base::POSSESSIVE_FACTUAL),
+    ("brothers", "brother_of", base::POSSESSIVE_FACTUAL),
+    ("siblings", "sibling_of", base::POSSESSIVE_FACTUAL),
+    ("cousins", "cousin_of", base::POSSESSIVE_FACTUAL),
+    ("twins", "twin_of", base::POSSESSIVE_FACTUAL),
+    ("married", "spouse_of", base::POSSESSIVE_FACTUAL),
+    ("friends", "friend_of", base::POSSESSIVE_STANCE),
+    ("lovers", "lover_of", base::POSSESSIVE_STANCE),
+    ("partners", "partner_of", base::POSSESSIVE_STANCE),
+    ("colleagues", "colleague_of", base::POSSESSIVE_STANCE),
+    ("coworkers", "coworker_of", base::POSSESSIVE_STANCE),
+    ("roommates", "roommate_of", base::POSSESSIVE_STANCE),
+    ("neighbors", "neighbor_of", base::POSSESSIVE_STANCE),
+    ("neighbours", "neighbor_of", base::POSSESSIVE_STANCE),
+    ("classmates", "classmate_of", base::POSSESSIVE_STANCE),
+    ("rivals", "rival_of", base::POSSESSIVE_STANCE),
+    ("enemies", "enemy_of", base::POSSESSIVE_STANCE),
+    ("allies", "ally_of", base::POSSESSIVE_STANCE),
 ];
 
 /// Links that let the possessive be read as a statement about the subject.
@@ -348,6 +551,8 @@ const APPOSITIVE_MODIFIERS: &[&str] = &[
     "the", "a", "an", "this", "that",
     "his", "her", "their", "its", "my", "our", "your",
     "old", "young", "little", "poor", "dear", "late", "good",
+    "younger", "older", "elder", "eldest", "youngest", "oldest", "best", "closest", "only",
+    "twin", "adopted", "biological", "favorite", "own", "new",
 ];
 
 /// Closed-class words that hold the event open without settling it either way.

@@ -1,14 +1,12 @@
 fn main() {
     let text = "Elena is Marco's sister. Marco mentors Dev, who works at the Archive.";
 
-    // Manual sentence split
     let sentences: Vec<&str> = text.split(". ").collect();
     println!("Sentences: {:?}", sentences);
 
     for (i, sent) in sentences.iter().enumerate() {
         println!("\nSentence {}:{:?}", i, sent);
 
-        // Find capitalized words
         let words: Vec<&str> = sent.split_whitespace().collect();
         println!("  Words: {:?}", words);
 

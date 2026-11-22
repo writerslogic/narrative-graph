@@ -1,9 +1,20 @@
 use super::entities::EntityCandidate;
-use super::pack::{LanguagePack, VerbRule};
+use super::kinds::{classify, Kind};
+use super::pack::{LanguagePack, Slot, VerbRule};
+use super::quotes::QuoteMap;
+use super::register::Register;
 use std::collections::BTreeMap;
 
+/// What the relation stage needs to know beyond the sentence's own mentions.
+pub struct Scope<'a> {
+    pub register: &'a Register,
+    pub quotes: &'a QuoteMap,
+    /// Every mention of the sentence, in text order.
+    pub mentions: &'a [EntityCandidate],
+}
+
 /// A relation found between two entities, with the span it was found in and
-/// the character gap between the entities (used to weight confidence).
+/// the byte gap between the entities (used to weight confidence).
 pub struct RelationCandidate {
     pub subject: String,
     pub relation: String,
@@ -13,7 +24,13 @@ pub struct RelationCandidate {
     pub base: f32,
     pub gap: usize,
     pub stance: Stance,
+    /// Whether the rule's own relation admits one subject per object, read
+    /// before the caller's ontology renames it.
+    pub single_filler: bool,
 }
+
+/// Widest byte gap between two mentions any rule reads across.
+const MAX_GAP_BYTES: usize = 30;
 
 /// Extract relations between entity pairs in the same sentence/clause.
 pub fn extract_relations(
@@ -21,27 +38,32 @@ pub fn extract_relations(
     entities: &[EntityCandidate],
     ontology: &BTreeMap<String, String>,
     pack: &LanguagePack,
+    scope: &Scope,
 ) -> Vec<RelationCandidate> {
     let mut relations = Vec::new();
 
-    // Only check forward entity pairs (left-to-right in text)
-    // to avoid bidirectional extraction
-    for i in 0..entities.len() {
-        for j in (i + 1)..entities.len() {
-            let subj = &entities[i];
-            let obj = &entities[j];
+    debug_assert!(entities.windows(2).all(|w| w[0].start <= w[1].start));
 
-            // Check for verb-phrase patterns between these entities
-            // Subject comes before object in text
+    for (i, subj) in entities.iter().enumerate() {
+        for obj in &entities[i + 1..] {
+            // Mentions are ordered by start, so the gap only grows from here.
+            if obj.start >= subj.end && obj.start - subj.end > MAX_GAP_BYTES {
+                break;
+            }
             // A pronoun carries its antecedent's normalized name, so the same
             // referent can appear twice in the pair loop.
             if subj.normalized == obj.normalized {
                 continue;
             }
+            // A pair read across a quotation mark pairs speech with narration.
+            if !scope.quotes.contains_span(text, subj.start, obj.end) {
+                continue;
+            }
 
-            if let Some(m) = find_relation_pattern(text, subj, obj, pack) {
+            if let Some(m) = find_relation_pattern(text, subj, obj, pack, scope) {
                 let (s, o) = if m.swapped { (obj, subj) } else { (subj, obj) };
                 relations.push(RelationCandidate {
+                    single_filler: pack.single_filler_relations.contains(&m.relation.as_str()),
                     subject: s.normalized.clone(),
                     relation: normalize_relation(&m.relation, ontology),
                     object: o.normalized.clone(),
@@ -73,10 +95,10 @@ struct PatternMatch {
 }
 
 impl PatternMatch {
-    fn new(relation: &str, rule: &str, base: f32, gap: usize) -> Self {
+    fn new(relation: &str, rule: impl Into<String>, base: f32, gap: usize) -> Self {
         Self {
             relation: relation.to_string(),
-            rule: rule.to_string(),
+            rule: rule.into(),
             base,
             gap,
             swapped: false,
@@ -170,6 +192,16 @@ pub enum Stance {
     Suspended,
 }
 
+/// Whether the text between two mentions holds an infinitive "to". A complement
+/// verb suspends its infinitive: "refused to mentor", "hoped to mentor",
+/// "wanted to work" assert nothing about the event. A phrase rule whose own
+/// words include "to" ("moved to", "married to") is not suspended by it.
+fn has_infinitive(between: &str, pack: &LanguagePack) -> bool {
+    between
+        .split_whitespace()
+        .any(|word| word == pack.infinitive_marker)
+}
+
 /// Read the text between two mentions as a stance on the relation.
 ///
 /// IMPORTANT: a suspender outranks a negator. "if Elena is not Marco's sister"
@@ -186,15 +218,6 @@ fn assertion_stance(between: &str, pack: &LanguagePack) -> Stance {
         if word.ends_with(pack.negation_clitic) || pack.negators.contains(&word) {
             denied = true;
         }
-    }
-
-    // A complement verb suspends its infinitive: "refused to mentor",
-    // "hoped to mentor", "wanted to work" assert nothing about the event.
-    if between
-        .split_whitespace()
-        .any(|word| word == pack.infinitive_marker)
-    {
-        return Stance::Suspended;
     }
 
     if denied {
@@ -234,8 +257,16 @@ fn ends_in_question(text: &str, from: usize) -> bool {
 /// phrase is already cut at the first clause boundary, so what follows the
 /// noun here is the rest of one noun phrase.
 fn heads_possessed_phrase(phrase: &str, start: usize, end: usize, pack: &LanguagePack) -> bool {
-    phrase[end..].trim().is_empty()
-        && find_ascii_ci(&phrase[..start], pack.possessive_clitic).is_none()
+    let after = phrase[end..].trim();
+    let closes = after.is_empty()
+        || after
+            .split(|c: char| !c.is_alphabetic())
+            .next()
+            .is_some_and(|word| {
+                pack.possessive_tails
+                    .contains(&word.to_lowercase().as_str())
+            });
+    closes && find_ascii_ci(&fold_apostrophe(&phrase[..start]), pack.possessive_clitic).is_none()
 }
 
 /// The possessed phrase in "y's <phrase> <copula> x", where the possessive sits
@@ -313,33 +344,50 @@ fn of_genitive_noun<'a>(between: &'a str, pack: &LanguagePack) -> Option<&'a str
         }
     };
 
-    let mut words: Vec<&str> = rest.split_whitespace().collect();
-    if words.pop()? != pack.genitive_link {
+    let mut words = rest.split_whitespace();
+    if words.next_back()? != pack.genitive_link {
         return None;
     }
-    let noun = words.pop()?;
+    let noun = words.next_back()?;
     // A negator is admitted alongside the modifiers so that "x is not the
     // sister of y" reaches the rule at all. Which claim it makes is the
     // caller's question; `assertion_stance` has already read the same window.
     words
-        .iter()
-        .all(|word| pack.appositive_modifiers.contains(word) || pack.negators.contains(word))
+        .all(|word| pack.appositive_modifiers.contains(&word) || pack.negators.contains(&word))
         .then_some(noun)
 }
 
 /// Whether an apostrophe-s opens at `from`, marking the mention before it as a
 /// possessor.
 fn opens_possessive(text: &str, from: usize, pack: &LanguagePack) -> bool {
-    starts_with_clitic(&text.as_bytes()[from..], pack)
+    clitic_len(&text.as_bytes()[from..], pack).is_some()
 }
 
-/// Whether `bytes` opens with the pack's possessive clitic, matched
-/// case-insensitively as the rest of the relation rules match.
-fn starts_with_clitic(bytes: &[u8], pack: &LanguagePack) -> bool {
+/// Byte length of the possessive clitic `bytes` opens with, matched
+/// case-insensitively, or `None`. IMPORTANT: the typographic apostrophe is the
+/// same clitic as the straight one. Word processors emit it throughout a
+/// manuscript, and a rule that reads only the straight form reads nothing there.
+fn clitic_len(bytes: &[u8], pack: &LanguagePack) -> Option<usize> {
     let clitic = pack.possessive_clitic.as_bytes();
-    bytes
+    if bytes
         .get(..clitic.len())
         .is_some_and(|head| head.eq_ignore_ascii_case(clitic))
+    {
+        return Some(clitic.len());
+    }
+    const CURLY: &[u8] = "\u{2019}".as_bytes();
+    let rest = &clitic[1..];
+    (bytes.starts_with(CURLY)
+        && bytes
+            .get(CURLY.len()..CURLY.len() + rest.len())
+            .is_some_and(|tail| tail.eq_ignore_ascii_case(rest)))
+    .then_some(CURLY.len() + rest.len())
+}
+
+/// `text` with the typographic apostrophe folded to the straight one, so that
+/// the clitic compares equal wherever it is read from a window.
+fn fold_apostrophe(text: &str) -> String {
+    text.replace('\u{2019}', "'")
 }
 
 fn find_relation_pattern(
@@ -347,6 +395,7 @@ fn find_relation_pattern(
     subj: &EntityCandidate,
     obj: &EntityCandidate,
     pack: &LanguagePack,
+    scope: &Scope,
 ) -> Option<PatternMatch> {
     // IMPORTANT: use each mention's own offsets. Re-locating a surface form by
     // substring search finds the first occurrence anywhere in the text, and an
@@ -360,21 +409,16 @@ fn find_relation_pattern(
     let (start, end) = (subj.end, obj.start);
     let gap = end - start;
 
-    // Only process if entities are within reasonable distance (30 chars for direct relations)
-    if gap > 30 {
+    if gap > MAX_GAP_BYTES {
         return None;
     }
 
-    let between = &text[start..end].to_lowercase();
+    let between = &fold_apostrophe(&text[start..end].to_lowercase());
 
     // IMPORTANT: a question is suspended, never denied. "Did Elena mentor
     // Marco?" does not claim the relation and does not deny it either.
-    // IMPORTANT: a denial is read from a wider window than an assertion. The
-    // suspender in "If Elena is not Marco's sister" sits before the subject, so
-    // the text between the mentions reads as a flat denial and a conflict check
-    // would take it for one. An assertion is deliberately left on the narrow
-    // window: widening it would drop claims the extractor has always made, and
-    // the same sentence opener does not make "Elena is Marco's sister" false.
+    // A denial is also suspended by "to" or a capitalized suspender before the
+    // subject, which `conditioned_before` below does not count.
     let stance = match assertion_stance(between, pack) {
         Stance::Denied if suspended_before(text, subj.start, pack) => Stance::Suspended,
         other => other,
@@ -383,7 +427,417 @@ fn find_relation_pattern(
         return None;
     }
 
-    Some(match_rules(text, obj, pack, between, gap)?.stance(stance))
+    // A clause opened by a suspender states nothing, whichever rule reads it.
+    if conditioned_before(text, subj.start, pack) {
+        return None;
+    }
+
+    // The rules written before phrase rules existed read an infinitive as a
+    // suspension. A phrase rule owns its own "to".
+    if !has_infinitive(between, pack) {
+        if let Some(m) = match_rules(text, obj, pack, between, gap) {
+            return Some(m.stance(stance));
+        }
+    }
+
+    if !usable_mention(subj, pack)
+        || !usable_mention(obj, pack)
+        || !pronoun_is_unambiguous(subj, pack, scope)
+        || !pronoun_is_unambiguous(obj, pack, scope)
+    {
+        return None;
+    }
+    let found = match_pronoun_possessive(text, subj, obj, pack, scope, between, gap)
+        .or_else(|| match_kin_prefix(text, subj, obj, pack, scope, between, gap))
+        .or_else(|| match_plural_pair(text, subj, obj, pack, scope, between, gap))
+        .or_else(|| match_phrase_rules(text, subj, obj, pack, scope, between, gap))?;
+    // A plural pair carries its own negation ("are not sisters"), which sits
+    // after the object and so is invisible to the window read above.
+    Some(match found.stance {
+        Stance::Asserted => found.stance(stance),
+        _ => found,
+    })
+}
+
+/// Whether a suspending word opens the clause the subject sits in: "If Nora
+/// married Dev, ..." and "Wren asked if she loved Dev" state nothing, in either
+/// polarity. A lowercase "may" is a modal and a capitalized one a name, so only the
+/// lowercase form counts, except at the start of the sentence.
+fn conditioned_before(text: &str, from: usize, pack: &LanguagePack) -> bool {
+    // A suspender governs its own clause. Reading past a semicolon, dash or
+    // quotation mark reaches a clause the segmenter failed to split off.
+    let prefix = &text[..from];
+    let clause_start = prefix
+        .rfind([
+            ';', ':', '\u{2014}', '"', '\u{201C}', '\u{201D}', '\u{2018}',
+        ])
+        .map(|i| i + prefix[i..].chars().next().map_or(1, char::len_utf8))
+        .max(prefix.rfind("--").map(|i| i + 2))
+        .unwrap_or(0);
+    text[clause_start..from]
+        .split(|c: char| !c.is_alphabetic())
+        .enumerate()
+        .any(|(index, word)| {
+            let lower = word.to_lowercase();
+            pack.suspending_words.contains(&lower.as_str())
+                && (word == lower || (index == 0 && lower != "may"))
+        })
+}
+
+/// Whether a mention can stand in a rule added after phrase rules: not a plural
+/// pronoun, which names a group the pipeline resolves to one person.
+fn usable_mention(entity: &EntityCandidate, pack: &LanguagePack) -> bool {
+    !(entity.pronoun
+        && pack
+            .plural_pronouns
+            .contains(&entity.text.to_lowercase().as_str()))
+}
+
+/// Whether a pronoun mention may be one end of a phrase rule. A possessive
+/// determiner is a possessor, never an actor or a patient ("she meets my
+/// gaze"), and an object pronoun must end its phrase: "kissed her" is an
+/// object and "kissed her cheek" is not.
+fn pronoun_fits_phrase(
+    text: &str,
+    entity: &EntityCandidate,
+    pack: &LanguagePack,
+    subject: bool,
+) -> bool {
+    if !entity.pronoun {
+        return true;
+    }
+    let word = entity.text.to_lowercase();
+    if matches!(word.as_str(), "my" | "his" | "their" | "its" | "our") {
+        return false;
+    }
+    subject || object_pronoun_ends_phrase(text, entity.end, pack)
+}
+
+/// Whether "her" after a verb is an object: the clause ends, or a preposition or
+/// conjunction follows. "kissed her" is an object and "kissed her cheek" is not.
+fn object_pronoun_ends_phrase(text: &str, from: usize, pack: &LanguagePack) -> bool {
+    let rest = text[from..].trim_start();
+    match rest.chars().next() {
+        None => true,
+        Some(c) if !c.is_alphabetic() => true,
+        Some(_) => {
+            let word: String = rest
+                .chars()
+                .take_while(|c| c.is_alphabetic())
+                .collect::<String>()
+                .to_lowercase();
+            pack.object_followers.contains(&word.as_str())
+        }
+    }
+}
+
+/// Whether a resolved pronoun has no rival referent in its sentence. The
+/// possessive rules apply their own, stricter test; this one covers the phrase
+/// rules. "Gideon told Hollis he had never met Chen" has two people before
+/// "he", and the nearest-mention rule picks the wrong one as often as the right.
+fn pronoun_is_unambiguous(entity: &EntityCandidate, pack: &LanguagePack, scope: &Scope) -> bool {
+    !entity.pronoun
+        || is_first_person(entity, pack)
+        || pack
+            .possessive_pronouns
+            .contains(&entity.text.to_lowercase().as_str())
+        || lone_antecedent(entity, scope)
+}
+
+/// Whether a possessive pronoun can only refer to one person: at most one
+/// named mention stands before it in the sentence. "Elena told Nora her sister
+/// was late" has two, and the nearest-mention rule guesses between them.
+fn lone_antecedent(pronoun: &EntityCandidate, scope: &Scope) -> bool {
+    scope
+        .mentions
+        .iter()
+        .filter(|m| !m.pronoun && m.end <= pronoun.start)
+        .count()
+        <= 1
+}
+
+/// The mention's kind, with the sentence it stands in.
+fn kind_of(text: &str, entity: &EntityCandidate, pack: &LanguagePack, scope: &Scope) -> Kind {
+    classify(text, entity, scope.register, pack)
+}
+
+/// Words of the window between two mentions, with commas as words of their own,
+/// or `None` where the window holds anything but letters, apostrophes, hyphens
+/// and commas. A dash, a bracket or a semicolon is a clause boundary the phrase
+/// rules do not read across.
+fn window_tokens(between: &str) -> Option<Vec<&str>> {
+    if between
+        .chars()
+        .any(|c| !(c.is_alphabetic() || c.is_whitespace() || matches!(c, ',' | '\'' | '-')))
+    {
+        return None;
+    }
+    let mut tokens = Vec::new();
+    let mut start = None;
+    for (index, c) in between
+        .char_indices()
+        .chain(std::iter::once((between.len(), ' ')))
+    {
+        if c.is_whitespace() || c == ',' {
+            if let Some(from) = start.take() {
+                tokens.push(&between[from..index]);
+            }
+            if c == ',' {
+                tokens.push(",");
+            }
+        } else {
+            start.get_or_insert(index);
+        }
+    }
+    Some(tokens)
+}
+
+/// The exact-phrase rules. See `pack/phrases.rs` for what "exact" means.
+fn match_phrase_rules(
+    text: &str,
+    subj: &EntityCandidate,
+    obj: &EntityCandidate,
+    pack: &LanguagePack,
+    scope: &Scope,
+    between: &str,
+    gap: usize,
+) -> Option<PatternMatch> {
+    if !pronoun_fits_phrase(text, subj, pack, true) || !pronoun_fits_phrase(text, obj, pack, false)
+    {
+        return None;
+    }
+    let mut tokens = window_tokens(between)?;
+    // "Marco, who married Elena": the relative opener is the only comma form.
+    if tokens.first() == Some(&",") {
+        if !matches!(tokens.get(1), Some(&"who") | Some(&"whom")) {
+            return None;
+        }
+        tokens.drain(..2);
+    }
+    while tokens
+        .last()
+        .is_some_and(|w| pack.phrase_trailers.contains(w))
+    {
+        tokens.pop();
+    }
+    if tokens.is_empty() || tokens.contains(&",") {
+        return None;
+    }
+
+    // Possessives of the object make it a possessor ("met Marco's sister"), not
+    // the thing the verb acts on.
+    if opens_possessive(text, obj.end, pack) {
+        return None;
+    }
+
+    let (subject_kind, object_kind) = (
+        kind_of(text, subj, pack, scope),
+        kind_of(text, obj, pack, scope),
+    );
+    for split in 0..tokens.len() {
+        if !tokens[..split]
+            .iter()
+            .all(|w| pack.phrase_fillers.contains(w))
+        {
+            break;
+        }
+        let rest = tokens[split..].join(" ");
+        for rule in pack.phrase_rules {
+            if !rule.phrases.contains(&rest.as_str()) {
+                continue;
+            }
+            if !rule.subject.admits(subject_kind) || !rule.object.admits(object_kind) {
+                continue;
+            }
+            return Some(
+                PatternMatch::new(rule.relation, rule.rule, rule.base, gap).swapped(rule.passive),
+            );
+        }
+    }
+    None
+}
+
+/// "x and y are sisters" / "x and y are not friends" / "x and y are married".
+fn match_plural_pair(
+    text: &str,
+    subj: &EntityCandidate,
+    obj: &EntityCandidate,
+    pack: &LanguagePack,
+    scope: &Scope,
+    between: &str,
+    gap: usize,
+) -> Option<PatternMatch> {
+    if between.trim() != "and" || subj.pronoun || obj.pronoun {
+        return None;
+    }
+    // "A, B and C are friends" would pair B with C and leave A out; the pair
+    // that is read must be the whole subject.
+    if text[..subj.start].trim_end().ends_with(',') {
+        return None;
+    }
+    let mut words = text[obj.end..]
+        .split(|c: char| !c.is_alphabetic() && c != '\'')
+        .filter(|w| !w.is_empty());
+    let copula = words.next()?.to_lowercase();
+    if !pack.plural_copulas.contains(&copula.as_str()) {
+        return None;
+    }
+    let mut word = words.next()?.to_lowercase();
+    let mut denied = false;
+    if pack.negators.contains(&word.as_str()) {
+        denied = true;
+        word = words.next()?.to_lowercase();
+    }
+    // "are old friends", "are very close friends".
+    let mut skipped = 0;
+    while skipped < 2
+        && (pack.appositive_modifiers.contains(&word.as_str())
+            || pack.plural_modifiers.contains(&word.as_str()))
+    {
+        word = words.next()?.to_lowercase();
+        skipped += 1;
+    }
+    let (_, relation, base) = pack
+        .plural_nouns
+        .iter()
+        .find(|(noun, _, _)| *noun == word)?;
+    if !Slot::Person.admits(kind_of(text, subj, pack, scope))
+        || !Slot::Person.admits(kind_of(text, obj, pack, scope))
+    {
+        return None;
+    }
+    let mut found = PatternMatch::new(relation, format!("plural-{word}-pattern"), *base, gap);
+    if denied {
+        found = found.stance(Stance::Denied);
+    }
+    Some(found)
+}
+
+/// "x's <noun> y" and "his <noun> y": the possessor comes first, the possessed
+/// person is named after the noun, and the relation reads `<noun>_of(y, x)`.
+fn match_kin_prefix(
+    text: &str,
+    subj: &EntityCandidate,
+    obj: &EntityCandidate,
+    pack: &LanguagePack,
+    scope: &Scope,
+    between: &str,
+    gap: usize,
+) -> Option<PatternMatch> {
+    let pronoun_possessor = subj.pronoun
+        && pack
+            .possessive_pronouns
+            .contains(&subj.text.to_lowercase().as_str());
+    let rest = if pronoun_possessor {
+        between
+    } else if subj.pronoun {
+        return None;
+    } else {
+        between.strip_prefix(pack.possessive_clitic)?
+    };
+    if !rest.starts_with(' ') {
+        return None;
+    }
+    let tokens = window_tokens(rest.trim_end_matches([' ', ',']))?;
+    let (noun, modifiers) = tokens.split_last()?;
+    if tokens.contains(&",")
+        || !modifiers
+            .iter()
+            .all(|w| pack.appositive_modifiers.contains(w))
+    {
+        return None;
+    }
+    let (_, relation, base) = pack.possessive_nouns.iter().find(|(n, _, _)| n == noun)?;
+    if obj.pronoun {
+        return None;
+    }
+    if !Slot::Person.admits(kind_of(text, subj, pack, scope))
+        || !Slot::Person.admits(kind_of(text, obj, pack, scope))
+    {
+        return None;
+    }
+    if pronoun_possessor && !possessor_is_sure(subj, scope, pack) {
+        return None;
+    }
+    let base = if pronoun_possessor {
+        base - 0.12
+    } else {
+        *base
+    };
+    Some(PatternMatch::new(relation, format!("kin-prefix-{noun}-pattern"), base, gap).swapped(true))
+}
+
+/// "x, my <noun>" and "x is her <noun>": the possessor is a pronoun after the
+/// subject, and the relation reads `<noun>_of(x, owner)`.
+fn match_pronoun_possessive(
+    text: &str,
+    subj: &EntityCandidate,
+    obj: &EntityCandidate,
+    pack: &LanguagePack,
+    scope: &Scope,
+    between: &str,
+    gap: usize,
+) -> Option<PatternMatch> {
+    if !obj.pronoun
+        || subj.pronoun
+        || !pack
+            .possessive_pronouns
+            .contains(&obj.text.to_lowercase().as_str())
+        || !is_possessive_link(between, pack)
+    {
+        return None;
+    }
+    let rest = &text[obj.end..];
+    let phrase = &rest[..possessed_noun_phrase_len(rest, pack)];
+    if !phrase.starts_with(' ') {
+        return None;
+    }
+    if !Slot::Person.admits(kind_of(text, subj, pack, scope)) {
+        return None;
+    }
+    if !possessor_is_sure(obj, scope, pack) {
+        return None;
+    }
+    for (noun, relation, base) in pack.possessive_nouns {
+        let Some((noun_start, noun_end)) = find_ascii_ci_word(phrase, noun) else {
+            continue;
+        };
+        if !heads_possessed_phrase(phrase, noun_start, noun_end, pack)
+            || !phrase[..noun_start].split_whitespace().all(|w| {
+                pack.appositive_modifiers
+                    .contains(&w.to_lowercase().as_str())
+            })
+        {
+            continue;
+        }
+        let base = if is_first_person(obj, pack) {
+            *base
+        } else {
+            base - 0.12
+        };
+        return Some(
+            PatternMatch::new(relation, format!("pronoun-{noun}-pattern"), base, gap)
+                .span_end(obj.end + noun_end),
+        );
+    }
+    None
+}
+
+fn is_first_person(entity: &EntityCandidate, pack: &LanguagePack) -> bool {
+    pack.first_person_pronouns
+        .contains(&entity.text.to_lowercase().as_str())
+}
+
+/// Whether a possessive pronoun's referent can be trusted. The narrator's "my"
+/// is a referent the caller named; any other pronoun must agree with what the
+/// document has said about the name it resolved to, because "her sister" in a
+/// sentence with two women is a coin toss the nearest-mention rule makes.
+fn possessor_is_sure(pronoun: &EntityCandidate, scope: &Scope, pack: &LanguagePack) -> bool {
+    is_first_person(pronoun, pack)
+        || (lone_antecedent(pronoun, scope)
+            && scope
+                .register
+                .allows(&pronoun.text, &pronoun.normalized, pack))
 }
 
 /// The rule table proper, once the window between the mentions has been bounded
@@ -402,10 +856,9 @@ fn match_rules(
     // Possessive pattern: "x is y's [relation]". Matched against the original
     // text so the noun's offsets can bound the evidence span.
     let after_obj = &text[obj.end..];
-    let clitic_len = pack.possessive_clitic.len();
     let bytes = after_obj.as_bytes();
-    let possessive =
-        starts_with_clitic(bytes, pack) && matches!(bytes.get(clitic_len), Some(b' ') | Some(b'.'));
+    let clitic_len = clitic_len(bytes, pack).unwrap_or(0);
+    let possessive = clitic_len > 0 && matches!(bytes.get(clitic_len), Some(b' ') | Some(b'.'));
 
     if possessive && is_possessive_link(between, pack) {
         let rest = &after_obj[clitic_len..];
@@ -420,7 +873,7 @@ fn match_rules(
                 continue;
             }
             return Some(
-                PatternMatch::new(relation, &format!("possessive-{noun}-pattern"), *base, gap)
+                PatternMatch::new(relation, format!("possessive-{noun}-pattern"), *base, gap)
                     .span_end(phrase_start + noun_end),
             );
         }
@@ -436,7 +889,7 @@ fn match_rules(
             {
                 return Some(PatternMatch::new(
                     relation,
-                    &format!("of-genitive-{noun}-pattern"),
+                    format!("of-genitive-{noun}-pattern"),
                     *base,
                     gap,
                 ));
@@ -458,7 +911,7 @@ fn match_rules(
                     continue;
                 }
                 return Some(
-                    PatternMatch::new(relation, &format!("possessive-{noun}-pattern"), *base, gap)
+                    PatternMatch::new(relation, format!("possessive-{noun}-pattern"), *base, gap)
                         .swapped(true),
                 );
             }
@@ -500,6 +953,9 @@ fn match_verb_rules(between: &str, rules: &[VerbRule], gap: usize) -> Option<Pat
 /// Normalize a relation type against an optional caller-supplied ontology.
 /// If the relation is in the ontology map, return the mapped value; otherwise return as-is.
 pub fn normalize_relation(rel: &str, ontology: &BTreeMap<String, String>) -> String {
+    if ontology.is_empty() {
+        return rel.to_string();
+    }
     let rel_lower = rel.to_lowercase();
 
     if let Some(canonical) = ontology.get(&rel_lower) {

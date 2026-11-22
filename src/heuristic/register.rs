@@ -85,11 +85,8 @@ impl Entry {
                 Self::wins(self.personal(), self.thing())
                     && Self::wins(self.feminine, self.masculine)
             }
-            // IMPORTANT: "it" needs positive evidence of a thing, not merely
-            // the absence of evidence of a person. Most of the "it"s in
-            // narrative prose stand for a clause or an unnamed object, and a
-            // referent the text never marked as a thing is the wrong home for
-            // all of them.
+            // "it" needs positive evidence of a thing, not just absence of evidence
+            // of a person.
             PronounClass::Neuter => Self::wins(self.thing(), self.personal()),
             PronounClass::Plural => false,
         }
@@ -97,7 +94,7 @@ impl Entry {
 }
 
 /// Every name the document uses, with what it says about each.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Register {
     entries: BTreeMap<String, Entry>,
 }
@@ -197,6 +194,20 @@ impl Register {
                 PronounClass::Plural => {}
             }
         }
+    }
+
+    /// Whether the document's own evidence says `name` is a person.
+    pub fn is_person(&self, name: &str) -> bool {
+        self.entries
+            .get(name)
+            .is_some_and(|e| Entry::wins(e.personal(), e.thing()))
+    }
+
+    /// Whether the document's own evidence says `name` is a place or thing.
+    pub fn is_thing(&self, name: &str) -> bool {
+        self.entries
+            .get(name)
+            .is_some_and(|e| Entry::wins(e.thing(), e.personal()))
     }
 
     /// Whether `referent` may be what `pronoun` refers to.
