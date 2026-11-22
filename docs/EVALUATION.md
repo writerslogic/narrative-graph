@@ -303,3 +303,35 @@ precision floor asserted in CI is 0.95 and the recall floor 0.85.
 A precision/recall benchmark against a genuinely independent labeled corpus
 remains future work; see "What is not measured" above for why no
 redistributable corpus has been adopted.
+
+## Hand-labelled real text
+
+`tests/real_text_eval.rs` scores whole-book extraction against hand labels on
+sentences sampled by fixed seed (`tests/corpus/tools/sample_public.py`): 150
+from the six public-domain novels in `tests/corpus/`, and a private set
+(`NG_PRIVATE_EVAL`, never committed) of 173 from contemporary novels and the
+author's manuscript excerpts. Labels are tiered: stated, `implied`, and
+described (a bracketed side such as `[her mother = Mrs. Bennet]`).
+`tests/corpus.rs` snapshots every whole-book aggregate, so a rule change shows
+as the claims it adds and loses.
+
+Baseline (2026-11-22): public, 44 stated labels, none found; private, 31
+stated labels, one found and one false positive. 438 of 548 labels need a
+person the sentence only describes, mostly narrators and unnamed speakers,
+and `speaks_to` is the most frequent relation.
+
+### Plan and settled decisions
+
+- Inference stays local and the default build dependency-free. No remote
+  model at run time or in tests.
+- Odd-numbered items are the held-out half: tune on even items, read the odd
+  half only at milestones.
+- Order: the apostrophe fix (`O’Leary` is cut to `leary`); dialogue speaker
+  attribution emitting `speaks_to`; narrator identity; nodes for described
+  people; then a learned pair classifier.
+- The classifier: a teacher (a local model through ollama) is first scored on
+  the even half with the same matcher; only if it does well is it used to
+  label training text, with every evaluated window excluded. The student is a
+  hashed-feature linear model in pure Rust with embedded weights, behind an
+  opt-in feature. Training text for shipped weights is public domain plus the
+  author's own writing, not the commercial novels.
