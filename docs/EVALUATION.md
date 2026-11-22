@@ -332,8 +332,11 @@ and `speaks_to` is the most frequent relation.
 - The classifier: a teacher (a local model through ollama) is first scored on
   the even half with the same matcher; only if it does well is it used to
   label training text, with every evaluated window excluded. The student is a
-  hashed-feature linear model in pure Rust with embedded weights, behind an
-  opt-in feature. Training text for shipped weights is public domain plus the
+  small fine-tuned encoder (DeBERTa-v3-small or ModernBERT-base class) run in
+  pure Rust through `candle`, behind an opt-in `model` feature; it scores
+  candidate pairs and resolves described mentions. A linear model cannot reach
+  the target: most labels need coreference or a speaker carried across turns.
+  The rule pipeline stays the dependency-free default and supplies features. Training text for shipped weights is public domain plus the
   author's own writing, not the commercial novels.
 - Target: recall of at least 0.7 over all tiers on the held-out half, with
   precision of at least 0.8 once extractions are numerous enough to measure.
