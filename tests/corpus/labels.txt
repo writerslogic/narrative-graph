@@ -1,0 +1,811 @@
+# Hand labels for tests/real_text_eval.rs
+#
+# Change the next line to `status: labelled` once every item is done; until
+# then the test checks the file but does not score it.
+status: draft
+#
+# HOW TO LABEL
+# Each item is one sentence from a novel. The line starting with `~` is the
+# sentence before it, there only to tell you who a pronoun means; do not label
+# it. Under the `=` line, write one line per relationship the sentence itself
+# states, or leave it empty if it states none:
+#
+#     Elizabeth | sister_of | Jane
+#     not Wickham | husband_of | Lydia      (the sentence denies it)
+#
+# Rules:
+# - `A | x_of | B` means "A is B's x". "Lydia's aunt" is `aunt | aunt_of | Lydia`
+#   only if the aunt is named, e.g. `Mrs. Philips | aunt_of | Lydia`.
+# - Both sides must be a named person (or place, for works_at), or a pronoun
+#   whose person is named in this sentence or the `~` line. Write the name
+#   as the text writes it there ("Mr. Darcy", "Darcy", "Lizzy"). Skip a side
+#   that is only a description ("her mother", "the old man").
+# - Label what the sentence states as true, including inside dialogue. Skip
+#   what is only wished, asked, supposed, or conditional ("if she were his
+#   sister").
+# - Use the relation names below when one fits. If none fits, make one up in
+#   the same style (`fiancee_of`, `ward_of`); it is scored separately as a
+#   relation the library does not know yet.
+# - Mutual relations (friend_of, cousin_of, spouse_of, knows, meets ...) only
+#   need one direction. Kin terms with a sex (sister_of, son_of) do not.
+# - Do not run the library on these sentences before labelling, and do not
+#   edit the `@`, `~` or sentence lines: the test checks them against the book.
+# - When unsure, write your best guess and add `?` at the end of the line;
+#   those count like any other label but are easy to find later.
+#
+# Relations the library knows. Label the verb ones too ("Darcy met
+# Bingley" is `Darcy | meets | Bingley`), including one-off events such as
+# kissed or killed; the place ones take a named place as the object.
+#
+# People to people ("A is B's x"):
+#   acquaintance_of ally_of apprentice_of assistant_of aunt_of boss_of
+#   boyfriend_of brother_in_law_of brother_of classmate_of client_of
+#   colleague_of companion_of cousin_of coworker_of daughter_of doctor_of
+#   employer_of enemy_of ex_husband_of ex_of ex_wife_of father_in_law_of
+#   father_of fiance_of friend_of girlfriend_of goddaughter_of godfather_of
+#   godmother_of godson_of granddaughter_of grandfather_of grandmother_of
+#   grandson_of guardian_of husband_of landlord_of lawyer_of lover_of
+#   master_of mother_in_law_of mother_of neighbor_of nephew_of niece_of
+#   partner_of patient_of pupil_of rival_of roommate_of servant_of sibling_of
+#   sister_in_law_of sister_of son_of sponsor_of spouse_of stepbrother_of
+#   stepdaughter_of stepfather_of stepmother_of stepsister_of stepson_of
+#   student_of teacher_of tenant_of therapist_of twin_of uncle_of widow_of
+#   wife_of
+#
+# Verbs ("A x B"), written exactly as listed whatever the text's tense:
+#   adopted argues_with attends betrayed born_in broke_up_with comforts
+#   contacts dating died_in divorced employs engaged_to founded greets hates
+#   helps killed kissed knows leads lives_in lives_with located_in loves meets
+#   member_of mentors owns proposed_to protects raised runs trusts works_at
+#   works_for works_with
+
+@ 1 1342 56986 relation word | Pride and Prejudice
+~ They were rather handsome; had been educated in one of the first private seminaries in town; had a fortune of twenty thousand pounds; were in the habit of spending more than they ought, and of associating with people of rank; and were, therefore, in every respect entitled to think well of themselves and meanly of others.
+They were of a respectable family in the north of England; a circumstance more deeply impressed on their memories than that their brother’s fortune and their own had been acquired by trade.
+=
+
+@ 2 1342 82799 relation word | Pride and Prejudice
+~ I remember the time when I liked a red coat myself very well--and, indeed, so I do still at my heart; and if a smart young colonel, with five or six thousand a year, should want one of my girls, I shall not say nay to him; and I thought Colonel Forster looked very becoming the other night at Sir William’s in his regimentals.”
+“Mamma,” cried Lydia, “my aunt says that Colonel Forster and Captain Carter do not go so often to Miss Watson’s as they did when they first came; she sees them now very often standing in Clarke’s library.”
+=
+
+@ 3 1342 109747 relation word | Pride and Prejudice
+~ But if it be only a slight, thin sort of inclination, I am convinced that one good sonnet will starve it entirely away.”
+Darcy only smiled; and the general pause which ensued made Elizabeth tremble lest her mother should be exposing herself again.
+=
+
+@ 4 1342 128462 names | Pride and Prejudice
+~ I would advise you, before you determine on it, to consult the wishes of the present party; I am much mistaken if there are not some among us to whom a ball would be rather a punishment than a pleasure.”
+“If you mean Darcy,” cried her brother, “he may go to bed, if he chooses, before it begins; but as for the ball, it is quite a settled thing, and as soon as Nicholls has made white soup enough I shall send round my cards.”
+=
+
+@ 5 1342 150013 random | Pride and Prejudice
+~ Does she live near you, sir?”
+“The garden in which stands my humble abode is separated only by a lane from Rosings Park, her Ladyship’s residence.”
+=
+
+@ 6 1342 185168 names | Pride and Prejudice
+~ It is, in short, impossible for us to conjecture the causes or circumstances which may have alienated them, without actual blame on either side.”
+“Very true, indeed; and now, my dear Jane, what have you got to say in behalf of the interested people who have probably been concerned in the business?
+=
+
+@ 7 1342 224861 names | Pride and Prejudice
+~ Twice has she condescended to give me her opinion (unasked too!) on this subject; and it was but the very Saturday night before I left Hunsford,--between our pools at quadrille, while Mrs.
+Jenkinson was arranging Miss De Bourgh’s footstool,--that she said, ‘Mr.
+=
+
+@ 8 1342 261476 names | Pride and Prejudice
+~ The steady countenance which Miss Lucas had commanded in telling her story gave way to a momentary confusion here on receiving so direct a reproach; though, as it was no more than she expected, she soon regained her composure, and calmly replied,--
+“Why should you be surprised, my dear Eliza?
+=
+
+@ 9 1342 309869 names | Pride and Prejudice
+~ Mrs.
+Gardiner gave her the particulars also of Miss Bingley’s visit in Gracechurch Street, and repeated conversations occurring at different times between Jane and herself, which proved that the former had, from her heart, given up the acquaintance.
+=
+
+@ 10 1342 323989 random | Pride and Prejudice
+~ Lady Catherine will not think the worse of you for being simply dressed.
+She likes to have the distinction of rank preserved.”
+=
+
+@ 11 1342 336833 relation word | Pride and Prejudice
+~ The room in which the ladies sat was backwards.
+Elizabeth at first had rather wondered that Charlotte should not prefer the dining parlour for common use; it was a better sized room, and had a pleasanter aspect: but she soon saw that her friend had an excellent reason for what she did, for Mr.
+=
+
+@ 12 1342 338978 names | Pride and Prejudice
+~ “he never failed to inform them” ]
+The entertainment of dining at Rosings was repeated about twice a week; and, allowing for the loss of Sir William, and there being only one card-table in the evening, every such entertainment was the counterpart of the first.
+=
+
+@ 13 1342 370008 names | Pride and Prejudice
+~ He had ruined for a while every hope of happiness for the most affectionate, generous heart in the world; and no one could say how lasting an evil he might have inflicted.
+“There were some very strong objections against the lady,” were Colonel Fitzwilliam’s words; and these strong objections probably were, her having one uncle who was a country attorney, and another who was in business in London.
+=
+
+@ 14 1342 385374 random | Pride and Prejudice
+~ Darcy, she moved again towards the gate.
+He had by that time reached it also; and, holding out a letter, which she instinctively took, said, with a look of haughty composure, “I have been walking in the grove some time, in the hope of meeting you.
+=
+
+@ 15 1342 438056 names | Pride and Prejudice
+~ Most earnestly did she labour to prove the probability of error, and seek to clear one, without involving the other.
+“This will not do,” said Elizabeth; “you never will be able to make both of them good for anything.
+=
+
+@ 16 1342 443694 names | Pride and Prejudice
+~ I told my sister Philips so the other day.
+But I cannot find out that Jane saw anything of him in London.
+=
+
+@ 17 1342 448952 random | Pride and Prejudice
+~ As for Elizabeth herself, this invitation was so far from exciting in her the same feelings as in her mother and Lydia, that she considered it as the death-warrant of all possibility of common sense for the latter; and detestable as such a step must make her, were it known, she could not help secretly advising her father not to let her go.
+She represented to him all the improprieties of Lydia’s general behaviour, the little advantage she could derive from the friendship of such a woman as Mrs.
+=
+
+@ 18 1342 478472 names | Pride and Prejudice
+~ To my fancy, it is only because he does not rattle away like other young men.”
+“In what an amiable light does this place him!” thought Elizabeth.
+=
+
+@ 19 1342 550464 random | Pride and Prejudice
+~ Gardiner, after general assurances of his affection for her and all her family, told her that he meant to be in London the very next day, and would assist Mr.
+Bennet in every endeavour for recovering Lydia.
+=
+
+@ 20 1342 560085 relation word | Pride and Prejudice
+~ My aunt Philips came to Longbourn on Tuesday, after my father went away; and was so good as to stay till Thursday with me.
+She was of great use and comfort to us all, and Lady Lucas has been very kind: she walked here on Wednesday morning to condole with us, and offered her services, or any of her daughters, if they could be of use to us.”
+=
+
+@ 21 1342 562764 relation word | Pride and Prejudice
+~ Bennet, and was a great comfort to them in their hours of freedom.
+Their other aunt also visited them frequently, and always, as she said, with the design of cheering and heartening them up--though, as she never came without reporting some fresh instance of Wickham’s extravagance or irregularity, she seldom went away without leaving them more dispirited than she found them.
+=
+
+@ 22 1342 579785 names | Pride and Prejudice
+~ Consider how important every moment is in such a case.”
+“Let me write for you,” said Jane, “if you dislike the trouble yourself.”
+=
+
+@ 23 1342 601490 random | Pride and Prejudice
+~ His countenance rather gained in austerity; and he scarcely opened his lips.
+The easy assurance of the young couple, indeed, was enough to provoke him.
+=
+
+@ 24 1342 684872 names | Pride and Prejudice
+~ She had not herself forgotten to feel that the marriage of her sister must bring them more frequently together.
+And her neighbours at Lucas Lodge, therefore, (for through their communication with the Collinses, the report, she concluded, had reached Lady Catherine,) had only set _that_ down as almost certain and immediate which _she_ had looked forward to as possible at some future time.
+=
+
+@ 25 1342 710601 relation word | Pride and Prejudice
+~ I am afraid you will be angry.”
+“My dearest sister, now be, _be_ serious.
+=
+
+@ 26 1260 44918 names | Jane Eyre
+~ “Are you not very thankful to have such a fine place to live at?”
+“It is not my house, sir; and Abbot says I have less right to be here than a servant.”
+=
+
+@ 27 1260 89510 names | Jane Eyre
+~ I explained to her that I had no parents.
+She inquired how long they had been dead: then how old I was, what was my name, whether I could read, write, and sew a little: then she touched my cheek gently with her forefinger, and saying, “She hoped I should be a good child,” dismissed me along with Miss Miller.
+=
+
+@ 28 1260 228177 names | Jane Eyre
+~ Rochester carried me in his arms over a plank to the land, and Sophie came after, and we all got into a coach, which took us to a beautiful large house, larger than this and finer, called an hotel.
+We stayed there nearly a week: I and Sophie used to walk every day in a great green place full of trees, called the Park; and there were many children there besides me, and a pond with beautiful birds in it, that I fed with crumbs.”
+=
+
+@ 29 1260 264136 random | Jane Eyre
+~ Little things recall us to earth; the clock struck in the hall; that sufficed; I turned from moon and stars, opened a side-door, and went in.
+The hall was not dark, nor yet was it lit, only by the high-hung bronze lamp; a warm glow suffused both it and the lower steps of the oak staircase.
+=
+
+@ 30 1260 270646 random | Jane Eyre
+~ Rochester, his foot supported by the cushion; he was looking at Adèle and the dog: the fire shone full on his face.
+I knew my traveller with his broad and jetty eyebrows; his square forehead, made squarer by the horizontal sweep of his black hair.
+=
+
+@ 31 1260 314305 names | Jane Eyre
+~ “It has struck nine, sir.”
+“Never mind,—wait a minute: Adèle is not ready to go to bed yet.
+=
+
+@ 32 1260 404271 random | Jane Eyre
+~ I see her yet in her raging passions, when we had driven her to extremities—spilt our tea, crumbled our bread and butter, tossed our books up to the ceiling, and played a charivari with the ruler and desk, the fender and fire-irons.
+Theodore, do you remember those merry days?”
+=
+
+@ 33 1260 409442 names | Jane Eyre
+~ Know that I doat on Corsairs; and for that reason, sing it _con spirito_.”
+“Commands from Miss Ingram’s lips would put spirit into a mug of milk and water.”
+=
+
+@ 34 1260 433357 relation word | Jane Eyre
+~ He bowed to Lady Ingram, as deeming her the eldest lady present.
+“It appears I come at an inopportune time, madam,” said he, “when my friend, Mr.
+=
+
+@ 35 1260 438472 relation word | Jane Eyre
+~ Dismiss her, by all means, at once!”
+“But I cannot persuade her to go away, my lady,” said the footman; “nor can any of the servants: Mrs.
+=
+
+@ 36 1260 484041 names | Jane Eyre
+~ Rochester.
+“But under such circumstances, what could one do?” returned Mason.
+=
+
+@ 37 1260 535153 names | Jane Eyre
+~ I know not how she occupied herself before breakfast, but after that meal she divided her time into regular portions, and each hour had its allotted task.
+Three times a day she studied a little book, which I found, on inspection, was a Common Prayer Book.
+=
+
+@ 38 1260 543544 relation word | Jane Eyre
+~ I wished to see Jane Eyre, and I fancy a likeness where none exists: besides, in eight years she must be so changed.”
+I now gently assured her that I was the person she supposed and desired me to be: and seeing that I was understood, and that her senses were quite collected, I explained how Bessie had sent her husband to fetch me from Thornfield.
+=
+
+@ 39 1260 587339 random | Jane Eyre
+~ I could not be certain of the reality till I had seen Mr.
+Rochester again, and heard him renew his words of love and promise.
+=
+
+@ 40 1260 589902 names | Jane Eyre
+~ “It is Jane Eyre, sir.”
+“Soon to be Jane Rochester,” he added: “in four weeks, Janet; not a day more.
+=
+
+@ 41 1260 695147 random | Jane Eyre
+~ There you shall live a happy, and guarded, and most innocent life.
+Never fear that I wish to lure you into error—to make you my mistress.
+=
+
+@ 42 1260 699889 relation word | Jane Eyre
+~ The elder one, whom you have seen (and whom I cannot hate, whilst I abhor all his kindred, because he has some grains of affection in his feeble mind, shown in the continued interest he takes in his wretched sister, and also in a dog-like attachment he once bore me), will probably be in the same state one day.
+My father and my brother Rowland knew all this; but they thought only of the thirty thousand pounds, and joined in the plot against me.
+=
+
+@ 43 1260 711422 names | Jane Eyre
+~ “Well, sir?”
+“When you are inquisitive, Jane, you always make me smile.
+=
+
+@ 44 1260 819864 relation word | Jane Eyre
+~ In this brief hour I had learnt more of him than in the whole previous month: yet still he puzzled me.
+Diana and Mary Rivers became more sad and silent as the day approached for leaving their brother and their home.
+=
+
+@ 45 1260 836868 names | Jane Eyre
+~ John.
+“Do you think you shall like Morton?” she asked of me, with a direct and naïve simplicity of tone and manner, pleasing, if child-like.
+=
+
+@ 46 1260 927782 random | Jane Eyre
+~ “God and nature intended you for a missionary’s wife.
+It is not personal, but mental endowments they have given you: you are formed for labour, not for love.
+=
+
+@ 47 1260 933330 names | Jane Eyre
+~ John, I abandon half myself: if I go to India, I go to premature death.
+And how will the interval between leaving England for India, and India for the grave, be filled?
+=
+
+@ 48 1260 958402 relation word | Jane Eyre
+~ “And have consequently displeased him?” she suggested.
+“Deeply: he will never forgive me, I fear: yet I offered to accompany him as his sister.”
+=
+
+@ 49 1260 972265 names | Jane Eyre
+~ He took the way over the misty moors in the direction of Whitcross—there he would meet the coach.
+“In a few more hours I shall succeed you in that track, cousin,” thought I: “I too have a coach to meet at Whitcross.
+=
+
+@ 50 1260 1009949 relation word | Jane Eyre
+~ “Yet how, on this dark and doleful evening, could you so suddenly rise on my lone hearth?
+I stretched my hand to take a glass of water from a hireling, and it was given me by you: I asked a question, expecting John’s wife to answer me, and your voice spoke at my ear.”
+=
+
+@ 51 98 26331 random | A Tale of Two Cities
+~ Got out at last, with earth hanging about his face and hair, he would suddenly fan away to dust.
+The passenger would then start to himself, and lower the window, to get the reality of mist and rain on his cheek.
+=
+
+@ 52 98 104608 names | A Tale of Two Cities
+~ The house had always tolerated some person in that capacity, and time and tide had drifted this person to the post.
+His surname was Cruncher, and on the youthful occasion of his renouncing by proxy the works of darkness, in the easterly parish church of Hounsditch, he had received the added appellation of Jerry.
+=
+
+@ 53 98 154433 names | A Tale of Two Cities
+~ “If you had sent the message, ‘Recalled to Life,’ again,” muttered Jerry, as he turned, “I should have known what you meant, this time.”
+He had no opportunity of saying, or so much as thinking, anything else, until he was clear of the Old Bailey; for, the crowd came pouring out with a vehemence that nearly took him off his legs, and a loud buzz swept into the street as if the baffled blue-flies were dispersing in search of other carrion.
+=
+
+@ 54 98 209199 names | A Tale of Two Cities
+~ Hence Monseigneur had taken his sister from a convent, while there was yet time to ward off the impending veil, the cheapest garment she could wear, and had bestowed her as a prize upon a very rich Farmer-General, poor in family.
+Which Farmer-General, carrying an appropriate cane with a golden apple on the top of it, was now among the company in the outer rooms, much prostrated before by mankind--always excepting superior mankind of the blood of Monseigneur, who, his own wife included, looked down upon him with the loftiest contempt.
+=
+
+@ 55 98 215351 relation word | A Tale of Two Cities
+~ From the Palace of the Tuileries, through Monseigneur and the whole Court, through the Chambers, the Tribunals of Justice, and all society (except the scarecrows), the Fancy Ball descended to the Common Executioner: who, in pursuance of the charm, was required to officiate “frizzled, powdered, in a gold-laced coat, pumps, and white silk stockings.”
+At the gallows and the wheel--the axe was a rarity--Monsieur Paris, as it was the episcopal mode among his brother Professors of the provinces, Monsieur Orleans, and the rest, to call him, presided in this dainty dress.
+=
+
+@ 56 98 268210 relation word | A Tale of Two Cities
+~ I believe it.”
+“But, do not believe,” said Darnay, upon whose ear the mournful voice struck with a reproachful sound, “that if my fortune were so cast as that, being one day so happy as to make her my wife, I must at any time put any separation between her and you, I could or would breathe a word of what I now say.
+=
+
+@ 57 98 286344 names | A Tale of Two Cities
+~ There was a peculiarity in his manner of shaking hands, always to be seen in any clerk at Tellson’s who shook hands with a customer when the House pervaded the air.
+He shook in a self-abnegating way, as one who shook for Tellson and Co.
+=
+
+@ 58 98 305699 names | A Tale of Two Cities
+~ May it otherwise be light and happy!”
+He was so unlike what he had ever shown himself to be, and it was so sad to think how much he had thrown away, and how much he every day kept down and perverted, that Lucie Manette wept mournfully for him as he stood looking back at her.
+=
+
+@ 59 98 351574 names | A Tale of Two Cities
+~ If he needed a King and Queen to restore him, he was fortunate in having his remedy at hand; for, soon the large-faced King and the fair-faced Queen came in their golden coach, attended by the shining Bull’s Eye of their Court, a glittering multitude of laughing ladies and fine lords; and in jewels and silks and powder and splendour and elegantly spurning figures and handsomely disdainful faces of both sexes, the mender of roads bathed himself, so much to his temporary intoxication, that he cried Long live the King, Long live the Queen, Long live everybody and everything! as if he had never heard of ubiquitous Jacques in his time.
+Then, there were gardens, courtyards, terraces, fountains, green banks, more King and Queen, more Bull’s Eye, more lords and ladies, more Long live they all! until he absolutely wept with sentiment.
+=
+
+@ 60 98 356474 relation word | A Tale of Two Cities
+~ The latter he was intimate with, and affectionately embraced.
+When Saint Antoine had again enfolded the Defarges in his dusky wings, and they, having finally alighted near the Saint’s boundaries, were picking their way on foot through the black mud and offal of his streets, Madame Defarge spoke to her husband:
+=
+
+@ 61 98 388712 names | A Tale of Two Cities
+~ Lorry?” asked the gentleman of that name.
+“Pooh!” rejoined Miss Pross; “you were a bachelor in your cradle.”
+=
+
+@ 62 98 398410 names | A Tale of Two Cities
+~ This encouraged Mr.
+Lorry to have Miss Pross in with her work, several times during the day; at those times, they quietly spoke of Lucie, and of her father then present, precisely in the usual manner, and as if there were nothing amiss.
+=
+
+@ 63 98 446531 random | A Tale of Two Cities
+~ Seven faces of prisoners, suddenly released by the storm that had burst their tomb, were carried high overhead: all scared, all lost, all wondering and amazed, as if the Last Day were come, and those who rejoiced around them were lost spirits.
+Other seven faces there were, carried higher, seven dead faces, whose drooping eyelids and half-seen eyes awaited the Last Day.
+=
+
+@ 64 98 453706 random | A Tale of Two Cities
+~ They were all by that time choking the Hall of Examination where this old man, ugly and wicked, was, and overflowing into the adjacent open space and streets.
+The Defarges, husband and wife, The Vengeance, and Jacques Three, were in the first press, and at no great distance from him in the Hall.
+=
+
+@ 65 98 488994 names | A Tale of Two Cities
+~ “I will come back, to see you off.”
+Very ill at ease with himself, and with Stryver and most other men, Darnay made the best of his way into the quiet of the Temple, opened the letter, and read it.
+=
+
+@ 66 98 490409 names | A Tale of Two Cities
+~ No answer.
+Ah Monsieur heretofore the Marquis, I send my desolate cry across the sea, hoping it may perhaps reach your ears through the great bank of Tilson known at Paris!
+=
+
+@ 67 98 520803 random | A Tale of Two Cities
+~ “But I hope,” said the gentleman, following the chief gaoler with his eyes, who moved across the room, “that you are not in secret?”
+“I do not understand the meaning of the term, but I have heard them say so.”
+=
+
+@ 68 98 534588 relation word | A Tale of Two Cities
+~ All this was seen in a moment, as the vision of a drowning man, or of any human creature at any very great pass, could see a world if it were there.
+They drew back from the window, and the Doctor looked for explanation in his friend’s ashy face.
+=
+
+@ 69 98 546094 relation word | A Tale of Two Cities
+~ “Let it do so.”
+“As a wife and mother,” cried Lucie, most earnestly, “I implore you to have pity on me and not to exercise any power that you possess, against my innocent husband, but to use it in his behalf.
+=
+
+@ 70 98 583659 names | A Tale of Two Cities
+~ The first of them told him so, with the customary prison sign of Death--a raised finger--and they all added in words, “Long live the Republic!”
+The five had had, it is true, no audience to lengthen their proceedings, for when he and Doctor Manette emerged from the gate, there was a great crowd about it, in which there seemed to be every face he had seen in Court--except two, for which he looked in vain.
+=
+
+@ 71 98 666238 relation word | A Tale of Two Cities
+~ He forced back the gathering shadows of death, as he forced his clenched right hand to remain clenched, and to cover his wound.
+“‘Then, with that man’s permission and even with his aid, his brother took her away; in spite of what I know she must have told his brother--and what that is, will not be long unknown to you, Doctor, if it is now--his brother took her away--for his pleasure and diversion, for a little while.
+=
+
+@ 72 98 684083 relation word | A Tale of Two Cities
+~ I feel that this will break my heart by-and-bye; but I will do my duty while I can, and when I leave her, God will raise up friends for her, as He did for me.”
+Her father had followed her, and would have fallen on his knees to both of them, but that Darnay put out a hand and seized him, crying:
+=
+
+@ 73 98 692537 names | A Tale of Two Cities
+~ He repeated what he had already said.
+“English?” asked Madame Defarge, inquisitively raising her dark eyebrows.
+=
+
+@ 74 98 693493 random | A Tale of Two Cities
+~ The amiable Vengeance added, with a laugh, “Yes, my faith!
+And you are looking forward with so much pleasure to seeing him once more to-morrow!”
+=
+
+@ 75 98 728897 random | A Tale of Two Cities
+~ Necessarily, being the last.”
+It is Jarvis Lorry who has replied to all the previous questions.
+=
+
+@ 76 2701 113556 names | Moby-Dick
+~ And where is Cadiz, shipmates?
+Cadiz is in Spain; as far by water, from Joppa, as Jonah could possibly have sailed in those ancient days, when the Atlantic was an almost unknown sea.
+=
+
+@ 77 2701 120222 relation word | Moby-Dick
+~ “And now the time of tide has come; the ship casts off her cables; and from the deserted wharf the uncheered ship for Tarshish, all careening, glides to sea.
+That ship, my friends, was the first of recorded smugglers! the contraband was Jonah.
+=
+
+@ 78 2701 143220 relation word | Moby-Dick
+~ A Sag Harbor ship visited his father’s bay, and Queequeg sought a passage to Christian lands.
+But the ship, having her full complement of seamen, spurned his suit; and not all the King his father’s influence could prevail.
+=
+
+@ 79 2701 164297 names | Moby-Dick
+~ Upon making known our desires for a supper and a bed, Mrs.
+Hussey, postponing further scolding for the present, ushered us into a little room, and seating us at a table spread with the relics of a recently concluded repast, turned round to us and said—“Clam or Cod?”
+=
+
+@ 80 2701 212299 relation word | Moby-Dick
+~ His Mark.
+As we were walking down the end of the wharf towards the ship, Queequeg carrying his harpoon, Captain Peleg in his gruff voice loudly hailed us from his wigwam, saying he had not suspected my friend was a cannibal, and furthermore announcing that he let no cannibals on board that craft, unless they previously produced their papers.
+=
+
+@ 81 2701 218642 random | Moby-Dick
+~ There was young Nat Swaine, once the bravest boat-header out of all Nantucket and the Vineyard; he joined the meeting, and never came to good.
+He got so frightened about his plaguy soul, that he shrinked and sheered away from whales, for fear of after-claps, in case he got stove and went to Davy Jones.”
+=
+
+@ 82 2701 237352 random | Moby-Dick
+~ “Perry easy, kill-e; oh! perry easy!”
+He was going on with some wild reminiscences about his tomahawk-pipe, which, it seemed, had in its two uses both brained his foes and soothed his soul, when we were directly attracted to the sleeping rigger.
+=
+
+@ 83 2701 248014 names | Moby-Dick
+~ The Lee Shore.
+Some chapters back, one Bulkington was spoken of, a tall, newlanded mariner, encountered in New Bedford at the inn.
+=
+
+@ 84 2701 255228 random | Moby-Dick
+~ For in their succourless empty-handedness, they, in the heathenish sharked waters, and by the beaches of unrecorded, javelin islands, battled with virgin wonders and terrors that Cook with all his marines and muskets would not willingly have dared.
+All that is made such a flourish of in the old South Sea Voyages, those things were but the life-time commonplaces of our heroic Nantucketers.
+=
+
+@ 85 2701 293028 names | Moby-Dick
+~ The Pipe.
+When Stubb had departed, Ahab stood for a while leaning over the bulwarks; and then, as had been usual with him of late, calling a sailor of the watch, he sent him below for his ivory stool, and also his pipe.
+=
+
+@ 86 2701 305552 relation word | Moby-Dick
+~ The grounds upon which Linnæus would fain have banished the whales from the waters, he states as follows: “On account of their warm bilocular heart, their lungs, their movable eyelids, their hollow ears, penem intrantem feminam mammis lactantem,” and finally, “ex lege naturæ jure meritoque.”
+I submitted all this to my friends Simeon Macey and Charley Coffin, of Nantucket, both messmates of mine in a certain voyage, and they united in the opinion that the reasons set forth were altogether insufficient.
+=
+
+@ 87 2701 327130 random | Moby-Dick
+~ But his mealy-mouth spoils all.
+Though his entire back down to his side fins is of a deep sable, yet a boundary line, distinct as the mark in a ship’s hull, called the “bright waist,” that line streaks him from stem to stern, with two separate colours, black above and white below.
+=
+
+@ 88 2701 411388 names | Moby-Dick
+~ When you think it fled, it may have but become transfigured into some still subtler form.
+Ahab’s full lunacy subsided not, but deepeningly contracted; like the unabated Hudson, when that noble Northman flows narrowly, but unfathomably through the Highland gorge.
+=
+
+@ 89 2701 423617 names | Moby-Dick
+~ But some time after, I learned that goney was some seaman’s name for albatross.
+So that by no possibility could Coleridge’s wild Rhyme have had aught to do with those mystical impressions which were mine, when I saw that bird upon our deck.
+=
+
+@ 90 2701 588852 names | Moby-Dick
+~ In the vignettes and other embellishments of some ancient books you will at times meet with very curious touches at the whale, where all manner of spouts, jets d’eau, hot springs and cold, Saratoga and Baden-Baden, come bubbling up from his unexhausted brain.
+In the title-page of the original edition of the “Advancement of Learning” you will find some curious whales.
+=
+
+@ 91 2701 599893 random | Moby-Dick
+~ Thus, the foreground is all raging commotion; but behind, in admirable artistic contrast, is the glassy level of a sea becalmed, the drooping unstarched sails of the powerless ship, and the inert mass of a dead whale, a conquered fortress, with the flag of capture lazily hanging from the whale-pole inserted into his spout-hole.
+Who Garnery the painter is, or was, I know not.
+=
+
+@ 92 2701 740787 names | Moby-Dick
+~ Look your last, now, on these venerable hooded heads, while they yet lie together; for one will soon sink, unrecorded, in the sea; the other will not be very long in following.
+Can you catch the expression of the Sperm Whale’s there?
+=
+
+@ 93 2701 770467 names | Moby-Dick
+~ The predestinated day arrived, and we duly met the ship Jungfrau, Derick De Deer, master, of Bremen.
+At one time the greatest whaling people in the world, the Dutch and Germans are now among the least; but here and there at very wide intervals of latitude and longitude, you still occasionally meet with their flag in the Pacific.
+=
+
+@ 94 2701 864638 relation word | Moby-Dick
+~ As for the sons and the daughters they beget, why, those sons and daughters must take care of themselves; at least, with only the maternal help.
+For like certain other omnivorous roving lovers that might be named, my Lord Whale has no taste for the nursery, however much for the bower; and so, being a great traveller, he leaves his anonymous babies all over the world; every baby an exotic.
+=
+
+@ 95 2701 894387 relation word | Moby-Dick
+~ By this time Stubb was over the side, and getting into his boat, hailed the Guernsey-man to this effect,—that having a long tow-line in his boat, he would do what he could to help them, by pulling out the lighter whale of the two from the ship’s side.
+While the Frenchman’s boats, then, were engaged in towing the ship one way, Stubb benevolently towed away at his whale the other way, ostentatiously slacking out a most unusually long tow-line.
+=
+
+@ 96 2701 969783 relation word | Moby-Dick
+~ The voyage was a skilful and lucky one; and returning to her berth with her hold full of the precious sperm, the Amelia’s example was soon followed by other ships, English and American, and thus the vast Sperm Whale grounds of the Pacific were thrown open.
+But not content with this good deed, the indefatigable house again bestirred itself: Samuel and all his Sons—how many, their mother only knows—and under their immediate auspices, and partly, I think, at their expense, the British government was induced to send the sloop-of-war Rattler on a whaling voyage of discovery into the South Sea.
+=
+
+@ 97 2701 978232 names | Moby-Dick
+~ A Bower in the Arsacides.
+Hitherto, in descriptively treating of the Sperm Whale, I have chiefly dwelt upon the marvels of his outer aspect; or separately and in detail upon some few interior structural features.
+=
+
+@ 98 2701 1088834 names | Moby-Dick
+~ Quick!”
+“Avast!” cried Ahab; “let’s have fair play here, though we be the weaker side.
+=
+
+@ 99 2701 1120728 random | Moby-Dick
+~ Jerk him, Tahiti!
+Jerk him off; we haul in no cowards here.
+=
+
+@ 100 2701 1213881 names | Moby-Dick
+~ “Aye, sir, thou wilt have it so.”
+“Some ships sail from their ports, and ever afterwards are missing, Starbuck!”
+=
+
+@ 101 768 68816 random | Wuthering Heights
+~ On coming back a few days afterwards (for I did not consider my banishment perpetual), I found they had christened him “Heathcliff”: it was the name of a son who died in childhood, and it has served him ever since, both for Christian and surname.
+Miss Cathy and he were now very thick; but Hindley hated him: and to say the truth I did the same; and we plagued and went on with him shamefully: for I wasn’t reasonable enough to feel my injustice, and the mistress never put in a word on his behalf when she saw him wronged.
+=
+
+@ 102 768 92824 names | Wuthering Heights
+~ Isn’t he, Edgar?’
+“While they examined me, Cathy came round; she heard the last speech, and laughed.
+=
+
+@ 103 768 93065 relation word | Wuthering Heights
+~ They see us at church, you know, though we seldom meet them elsewhere.
+‘That’s Miss Earnshaw!’ he whispered to his mother, ‘and look how Skulker has bitten her—how her foot bleeds!’
+=
+
+@ 104 768 98766 names | Wuthering Heights
+~ He might well skulk behind the settle, on beholding such a bright, graceful damsel enter the house, instead of a rough-headed counterpart of himself, as he expected.
+“Is Heathcliff not here?” she demanded, pulling off her gloves, and displaying fingers wonderfully whitened with doing nothing and staying indoors.
+=
+
+@ 105 768 123487 relation word | Wuthering Heights
+~ He neither wept nor prayed; he cursed and defied: execrated God and man, and gave himself up to reckless dissipation.
+The servants could not bear his tyrannical and evil conduct long: Joseph and I were the only two that would stay.
+=
+
+@ 106 768 130662 names | Wuthering Heights
+~ “Oh, but Joseph will tell,” she suggested; “you’d better go!”
+“Joseph is loading lime on the further side of Penistone Crags; it will take him till dark, and he’ll never know.”
+=
+
+@ 107 768 150394 relation word | Wuthering Heights
+~ And now, let us hear what you are unhappy about.
+Your brother will be pleased; the old lady and gentleman will not object, I think; you will escape from a disorderly, comfortless home into a wealthy, respectable one; and you love Edgar, and Edgar loves you.
+=
+
+@ 108 768 193149 random | Wuthering Heights
+~ However, it’s over, and I’ll take no revenge on his folly; I can afford to suffer anything hereafter!
+Should the meanest thing alive slap me on the cheek, I’d not only turn the other, but I’d ask pardon for provoking it; and, as a proof, I’ll go make my peace with Edgar instantly.
+=
+
+@ 109 768 222215 names | Wuthering Heights
+~ I suppose, because it is his ordinary talk you think nothing of it: you are habituated to his baseness, and, perhaps, imagine I can get used to it too!”
+“Have you been listening at the door, Edgar?” asked the mistress, in a tone particularly calculated to provoke her husband, implying both carelessness and contempt of his irritation.
+=
+
+@ 110 768 243034 names | Wuthering Heights
+~ “How long is it since I shut myself in here?” she asked, suddenly reviving.
+“It was Monday evening,” I replied, “and this is Thursday night, or rather Friday morning, at present.”
+=
+
+@ 111 768 247102 random | Wuthering Heights
+~ Well, he’ll wait a while yet.
+It’s a rough journey, and a sad heart to travel it; and we must pass by Gimmerton Kirk to go that journey!
+=
+
+@ 112 768 268454 names | Wuthering Heights
+~ By the fire stood a ruffianly child, strong in limb and dirty in garb, with a look of Catherine in his eyes and about his mouth.
+“This is Edgar’s legal nephew,” I reflected—“mine in a manner; I must shake hands, and—yes—I must kiss him.
+=
+
+@ 113 768 311776 names | Wuthering Heights
+~ Will you be happy when I am in the earth?
+Will you say twenty years hence, ‘That’s the grave of Catherine Earnshaw?
+=
+
+@ 114 768 331361 names | Wuthering Heights
+~ Isabella was not asked.
+The place of Catherine’s interment, to the surprise of the villagers, was neither in the chapel under the carved monument of the Lintons, nor yet by the tombs of her own relations, outside.
+=
+
+@ 115 768 357222 relation word | Wuthering Heights
+~ “‘I beg your pardon,’ I replied.
+‘But I loved Catherine too; and her brother requires attendance, which, for her sake, I shall supply.
+=
+
+@ 116 768 393067 random | Wuthering Heights
+~ At length her suspense was ended: the travelling carriage rolled in sight.
+Miss Cathy shrieked and stretched out her arms as soon as she caught her father’s face looking from the window.
+=
+
+@ 117 768 432165 names | Wuthering Heights
+~ “I cannot read it.”
+“Can’t read it?” cried Catherine; “I can read it: it’s English.
+=
+
+@ 118 768 457080 random | Wuthering Heights
+~ Heathcliff,” answered Catherine.
+“Papa says you are a wicked man, and you hate both him and me; and Ellen says the same.”
+=
+
+@ 119 768 458994 relation word | Wuthering Heights
+~ Catherine Linton (the very name warms me), my bonny lass, I shall be from home all this week; go and see if I have not spoken truth: do, there’s a darling!
+Just imagine your father in my place, and Linton in yours; then think how you would value your careless lover if he refused to stir a step to comfort you, when your father himself entreated him; and don’t, from pure stupidity, fall into the same error.
+=
+
+@ 120 768 469133 names | Wuthering Heights
+~ “It isn’t: you hold your tongue!” he answered.
+“She did, she did, Catherine! she did, she did!”
+=
+
+@ 121 768 508540 names | Wuthering Heights
+~ CHAPTER XXVI
+Summer was already past its prime, when Edgar reluctantly yielded his assent to their entreaties, and Catherine and I set out on our first ride to join her cousin.
+=
+
+@ 122 768 513494 relation word | Wuthering Heights
+~ “But I do,” said her cousin, shuddering. “_Don’t_ provoke him against me, Catherine, for he is very hard.”
+“Is he severe to you, Master Heathcliff?”
+=
+
+@ 123 768 595757 relation word | Wuthering Heights
+~ CHAPTER XXXII
+1802.—This September I was invited to devastate the moors of a friend in the north, and on my journey to his abode, I unexpectedly came within fifteen miles of Gimmerton.
+=
+
+@ 124 768 648572 random | Wuthering Heights
+~ I vainly reminded him of his protracted abstinence from food: if he stirred to touch anything in compliance with my entreaties, if he stretched his hand out to get a piece of bread, his fingers clenched before they reached it, and remained on the table, forgetful of their aim.
+I sat, a model of patience, trying to attract his absorbed attention from its engrossing speculation; till he grew irritable, and got up, asking why I would not allow him to have his own time in taking his meals? and saying that on the next occasion I needn’t wait: I might set the things down and go.
+=
+
+@ 125 768 659008 names | Wuthering Heights
+~ I asked.
+“There’s Heathcliff and a woman yonder, under t’ nab,” he blubbered, “un’ I darnut pass ’em.”
+=
+
+@ 126 158 45407 names | Emma
+~ Mrs.
+Goddard had dressed it on a Sunday, and asked all the three teachers, Miss Nash, and Miss Prince, and Miss Richardson, to sup with her.”
+=
+
+@ 127 158 45916 names | Emma
+~ He reads the Agricultural Reports, and some other books that lay in one of the window seats—but he reads all _them_ to himself.
+But sometimes of an evening, before we went to cards, he would read something aloud out of the Elegant Extracts, very entertaining.
+=
+
+@ 128 158 62865 relation word | Emma
+~ “You are better placed _here_; very fit for a wife, but not at all for a governess.
+But you were preparing yourself to be an excellent wife all the time you were at Hartfield.
+=
+
+@ 129 158 231793 relation word | Emma
+~ He had seen the coachmen, and they both agreed with him in there being nothing to apprehend.
+To Isabella, the relief of such tidings was very great, and they were scarcely less acceptable to Emma on her father’s account, who was immediately set as much at ease on the subject as his nervous constitution allowed; but the alarm that had been raised could not be appeased so as to admit of any comfort for him while he continued at Randalls.
+=
+
+@ 130 158 277186 random | Emma
+~ Emma knew what was coming; they must have the letter over again, and settle how long he had been gone, and how much he was engaged in company, and what a favourite he was wherever he went, and how full the Master of the Ceremonies’ ball had been; and she went through it very well, with all the interest and all the commendation that could be requisite, and always putting forward to prevent Harriet’s being obliged to say a word.
+This she had been prepared for when she entered the house; but meant, having once talked him handsomely over, to be no farther incommoded by any troublesome topic, and to wander at large amongst all the Mistresses and Misses of Highbury, and their card-parties.
+=
+
+@ 131 158 316720 relation word | Emma
+~ I mean in person—tall, and with that sort of look—and not very talkative.”
+“Quite wrong, my dear aunt; there is no likeness at all.”
+=
+
+@ 132 158 403830 names | Emma
+~ When Mr.
+Cole had moved away, and her attention could be restored as before, she saw Frank Churchill looking intently across the room at Miss Fairfax, who was sitting exactly opposite.
+=
+
+@ 133 158 445164 names | Emma
+~ Knightley seemed determined to be heard in his turn, for most resolutely and commandingly did he say,
+“How is your niece, Miss Bates?—I want to inquire after you all, but particularly your niece.
+=
+
+@ 134 158 446272 names | Emma
+~ Weston and Mr.
+Frank Churchill too!—Quite delightful; so many friends!”
+=
+
+@ 135 158 474560 random | Emma
+~ He hesitated, got up, walked to a window.
+“In short,” said he, “perhaps, Miss Woodhouse—I think you can hardly be quite without suspicion”—
+=
+
+@ 136 158 488566 random | Emma
+~ My being saved from pain is a very secondary consideration.
+I want you to save yourself from greater pain.
+=
+
+@ 137 158 499057 names | Emma
+~ Suckling is extremely fond of exploring.
+We explored to King’s-Weston twice last summer, in that way, most delightfully, just after their first having the barouche-landau.
+=
+
+@ 138 158 500402 relation word | Emma
+~ I perfectly understand your situation, however, Miss Woodhouse—(looking towards Mr.
+Woodhouse), Your father’s state of health must be a great drawback.
+=
+
+@ 139 158 579631 names | Emma
+~ Were he ever able to get away, the day would be spent in coming and returning.
+There was no comfort in having him in London; he might as well be at Enscombe; but Richmond was the very distance for easy intercourse.
+=
+
+@ 140 158 632472 random | Emma
+~ Well, Frank, your dream certainly shews that Highbury is in your thoughts when you are absent.
+Emma, you are a great dreamer, I think?”
+=
+
+@ 141 158 652363 random | Emma
+~ “You will not find either, between Donwell and Highbury.
+Donwell Lane is never dusty, and now it is perfectly dry.
+=
+
+@ 142 158 683092 random | Emma
+~ E., Knightley, Jane, and myself.
+We have nothing clever to say—not one of us.
+=
+
+@ 143 158 700872 relation word | Emma
+~ Knightley; he declined it from the first; and though I thought he would come, because Mrs.
+Elton declared she would not let him off, he did not;—but my mother, and Jane, and I, were all there, and a very agreeable evening we had.
+=
+
+@ 144 158 708481 names | Emma
+~ Emma’s colour was heightened by this unjust praise; and with a smile, and shake of the head, which spoke much, she looked at Mr.
+Knightley.—It seemed as if there were an instantaneous impression in her favour, as if his eyes received the truth from hers, and all that had passed of good in her feelings were at once caught and honoured.— He looked at her with a glow of regard.
+=
+
+@ 145 158 714706 names | Emma
+~ Churchill’s death with mutual forbearance.
+Short letters from Frank were received at Randalls, communicating all that was immediately important of their state and plans.
+=
+
+@ 146 158 744599 names | Emma
+~ “Had you any idea,” cried Harriet, “of his being in love with her?—You, perhaps, might.—You (blushing as she spoke) who can see into every body’s heart; but nobody else—”
+“Upon my word,” said Emma, “I begin to doubt my having any such talent.
+=
+
+@ 147 158 782657 names | Emma
+~ And this belief produced another dread.
+Perhaps he wanted to speak to her, of his attachment to Harriet; he might be watching for encouragement to begin.—She did not, could not, feel equal to lead the way to any such subject.
+=
+
+@ 148 158 873170 relation word | Emma
+~ My friend Robert could not resist.
+They called for him in their way; were all extremely amused; and my brother asked him to dine with them the next day—which he did—and in the course of that visit (as I understand) he found an opportunity of speaking to Harriet; and certainly did not speak in vain.—She made him, by her acceptance, as happy even as he is deserving.
+=
+
+@ 149 158 879585 relation word | Emma
+~ She was in dancing, singing, exclaiming spirits; and till she had moved about, and talked to herself, and laughed and reflected, she could be fit for nothing rational.
+Her father’s business was to announce James’s being gone out to put the horses to, preparatory to their now daily drive to Randalls; and she had, therefore, an immediate excuse for disappearing.
+=
+
+@ 150 158 881595 names | Emma
+~ Woodhouse received the thanks for coming, which he asked for, when a glimpse was caught through the blind, of two figures passing near the window.
+“It is Frank and Miss Fairfax,” said Mrs.
+=
+

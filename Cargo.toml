@@ -12,6 +12,9 @@ documentation = "https://docs.rs/narrative-graph"
 keywords = ["nlp", "relation-extraction", "entity-extraction", "heuristics", "semantic"]
 categories = ["text-processing", "science"]
 readme = "README.md"
+# The novels and their snapshots are test data, about 5 MB; keep them out of
+# the published crate.
+exclude = ["tests/corpus/", "tests/corpus.rs", "tests/real_text_eval.rs"]
 
 # Every public surface beyond the heuristic core sits behind an opt-in feature,
 # so the default build docs.rs would otherwise render omits it.
