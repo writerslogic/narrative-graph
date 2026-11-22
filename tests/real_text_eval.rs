@@ -100,7 +100,7 @@ fn parse(labels: &str) -> (bool, Vec<Item>) {
         let mut claims = Vec::new();
         while let Some(line) = lines.next_if(|l| !l.starts_with("@ ")) {
             let line = line.trim().trim_end_matches('?').trim();
-            if line.is_empty() {
+            if line.is_empty() || line.starts_with('#') {
                 continue;
             }
             let (polarity, rest) = match line.strip_prefix("not ") {
