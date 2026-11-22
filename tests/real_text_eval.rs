@@ -281,10 +281,10 @@ fn ratio(n: usize, d: usize) -> f64 {
     }
 }
 
-#[test]
-#[ignore = "slow in debug; run with --release -- --include-ignored"]
-fn real_text_precision_and_recall() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
+/// Scores `labels.txt` in `root` against the novels beside it, prints the
+/// report, and returns `(labelled, precision, recall over relations with a
+/// rule)`.
+fn evaluate(root: &Path) -> (bool, f64, f64) {
     let labels = std::fs::read_to_string(root.join("labels.txt")).expect("labels.txt");
     let (labelled, items) = parse(&labels);
     let known = known_relations();
@@ -395,6 +395,14 @@ fn real_text_precision_and_recall() {
         println!("{line}");
     }
 
+    (labelled, precision, recall_known)
+}
+
+#[test]
+#[ignore = "slow in debug; run with --release -- --include-ignored"]
+fn real_text_precision_and_recall() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
+    let (labelled, precision, recall_known) = evaluate(&root);
     if !labelled {
         println!("labels are a draft; not scored against a floor");
         return;
@@ -421,4 +429,18 @@ fn a_collapsed_sentence_is_located_across_line_breaks() {
     let end = locate(text, start, "Elena is Marco's sister.").unwrap();
     assert_eq!(&text[start..end], "Elena is\nMarco's   sister.");
     assert_eq!(locate(text, start, "Elena is Marco's brother."), None);
+}
+
+/// The same scoring over a corpus that cannot be committed: contemporary
+/// novels under copyright. `NG_PRIVATE_EVAL` names a directory holding
+/// `labels.txt` and the `<book>.txt` files its items refer to. Reported, never
+/// gated, because CI does not have it.
+#[test]
+#[ignore = "needs NG_PRIVATE_EVAL; run with --release -- --include-ignored"]
+fn private_text_precision_and_recall() {
+    let Some(root) = std::env::var_os("NG_PRIVATE_EVAL") else {
+        println!("NG_PRIVATE_EVAL is not set; skipped");
+        return;
+    };
+    evaluate(Path::new(&root));
 }
