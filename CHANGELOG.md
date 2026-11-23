@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-23
+
 ### Added
+- `speaks_to` from dialogue. A tagged speaker speaks to the name a turn
+  addresses ("Cathy, are you busy?" asked Heathcliff), and each conversation
+  is solved whole: once both sides of a two-person exchange are tagged,
+  untagged turns alternate between them, each said to the other. A third
+  voice, two tags on one turn, or a pronoun tag that fits only the other side
+  stops the inference. Each claim spans every sentence of the turn.
+- A first-person document without a caller-supplied narrator gets one when
+  the turns beside "I said" turns address one name at least three times and
+  twice as often as any other; the document is then read with "I" as that
+  name.
+- `tests/real_text_eval.rs` scores one half (`NG_HALF`), reports each tier's
+  ceiling, and scores another extractor's output (`NG_PREDICTIONS`).
 - `analyze` / `analyze_in` and `analyzeNapi`: candidates, aggregates and conflicts
   from one pipeline run. `analyzeAsyncNapi` runs it on the libuv worker pool.
 - Exact-phrase relation rules for marriage, romance, friendship, acquaintance,
@@ -65,6 +79,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `extract_entities` results carry two additional fields, `pronoun` and `quoted`.
 
 ### Fixed
+- Hard-wrapped speech no longer closes at every line break, only at a
+  paragraph break, so a name inside a long speech is no longer read as a
+  speaker or as narration.
+- An apostrophe before a capital stays inside the name ("O’Leary", not
+  `leary`).
+- Words the document writes in lowercase as often as capitalized
+  ("presently", "besides") and sentence openers ("Yes", "But") are no longer
+  speakers or listeners.
 - A title leading a name is no longer part of the entity's identity. A
   capitalized run swallowed every honorific in front of the name, so
   "the Right Honourable Lady Catherine de Bourgh" normalized to
