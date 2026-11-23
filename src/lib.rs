@@ -10,7 +10,7 @@ pub use heuristic::{
     extract_candidate_triples_in, find_conflicts, find_conflicts_in, Context,
 };
 pub use types::{
-    AggregateTriple, Analysis, Conflict, ConflictKind, Options, Polarity, Rejection,
+    AggregateTriple, Analysis, Conflict, ConflictKind, Language, Options, Polarity, Rejection,
     TripleCandidate,
 };
 

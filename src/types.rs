@@ -43,6 +43,24 @@ pub struct Rejection {
     pub object: String,
 }
 
+/// The language a text is written in, which selects the reader.
+///
+/// English is read by capitalization and word-bounded verb rules. Chinese has
+/// neither capitals nor spaces, so it has a reader of its own, which finds
+/// names from the caller's `aliases` and from a surname followed by a title
+/// (王夫人, 林姑娘). See `heuristic/chinese.rs` for what it reads.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+#[cfg_attr(feature = "bindings", derive(ts_rs::TS), ts(export))]
+#[non_exhaustive]
+pub enum Language {
+    #[default]
+    English,
+    /// Traditional or simplified Chinese.
+    Chinese,
+}
+
 /// Configuration for entity and relation extraction.
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -93,6 +111,13 @@ pub struct Options {
     /// If a relation type is not in this map, the heuristic default is used.
     #[cfg_attr(feature = "serde", serde(default))]
     pub ontology: BTreeMap<String, String>,
+
+    /// The language of the text. Default: English.
+    ///
+    /// IMPORTANT: for Chinese, every key of `aliases` is matched as a literal
+    /// run of characters with no word boundary, since the script has none.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub language: Language,
 }
 
 /// Whether a document states a fact or states that it does not hold.

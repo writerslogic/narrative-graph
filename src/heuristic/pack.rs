@@ -15,8 +15,8 @@
 //! - Sentence-final `.`/`!`/`?` terminate, and a lowercase continuation does not.
 //!
 //! A second pack is therefore only enough for a language that shares those
-//! three. Deciding otherwise is what the second pack is for; it is not decided
-//! here.
+//! three. Chinese shares none of them and has a reader of its own
+//! (`chinese.rs`) rather than a pack.
 
 use super::cooccurrence::base;
 

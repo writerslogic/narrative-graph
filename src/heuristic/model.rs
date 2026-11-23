@@ -4,7 +4,7 @@ mod input;
 
 use super::{aggregate, collect_candidates, dedup_candidates, normalize_relation, pack::ENGLISH};
 use super::{segment, Context, Emitted};
-use crate::{AggregateTriple, NarrativeGraphError, Options, Polarity, TripleCandidate};
+use crate::{AggregateTriple, Language, NarrativeGraphError, Options, Polarity, TripleCandidate};
 use anyhow::{ensure, Context as _, Result};
 use input::{MAX_NAMES, MAX_TOKENS};
 use serde::Deserialize;
@@ -34,7 +34,7 @@ struct Label {
     polarity: Polarity,
 }
 
-/// A local student checkpoint. Load once and reuse across documents.
+/// A local student checkpoint for English prose. Load once and reuse across documents.
 pub struct StudentModel {
     tokenizer: InputTokenizer,
     network: Arc<TypedRunnableModel>,
@@ -113,12 +113,13 @@ impl StudentModel {
     }
 
     fn extract(&self, text: &str, opts: &Options) -> Result<Vec<Emitted>> {
-        let mut emitted = collect_candidates(text, opts, &ENGLISH, &Context::default())?;
         let spans: Vec<_> = segment::split_sentences(text, &ENGLISH)
             .into_iter()
             .map(|(sentence, start)| [start, start + sentence.len()])
             .collect();
-        emitted.extend(self.predict(text, &spans, opts)?);
+        let predicted = self.predict(text, &spans, opts)?;
+        let mut emitted = collect_candidates(text, opts, &ENGLISH, &Context::default())?;
+        emitted.extend(predicted);
         emitted.sort_by_key(|e| e.candidate.span);
         Ok(emitted)
     }
@@ -137,6 +138,10 @@ impl StudentModel {
     }
 
     fn predict(&self, text: &str, spans: &[[usize; 2]], opts: &Options) -> Result<Vec<Emitted>> {
+        ensure!(
+            opts.language == Language::English,
+            "the local student requires English text"
+        );
         let threshold = opts.min_confidence.unwrap_or(0.0);
         if !(0.0..=1.0).contains(&threshold) {
             return Err(NarrativeGraphError::InvalidConfidenceThreshold(threshold).into());
@@ -354,6 +359,14 @@ mod tests {
     fn student_bundle_preserves_spans_polarity_and_options() -> Result<()> {
         let bundle = bundle()?;
         let model = StudentModel::load(&bundle.0)?;
+        let chinese = Options {
+            language: Language::Chinese,
+            ..Options::default()
+        };
+        let error = model
+            .extract_candidate_triples("賈寶玉", &chinese)
+            .unwrap_err();
+        assert_eq!(error.to_string(), "the local student requires English text");
         let text = "Elena is Marco’s sister. Marco thanks Elena.";
         let start = text.find("Marco thanks").unwrap();
         let span = [start, text.len()];

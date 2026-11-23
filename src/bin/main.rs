@@ -1,6 +1,6 @@
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
-use narrative_graph::{extract_candidate_triples, Options};
+use narrative_graph::{extract_candidate_triples, Language, Options};
 use std::fs;
 use std::io::{self, BufWriter, Read, Write};
 use std::path::PathBuf;
@@ -30,11 +30,21 @@ enum Command {
         #[arg(long, value_enum, default_value_t = Format::Text)]
         format: Format,
 
+        /// Language of the text
+        #[arg(long, value_enum, default_value_t = Lang::English)]
+        language: Lang,
+
         /// Directory containing a local student checkpoint
         #[cfg(feature = "model")]
         #[arg(long, value_name = "DIRECTORY")]
         model: Option<PathBuf>,
     },
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum Lang {
+    English,
+    Chinese,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -48,6 +58,7 @@ fn main() -> anyhow::Result<()> {
         input,
         min_confidence,
         format,
+        language,
         #[cfg(feature = "model")]
         model,
     } = Args::parse().command;
@@ -67,6 +78,10 @@ fn main() -> anyhow::Result<()> {
         min_confidence: Some(min_confidence),
         rejections: Default::default(),
         ontology: Default::default(),
+        language: match language {
+            Lang::English => Language::English,
+            Lang::Chinese => Language::Chinese,
+        },
     };
     #[cfg(feature = "model")]
     let candidates = match model {

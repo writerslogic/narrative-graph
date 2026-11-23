@@ -1547,3 +1547,15 @@ fn a_two_person_conversation_carries_its_speakers_across_untagged_turns() {
         "{found:?}"
     );
 }
+
+#[test]
+fn a_name_running_past_its_closing_quote_does_not_panic() {
+    // Found by the fuzz target: a mention starting inside a quote and ending
+    // past its closing mark.
+    let bytes: &[u8] = b"E.E\x95\x02\nAA0\xff!,A!\x05\"A}E\xc2\xbb\xb3AA,AF\xfe\xff(,IFX(BFF(BS'\x00\x00\x00\x00\xf6\xc0\xbb.";
+    let text = String::from_utf8_lossy(bytes);
+    let opts = Options::default();
+    extract_candidate_triples(&text, &opts).expect("extraction failed");
+    extract_aggregates(&text, &opts).expect("aggregation failed");
+    find_conflicts(&text, &opts).expect("conflict search failed");
+}
