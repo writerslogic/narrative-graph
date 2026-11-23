@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-23
+
 ### Added
+
+- `analyze_document` in Rust and `analyzeDocumentNapi` in Node return
+  character profiles, linked mentions, relationship history, events, and
+  knowledge statements. The English reader resolves aliases, pronouns,
+  and descriptions using names and family evidence across the document.
+- `dialogue.lines` reports each recognized quoted utterance with its
+  speaker and listener IDs when known, plus the original text ranges.
+  `dialogue.unattributed` counts lines missing either ID.
+- Relationship histories track observations in story order. Supported
+  observations carry calibrated confidence estimates fitted on reviewed
+  LitBank predictions. [Evaluation](./docs/EVALUATION.md)
+- `Series` in Rust and `NarrativeSeries` in Node reuse chapter analyses
+  by revision, merge evidence across books, and report chapter-relative spans.
+  Caller aliases provide stable character IDs across chapters and books.
+- The opt-in Rust `model` feature runs a local DeBERTa student checkpoint
+  through `StudentModel` or the CLI's `--model` option.
 - Chinese, traditional or simplified, through `Options::language`
   (`language: 'chinese'` in Node, `--language chinese` in the CLI). It has a
   reader of its own: names come from the caller's `aliases`, matched as
@@ -18,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Denials (並非) are kept as denials and conditionals (若是) assert nothing.
 
 ### Changed
+
 - `Options` has a new public field, `language`, so a struct literal that
   names every field must add it (or use `..Default::default()`).
 
