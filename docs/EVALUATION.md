@@ -303,3 +303,184 @@ precision floor asserted in CI is 0.95 and the recall floor 0.85.
 A precision/recall benchmark against a genuinely independent labeled corpus
 remains future work; see "What is not measured" above for why no
 redistributable corpus has been adopted.
+
+## Hand-labelled real text
+
+`tests/real_text_eval.rs` scores whole-book extraction against hand labels on
+sentences sampled by fixed seed (`tests/corpus/tools/sample_public.py`): 150
+from the six public-domain novels in `tests/corpus/`, and a private set
+(`NG_PRIVATE_EVAL`, never committed) of 173 from contemporary novels and the
+author's manuscript excerpts. Labels are tiered: stated, `implied`, and
+described (a bracketed side such as `[her mother = Mrs. Bennet]`).
+`tests/corpus.rs` snapshots every whole-book aggregate, so a rule change shows
+as the claims it adds and loses.
+
+Baseline (2026-11-22): public, 44 stated labels, none found; private, 31
+stated labels, one found and one false positive. 438 of 548 labels need a
+person the sentence only describes, mostly narrators and unnamed speakers,
+and `speaks_to` is the most frequent relation.
+
+### Plan and settled decisions
+
+- Inference stays local and the default build dependency-free. No remote
+  model at run time or in tests.
+- Odd-numbered items are the held-out half: tune on even items, read the odd
+  half only at milestones.
+- Order: the apostrophe fix (`O’Leary` is cut to `leary`); dialogue speaker
+  attribution emitting `speaks_to`; narrator identity; nodes for described
+  people; then a learned pair classifier.
+- The classifier: a teacher (a local model through ollama) is first scored on
+  the even half with the same matcher; only if it does well is it used to
+  label training text, with every evaluated window excluded. The student is a
+  small fine-tuned encoder (DeBERTa-v3-small or ModernBERT-base class) run in
+  pure Rust through `candle`, behind an opt-in `model` feature; it scores
+  candidate pairs and resolves described mentions. A linear model cannot reach
+  the target: most labels need coreference or a speaker carried across turns.
+  The rule pipeline stays the dependency-free default and supplies features. Training text for shipped weights is public domain plus the
+  author's own writing, not the commercial novels.
+- Target: recall of at least 0.7 over all tiers on the held-out half, with
+  precision of at least 0.8 once extractions are numerous enough to measure.
+  1.0 is not a meaningful goal: annotators disagree on fiction relations, and
+  half the items changed under the gpt-6.2-astra review.
+- Labels were reviewed by gpt-6.2-astra (public: 78 of 150 items changed;
+  private: 115 of 173). Removals mostly enforce the rule that only the target
+  sentence is labelled. After the review and the apostrophe fix: public 0/58
+  stated, private 2/32 stated with no false positives.
+
+### Ceiling and teacher (2026-11-22)
+
+`NG_HALF=even|odd` scores one half. `NG_PREDICTIONS` (public) and
+`NG_PRIVATE_PREDICTIONS` (private) score a file of `item | A | relation | B`
+lines with the same matcher instead of the library;
+`tests/corpus/tools/teacher.py` writes one from a local ollama model. Builds
+use `CARGO_TARGET_DIR=/Volumes/C/rust-target-narrative-graph`, because other
+sessions hold the lock on the shared target directory for hours.
+
+The report gives each tier a ceiling: the share of labels that are
+matchable, with both sides named and a relation from the guide (its lists,
+the relations its rules name in backticks such as `speaks_to`, and every
+relation the library has a rule for). The matcher needs the relation string
+exactly, and the labels invent relations freely (`limits_criticism_of`,
+`wants_to_visit`), most of them used once.
+
+| set, half | labels | ceiling all tiers | stated | implied | described | invented names, used once |
+|---|---|---|---|---|---|---|
+| public even | 150 | 0.593 | 0.421 | 0.700 | 0.612 | 38, 29 |
+| public odd | 170 | 0.576 | 0.538 | 0.682 | 0.569 | 52, 45 |
+| private even | 121 | 0.331 | 0.438 | 0.692 | 0.261 | 45, 38 |
+| private odd | 126 | 0.341 | 0.500 | 0.875 | 0.275 | 49, 41 |
+
+So recall of 0.7 over all tiers is out of reach for any extractor, not only a
+vocabulary-bound one, while the labels stand: a model cannot learn names used
+once. Private described labels are mostly nameless (`[the man]`).
+
+- Library, recall over all tiers: public even 0.020, odd 0.000; private even
+  0.000, odd 0.016 (stated 2/16, no false positives).
+- Teacher, qwen3:14b without thinking, 3000 characters of preceding text, a
+  cast of frequent names and the label guide as the prompt, public even:
+  recall 0.093 over all tiers and 0.135 over the matchable labels, precision
+  0.136 over 103 extractions. Most false positives are invented relations or
+  common nouns as sides. Superseded: this run sliced the book at the wrong
+  offset; see the v3 table under "Labels revised onto the vocabulary".
+
+### Labels revised onto the vocabulary (2026-11-22)
+
+Chosen over scoring only matchable labels, a synonym table in the matcher, or
+a lower target. `tests/corpus/tools/revise_relations.py` rewrites an invented
+relation to the guide relation that says the same (`scolds` and `warns` to
+`speaks_to`, `has_home_in` to `lives_in`, `distrusts` to a denied `trusts`,
+`visits` a person to `meets`) and comments out the rest as `# outside the
+vocabulary:`, since an invented name used once can neither be learned nor
+ruled for. A denied label is never rewritten: denying a specific act is not
+denying the broader relation. Public: 9 rewritten, 98 outside the
+vocabulary (9 of them `visits` to a place), 5 duplicates of an existing
+label; private: 12, 94 and 1 (backups `labels.before-relations.txt`,
+`labels.before-names.txt`). Eight private nameless sides got the name the
+book gives them, checked against the text; the other 51 are never named
+(most of them in *Outline*). The guide now says to leave a relation out when
+none fits.
+
+`visits` joined the guide's verbs afterwards, so the 7 public and 3 private
+`visits` labels to a place are scored again.
+
+| set, half | labels | ceiling | library recall |
+|---|---|---|---|
+| public even | 106 | 0.925 | 0.028 |
+| public odd | 118 | 0.915 | 0.000 |
+| private even | 78 | 0.667 | 0.000 |
+| private odd | 77 | 0.675 | 0.026 |
+
+The private ceiling stays under 0.7 because of the never-named sides, so the
+target (recall 0.7, precision 0.8) applies to the public odd half only; the
+private set is reported, never gated.
+
+Teacher, qwen3:14b without thinking, public even, on these labels before
+`visits` was restored (102 labels). Runs
+before v3 sliced the book by characters at a byte offset, so their context
+came from later in the book; v3 decodes from the byte offset and adds the `~`
+line.
+
+| prompt | recall all tiers | over matchable | precision |
+|---|---|---|---|
+| v1, guide only, wrong context | 0.137 | 0.149 | 0.136 |
+| v2, vocabulary and named sides required, wrong context | 0.108 | 0.117 | 0.147 |
+| v3, as v2 with the right context | 0.206 | 0.223 | 0.163 |
+
+v3 finds 6/9 stated, 1/8 implied and 14/85 described labels with 108 false
+positives: speaker and listener reversed, and background kinship the
+sentence does not state ("Mrs. Bennet | mother_of" every daughter). With
+thinking on it takes about eight minutes an item. Too weak to label training
+text, so the next work is the rule path for `speaks_to`, about 45% of public
+labels: conversation turns, pronoun speakers, and the narrator's identity.
+
+### Conversation turns (2026-11-23)
+
+`src/heuristic/dialogue.rs` solves each conversation whole once two
+paragraphs pass without speech. A turn is anchored by its own tag or by the
+turn before addressing someone; the conversation is cut wherever an anchor
+breaks alternation (a third name, one person on both sides, two tags on one
+turn); a stretch whose two sides each have a tag gives every turn to its
+side, said to the other person unless it addresses someone, and a pronoun
+tag that fits only the other side cancels the stretch. Speech left open at a
+paragraph's end joins the next paragraph when that one reopens the
+quotation, and a turn addressing three people or more is a recounted
+conversation whose addresses are ignored. Each `speaks_to` carries a span on
+every sentence of the turn. A first-person book gets a narrator: the name the
+turns beside "I said" turns address, at least three times and twice the
+runner-up (Jane Eyre: `jane`; no other public book qualifies), and the
+document is read again with it. Hard-wrapped speech no longer closes at every
+line break, only at a paragraph break.
+
+| run | public even recall, all tiers | precision on labelled sentences |
+|---|---|---|
+| before | 0.028 | 1.000 (3 of 3) |
+| forward tracker | 0.057 | 0.750 (6 of 8) |
+| conversation resolver | 0.075 | 0.727 (8 of 11) |
+
+Public odd, scored once at this milestone: recall 0.034 over all tiers,
+precision 0.571 (4 of 7).
+
+Private: even 0.000, odd 0.039 at precision 0.750. That is far below the
+target, so the rule path alone will not reach it: most remaining `speaks_to`
+misses are turns no tag in their stretch reaches, narrators the vote does not
+find (Wuthering Heights has two, Moby-Dick's Ishmael is rarely addressed),
+and aliases (Nelly and Ellen, Cathy and Catherine, Lizzy and Elizabeth).
+
+### Paid teacher (2026-11-23)
+
+Authorised by the user as an exception to the paid-API rule: score a frontier
+model as teacher on public even items first; if it reaches about 0.6 recall
+at 0.7 precision, it labels public-domain training windows only. Private
+text is never sent (`teacher.py --provider openai` refuses any other corpus).
+Requests go through the OpenAI Batch API (`--batch submit`, then `--batch
+collect`) at half price, with the guide first so its prefix is cached.
+gpt-6.2-astra also reviewed the labels, so its agreement with them may read
+high. Batch `batch_6b040fc3ffe081908bd1cd8b71d7af54`, state in
+`/Volumes/C/ng-teacher/public-even-astra.txt.batch.json`.
+
+Result, public even (106 labels): recall 0.585 over all tiers (0.633 over the
+matchable), precision 0.705 over 88 extractions; stated 9/10, implied 1/9,
+described 52/87. Several of the 26 false positives are spellings the matcher
+does not join (`Adela` for Adèle, `Lizzy` for Elizabeth). That is at the bar
+set for a usable teacher (about 0.6 and 0.7), against 0.206 and 0.163 for
+qwen3:14b. Answers: `/Volumes/C/ng-teacher/public-even-astra.raw.txt`.

@@ -1,6 +1,7 @@
 mod aggregate;
 mod context;
 mod cooccurrence;
+mod dialogue;
 mod entities;
 mod kinds;
 pub mod pack;
@@ -173,10 +174,25 @@ fn collect_candidates(
 
     let narrator = context.narrator();
     let mut quote_open = false;
+    let mut turn = dialogue::Turn::default();
+    // Hard-wrapped text breaks lines inside a paragraph and marks paragraphs
+    // with a blank line; otherwise each line is a paragraph.
+    let paragraph_break = if text.contains("\n\n") { 2 } else { 1 };
+    let mut found = Vec::new();
 
     for (sent_text, sent_start) in segment::split_sentences(text, pack) {
-        if text[previous_end..sent_start].contains('\n') {
+        let breaks = text[previous_end..sent_start].matches('\n').count();
+        // Hard-wrapped speech runs on across line breaks; only a paragraph
+        // break ends it.
+        if breaks >= paragraph_break {
             quote_open = false;
+        }
+        if breaks >= paragraph_break {
+            found.extend(
+                turn.finish(&opts.ontology, &register, pack, false)
+                    .into_iter()
+                    .map(|r| (r, 0)),
+            );
         }
         if text[previous_end..sent_start]
             .matches('\n')
@@ -187,6 +203,7 @@ fn collect_candidates(
         }
         previous_end = sent_start + sent_text.len();
 
+        let opened = quote_open;
         let quotes = quotes::QuoteMap::scan(sent_text, quote_open);
         quote_open = quotes.open_at_end;
 
@@ -200,6 +217,7 @@ fn collect_candidates(
             narrator,
         );
         carried = entities::carried_referents(sent_text, &entities, pack);
+        turn.observe(sent_text, sent_start, &entities, &quotes, opened, pack);
 
         if entities.is_empty() {
             continue;
@@ -211,40 +229,72 @@ fn collect_candidates(
             quotes: &quotes,
             mentions: &entities,
         };
-        let relations =
-            relations::extract_relations(sent_text, &entities, &opts.ontology, pack, &scope);
+        found.extend(
+            relations::extract_relations(sent_text, &entities, &opts.ontology, pack, &scope)
+                .into_iter()
+                .map(|r| (r, sent_start)),
+        );
+    }
+    found.extend(
+        turn.finish(&opts.ontology, &register, pack, true)
+            .into_iter()
+            .map(|r| (r, 0)),
+    );
+    // A first-person document is read again with its narrator named, so that
+    // "I" is a mention of someone. The caller's narrator always wins.
+    if narrator.is_none() {
+        if let Some(name) = turn.narrator() {
+            return collect_candidates(text, opts, pack, &context.clone().with_narrator(&name));
+        }
+    }
+    let common = dialogue::common_words(
+        text,
+        found
+            .iter()
+            .filter(|(r, _)| dialogue::is_rule(&r.rule))
+            .flat_map(|(r, _)| [r.subject.as_str(), r.object.as_str()]),
+    );
+    found.retain(|(r, _)| {
+        !dialogue::is_rule(&r.rule)
+            || (dialogue::is_voice(&r.subject, 2, &turn, &register)
+                && dialogue::is_voice(&r.object, 1, &turn, &register)
+                && ![&r.subject, &r.object]
+                    .iter()
+                    .any(|n| common.contains(*n) || pack.sentence_openers.contains(&n.as_str())))
+    });
 
-        for rel in relations {
-            let confidence = cooccurrence::score_confidence(rel.base, rel.gap);
+    // Each span is relative to its offset: the sentence's start, or 0 for a
+    // paragraph-level candidate whose span is already absolute.
+    for (rel, offset) in found {
+        let confidence = cooccurrence::score_confidence(rel.base, rel.gap);
 
-            let key = (
-                rel.subject.as_str(),
-                rel.relation.as_str(),
-                rel.object.as_str(),
-            );
-            if confidence >= min_confidence && !rejected.contains(&key) {
-                let span = [sent_start + rel.span[0], sent_start + rel.span[1]];
-                // A rejection names a triple, not a stance: a caller rejecting
-                // a wrong claim means the claim, whichever way the text put it.
-                let polarity = match rel.stance {
-                    relations::Stance::Asserted => Polarity::Asserted,
-                    relations::Stance::Denied => Polarity::Denied,
-                    relations::Stance::Suspended => continue,
-                };
+        let key = (
+            rel.subject.as_str(),
+            rel.relation.as_str(),
+            rel.object.as_str(),
+        );
+        if confidence >= min_confidence && !rejected.contains(&key) {
+            let span = [offset + rel.span[0], offset + rel.span[1]];
+            // A rejection names a triple, not a stance: a caller rejecting
+            // a wrong claim means the claim, whichever way the text put it.
+            let polarity = match rel.stance {
+                relations::Stance::Asserted => Polarity::Asserted,
+                relations::Stance::Denied => Polarity::Denied,
+                relations::Stance::Suspended => continue,
+            };
 
-                candidates.push(Emitted {
-                    candidate: TripleCandidate {
-                        subject: rel.subject,
-                        relation: rel.relation,
-                        object: rel.object,
-                        confidence,
-                        span,
-                        rule: rel.rule,
-                    },
-                    polarity,
-                    single_filler: rel.single_filler,
-                });
-            }
+            candidates.push(Emitted {
+                candidate: TripleCandidate {
+                    subject: rel.subject,
+                    relation: rel.relation,
+                    object: rel.object,
+                    confidence,
+                    span,
+                    rule: rel.rule,
+                },
+                polarity,
+                single_filler: rel.single_filler,
+            });
         }
     }
 

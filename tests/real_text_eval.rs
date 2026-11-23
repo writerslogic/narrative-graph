@@ -182,6 +182,98 @@ fn parse(labels: &str) -> (bool, Vec<Item>) {
     (labelled.expect("labels have a `status:` line"), items)
 }
 
+/// The relations the label guide offers: the lists under "Relations the
+/// library knows", the ones it names in backticks (`speaks_to`, or the middle
+/// of `Longbourn | near | Meryton`), and every relation the library has a
+/// rule for.
+fn vocabulary(labels: &str, known: &BTreeSet<&'static str>) -> BTreeSet<String> {
+    let header = labels.split("\n@ ").next().unwrap_or("");
+    let is_relation =
+        |w: &&str| !w.is_empty() && w.chars().all(|c| c.is_ascii_lowercase() || c == '_');
+    let listed = header
+        .split_once("Relations the library knows")
+        .map_or("", |(_, rest)| rest)
+        .lines()
+        .filter_map(|l| l.strip_prefix("#   "))
+        .flat_map(str::split_whitespace)
+        .filter(is_relation);
+    let quoted = header.split('`').skip(1).step_by(2).filter_map(|q| {
+        let parts: Vec<&str> = q.split('|').map(str::trim).collect();
+        match parts.as_slice() {
+            [one] | [_, one, _] => Some(*one).filter(is_relation),
+            _ => None,
+        }
+    });
+    listed
+        .chain(quoted)
+        .chain(known.iter().copied())
+        .map(String::from)
+        .collect()
+}
+
+/// Which items a run scores, from `NG_HALF`: `even` to tune on, `odd` for the
+/// held-out half at a milestone, both when unset.
+#[derive(Clone, Copy, Debug)]
+enum Half {
+    All,
+    Even,
+    Odd,
+}
+
+impl Half {
+    fn keeps(self, number: usize) -> bool {
+        match self {
+            Half::All => true,
+            Half::Even => number % 2 == 0,
+            Half::Odd => number % 2 == 1,
+        }
+    }
+}
+
+fn half() -> Half {
+    match std::env::var("NG_HALF").as_deref() {
+        Ok("even") => Half::Even,
+        Ok("odd") => Half::Odd,
+        Ok("") | Ok("all") | Err(_) => Half::All,
+        Ok(other) => panic!("NG_HALF is `even`, `odd` or `all`, got {other:?}"),
+    }
+}
+
+/// Another extractor's output, scored by the same matcher: one line per
+/// claim, `item | subject | relation | object`, the subject prefixed `not `
+/// for a denial. Lines for items outside the scored half are ignored.
+fn parse_predictions(raw: &str, items: &[Item]) -> Vec<AggregateTriple> {
+    let mut out = Vec::new();
+    for line in raw.lines().map(str::trim) {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('|').map(str::trim).collect();
+        assert!(
+            parts.len() == 4,
+            "a prediction is `item | A | relation | B`, got {line:?}"
+        );
+        let number: usize = parts[0].parse().expect("prediction item number");
+        let Some(item) = items.iter().find(|i| i.number == number) else {
+            continue;
+        };
+        let (polarity, subject) = match parts[1].strip_prefix("not ") {
+            Some(rest) => (Polarity::Denied, rest),
+            None => (Polarity::Asserted, parts[1]),
+        };
+        out.push(AggregateTriple {
+            subject: subject.to_string(),
+            relation: parts[2].to_string(),
+            object: parts[3].to_string(),
+            polarity,
+            confidence: 1.0,
+            spans: vec![[item.start, item.start]],
+            rules: vec!["prediction".to_string()],
+        });
+    }
+    out
+}
+
 /// The byte range in `text` that the whitespace-collapsed `sentence` covers,
 /// starting at `start`.
 fn locate(text: &str, start: usize, sentence: &str) -> Option<usize> {
@@ -284,9 +376,16 @@ fn ratio(n: usize, d: usize) -> f64 {
 /// Scores `labels.txt` in `root` against the novels beside it, prints the
 /// report, and returns `(labelled, precision, recall over relations with a
 /// rule)`.
-fn evaluate(root: &Path) -> (bool, f64, f64) {
+fn evaluate(root: &Path, predictions: Option<&Path>) -> (bool, f64, f64) {
     let labels = std::fs::read_to_string(root.join("labels.txt")).expect("labels.txt");
-    let (labelled, items) = parse(&labels);
+    let (labelled, mut items) = parse(&labels);
+    let half = half();
+    items.retain(|item| half.keeps(item.number));
+    println!("half: {half:?}");
+    let predicted = predictions.map(|path| {
+        let raw = std::fs::read_to_string(path).expect("predictions file");
+        parse_predictions(&raw, &items)
+    });
     let known = known_relations();
 
     let mut books: BTreeMap<&str, (String, Vec<AggregateTriple>)> = BTreeMap::new();
@@ -294,7 +393,18 @@ fn evaluate(root: &Path) -> (bool, f64, f64) {
         books.entry(&item.book).or_insert_with(|| {
             let text = std::fs::read_to_string(root.join(format!("{}.txt", item.book)))
                 .expect("novel text");
-            let aggregates = extract_aggregates(&text, &Options::default()).expect("extraction");
+            let aggregates = match &predicted {
+                Some(predicted) => predicted
+                    .iter()
+                    .filter(|a| {
+                        items
+                            .iter()
+                            .any(|i| i.book == item.book && i.start == a.spans[0][0])
+                    })
+                    .cloned()
+                    .collect(),
+                None => extract_aggregates(&text, &Options::default()).expect("extraction"),
+            };
             (text, aggregates)
         });
     }
@@ -303,9 +413,12 @@ fn evaluate(root: &Path) -> (bool, f64, f64) {
     let mut known_missed = 0;
     let mut known_gold = 0;
     let mut stated_gold = 0;
-    let mut other_tiers: BTreeMap<Tier, (usize, usize)> = BTreeMap::new();
     let mut by_relation: BTreeMap<String, Tally> = BTreeMap::new();
     let mut report = Vec::new();
+    let vocabulary = vocabulary(&labels, &known);
+    // Per tier: labels, found, matchable, found among the matchable.
+    let mut ceiling: BTreeMap<Tier, [usize; 4]> = BTreeMap::new();
+    let mut invented: BTreeMap<&str, usize> = BTreeMap::new();
 
     for item in &items {
         let (text, aggregates) = &books[item.book.as_str()];
@@ -336,10 +449,18 @@ fn evaluate(root: &Path) -> (bool, f64, f64) {
         }
         for claim in &item.claims {
             let found = extracted.iter().any(|a| matches(claim, a));
+            let named = claim.subject.is_some() && claim.object.is_some();
+            let listed = vocabulary.contains(claim.relation.as_str());
+            if !listed {
+                *invented.entry(&claim.relation).or_default() += 1;
+            }
+            let row = ceiling.entry(claim.tier).or_default();
+            let matchable = named && listed;
+            row[0] += 1;
+            row[1] += usize::from(found);
+            row[2] += usize::from(matchable);
+            row[3] += usize::from(found && matchable);
             if claim.tier != Tier::Stated {
-                let (gold, hit) = other_tiers.entry(claim.tier).or_default();
-                *gold += 1;
-                *hit += usize::from(found);
                 if !found {
                     report.push(format!(
                         "  item {} missed ({:?}): {claim:?}",
@@ -382,9 +503,32 @@ fn evaluate(root: &Path) -> (bool, f64, f64) {
     println!(
         "precision {precision:.3}  recall (relations with a rule) {recall_known:.3}  recall (all) {recall_all:.3}"
     );
-    for (tier, (gold, hit)) in &other_tiers {
-        println!("{tier:?}: {gold} labels, recall {:.3}", ratio(*hit, *gold));
+    // A label is matchable when both sides are named and its relation is one
+    // the guide lists: what an extractor bound to that vocabulary can reach.
+    let total = ceiling.values().fold([0; 4], |mut t, row| {
+        t.iter_mut().zip(row).for_each(|(a, b)| *a += b);
+        t
+    });
+    for (tier, row) in ceiling
+        .iter()
+        .map(|(tier, row)| (format!("{tier:?}"), row))
+        .chain([("all tiers".to_string(), &total)])
+    {
+        println!(
+            "{tier}: {} labels, recall {:.3}; {} matchable (ceiling {:.3}), recall over them {:.3}",
+            row[0],
+            ratio(row[1], row[0]),
+            row[2],
+            ratio(row[2], row[0]),
+            ratio(row[3], row[2])
+        );
     }
+    println!(
+        "relations outside the guide: {} labels, {} names, {} used once",
+        invented.values().sum::<usize>(),
+        invented.len(),
+        invented.values().filter(|&&n| n == 1).count()
+    );
     for (relation, t) in &by_relation {
         println!(
             "  {relation:<20} tp {:>3} fp {:>3} missed {:>3}",
@@ -402,9 +546,14 @@ fn evaluate(root: &Path) -> (bool, f64, f64) {
 #[ignore = "slow in debug; run with --release -- --include-ignored"]
 fn real_text_precision_and_recall() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
-    let (labelled, precision, recall_known) = evaluate(&root);
+    let predictions = std::env::var_os("NG_PREDICTIONS");
+    let (labelled, precision, recall_known) =
+        evaluate(&root, predictions.as_deref().map(Path::new));
     if !labelled {
         println!("labels are a draft; not scored against a floor");
+        return;
+    }
+    if predictions.is_some() {
         return;
     }
     if let Some((min_precision, min_recall)) = FLOOR {
@@ -442,5 +591,6 @@ fn private_text_precision_and_recall() {
         println!("NG_PRIVATE_EVAL is not set; skipped");
         return;
     };
-    evaluate(Path::new(&root));
+    let predictions = std::env::var_os("NG_PRIVATE_PREDICTIONS");
+    evaluate(Path::new(&root), predictions.as_deref().map(Path::new));
 }

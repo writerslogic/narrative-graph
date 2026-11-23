@@ -3,6 +3,7 @@ use narrative_graph::{
     extract_aggregates, extract_candidate_triples, find_conflicts, ConflictKind, Options, Polarity,
     Rejection, TripleCandidate,
 };
+use std::collections::BTreeSet;
 
 fn extract(text: &str) -> Vec<TripleCandidate> {
     extract_candidate_triples(text, &Options::default()).expect("extraction failed")
@@ -1408,4 +1409,141 @@ fn analyze_returns_what_the_separate_calls_return() {
         format!("{:?}", find_conflicts(text, &opts).unwrap())
     );
     assert!(!analysis.conflicts.is_empty());
+}
+
+#[test]
+fn an_apostrophe_before_a_capital_stays_inside_the_name() {
+    for (text, subject) in [
+        (
+            "Goodwin O\u{2019}Leary is Eibhlín\u{2019}s grandson.",
+            "goodwin_o\u{2019}leary",
+        ),
+        ("Liam O'Brien is Nora's brother.", "liam_o'brien"),
+        (
+            "Anne D\u{2019}Arcy is Blanche\u{2019}s sister.",
+            "anne_d\u{2019}arcy",
+        ),
+    ] {
+        let candidates = extract(text);
+        assert_eq!(candidates.len(), 1, "{text}: {candidates:?}");
+        assert_eq!(candidates[0].subject, subject, "{text}");
+        assert!(!candidates[0].object.contains(['\'', '\u{2019}']), "{text}");
+    }
+}
+
+#[test]
+fn a_tagged_speaker_speaks_to_the_name_they_address() {
+    let speaks = |text: &str| -> Vec<(String, String)> {
+        extract(text)
+            .into_iter()
+            .filter(|c| c.relation == "speaks_to")
+            .map(|c| (c.subject, c.object))
+            .collect()
+    };
+    let pair = |s: &str, o: &str| vec![(s.to_string(), o.to_string())];
+
+    assert_eq!(
+        speaks("\u{201C}Cathy, are you busy this afternoon?\u{201D} asked Heathcliff.\n\u{201C}No,\u{201D} said Cathy.\n\u{201C}Why?\u{201D} asked Heathcliff."),
+        pair("heathcliff", "cathy")
+    );
+    assert_eq!(
+        speaks("\"Well, Emma,\" Knightley said. \"I am going.\"\n\"Go,\" said Emma.\n\"I will,\" Knightley said."),
+        pair("knightley", "emma")
+    );
+    // One paragraph is one turn: the address in its second sentence counts.
+    assert_eq!(
+        speaks("\"I am tired,\" said Nora. \"Are you coming, Marco?\"\n\"Yes,\" said Marco.\n\"Good,\" said Nora."),
+        pair("nora", "marco")
+    );
+    // A name the speech is about, not addressed to.
+    assert!(speaks("\"I saw Marco at the dock,\" said Nora.").is_empty());
+    // Two tagged speakers in one paragraph: the listener is unknown.
+    assert!(speaks("\"Marco!\" said Nora, and Elena said, \"Hush, Dev.\"").is_empty());
+    // A listener needs evidence of being a person: a speaker tag of their
+    // own, or a title or pronoun elsewhere.
+    assert!(speaks("\"Come, Lizzy,\" said Nora.\n\"Go,\" said Nora.").is_empty());
+    // A new paragraph is a new turn.
+    assert!(speaks("\"Go,\" said Nora.\n\"Marco, wait.\"").is_empty());
+}
+
+#[test]
+fn a_two_person_conversation_carries_its_speakers_across_untagged_turns() {
+    let speaks = |text: &str| -> Vec<(String, String, [usize; 2])> {
+        extract_aggregates(text, &Options::default())
+            .expect("extraction failed")
+            .into_iter()
+            .filter(|a| a.relation == "speaks_to")
+            .flat_map(|a| {
+                let (s, o) = (a.subject, a.object);
+                a.spans
+                    .into_iter()
+                    .map(move |span| (s.clone(), o.clone(), span))
+            })
+            .collect()
+    };
+    let said_in = |found: &[(String, String, [usize; 2])], text: &str, line: &str| {
+        let start = text.find(line).expect("line in text");
+        found
+            .iter()
+            .filter(|(_, _, span)| (start..start + line.len()).contains(&span[0]))
+            .map(|(s, o, _)| (s.as_str().to_owned(), o.as_str().to_owned()))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>()
+    };
+    let pair = |s: &str, o: &str| vec![(s.to_string(), o.to_string())];
+    // Each is tagged twice elsewhere, which is what makes them voices.
+    let voices = "\nThe sun set.\nIt was late.\n\"Go,\" said Nora.\n\"No,\" said Marco.\n\"Go,\" said Nora.\n\"No,\" said Marco.";
+
+    // The untagged third turn is Nora's again, said to Marco.
+    let text =
+        format!("\"Are you coming?\" asked Nora.\n\"No,\" said Marco.\n\"Why not?\"{voices}");
+    let found = speaks(&text);
+    assert_eq!(
+        said_in(&found, &text, "\"Why not?\""),
+        pair("nora", "marco")
+    );
+    assert_eq!(
+        said_in(&found, &text, "\"No,\" said Marco."),
+        pair("marco", "nora")
+    );
+
+    // An address names who answers, but each side needs a tag of its own
+    // before untagged turns are given to it.
+    let text = format!("\"Marco, are you coming?\" asked Nora.\n\"I am tired.\"{voices}");
+    let found = speaks(&text);
+    assert!(
+        said_in(&found, &text, "\"I am tired.\"").is_empty(),
+        "{found:?}"
+    );
+    let text = format!(
+        "\"Marco, are you coming?\" asked Nora.\n\"I am tired.\"\n\"Then rest.\"\n\"I will,\" said Marco.{voices}"
+    );
+    let found = speaks(&text);
+    assert_eq!(
+        said_in(&found, &text, "\"I am tired.\""),
+        pair("marco", "nora")
+    );
+    assert_eq!(
+        said_in(&found, &text, "\"Then rest.\""),
+        pair("nora", "marco")
+    );
+
+    // Speech left open at a paragraph's end is the same speaker's next paragraph.
+    let text = format!(
+        "\"I went to the dock,\" said Nora, \"and then I waited.\n\"Marco, I came home.\"{voices}"
+    );
+    let found = speaks(&text);
+    assert_eq!(
+        said_in(&found, &text, "\"Marco, I came home.\""),
+        pair("nora", "marco")
+    );
+
+    // With a third voice in the conversation, an untagged turn is no one's.
+    let text = format!("\"Are you coming?\" asked Nora.\n\"No,\" said Marco.\n\"Nor I,\" said Elena.\n\"Why not?\"\n\"Go,\" said Elena.{voices}");
+    let found = speaks(&text);
+    assert!(
+        said_in(&found, &text, "\"Why not?\"").is_empty(),
+        "{found:?}"
+    );
 }

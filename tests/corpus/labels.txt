@@ -39,9 +39,10 @@ status: draft
 #   the `~` line alone, not from knowing the book: "Mrs. Bennet ... her
 #   daughters ... Jane's week" gives `implied Jane | daughter_of | Mrs. Bennet`.
 #   Implied labels are scored separately and never count against the library.
-# - Use the relation names below when one fits. If none fits, make one up in
-#   the same style (`fiancee_of`, `ward_of`); it is scored separately as a
-#   relation the library does not know yet.
+# - Use only the relation names below or one these rules name. If none fits,
+#   leave the relation out, or keep it as a note starting
+#   "# outside the vocabulary:"; the matcher needs the exact name, and one
+#   used once can be neither learned nor ruled for.
 # - Mutual relations (friend_of, cousin_of, spouse_of, knows, meets, near ...)
 #   only need one direction. Kin terms with a sex (sister_of, son_of) do not.
 # - Do not run the library on these sentences before labelling, and do not
@@ -74,8 +75,8 @@ status: draft
 #   adopted argues_with attends betrayed born_in broke_up_with comforts
 #   contacts dating died_in divorced employs engaged_to founded greets hates
 #   helps killed kissed knows leads lives_in lives_with located_in loves meets
-#   member_of mentors owns proposed_to protects raised runs trusts works_at
-#   works_for works_with
+#   member_of mentors owns proposed_to protects raised runs trusts visits
+#   works_at works_for works_with
 
 @ 1 1342 54078 relation word | Pride and Prejudice
 ~ [Illustration]
@@ -139,23 +140,31 @@ My situation in life, my connections with the family of De Bourgh, and my relati
 =
 [I = Mr. Collins] | speaks_to | [you = Elizabeth]
 implied [I = Mr. Collins] | proposed_to | [you = Elizabeth]
+# outside the vocabulary: implied [I = Mr. Collins] | relative_of | [you = Elizabeth]
 # Collins's proposal: "another offer of marriage" makes this one an offer.
 # "the family of De Bourgh" and "your own" are families, so skipped.
+# review (gpt-6.2-astra): add `implied [I = Mr. Collins] | relative_of | [you = Elizabeth]`: “My relationship to your own” family implies kinship with Elizabeth without specifying its degree.
 
 @ 8 1342 265902 names | Pride and Prejudice
 ~ Nor did that day wear out her resentment.
 A week elapsed before she could see Elizabeth without scolding her: a month passed away before she could speak to Sir William or Lady Lucas without being rude; and many months were gone before she could at all forgive their daughter.
 =
-[she = Mrs. Bennet] | scolds | Elizabeth
+[she = Mrs. Bennet] | speaks_to | Elizabeth
 [she = Mrs. Bennet] | speaks_to | Sir William
 [she = Mrs. Bennet] | speaks_to | Lady Lucas
-[she = Mrs. Bennet] | resents | [their daughter = Charlotte Lucas]
+# outside the vocabulary: [she = Mrs. Bennet] | is_rude_to | Sir William
+# outside the vocabulary: [she = Mrs. Bennet] | is_rude_to | Lady Lucas
+# outside the vocabulary: [she = Mrs. Bennet] | resents | [their daughter = Charlotte Lucas]
 [their daughter = Charlotte Lucas] | daughter_of | Sir William
 [their daughter = Charlotte Lucas] | daughter_of | Lady Lucas
 implied Sir William | spouse_of | Lady Lucas
+# outside the vocabulary: implied [she = Mrs. Bennet] | forgives | [their daughter = Charlotte Lucas]
 # "she" is never named in the shown text, so she is bracketed. Not forgiving
 # Charlotte for months is resentment, stated; "their daughter" makes the
 # parents a couple, inferred.
+# review (gpt-6.2-astra): add `[she = Mrs. Bennet] | is_rude_to | Sir William`: The sentence describes her manner toward Sir William, not just the fact that she spoke to him.
+# review (gpt-6.2-astra): add `[she = Mrs. Bennet] | is_rude_to | Lady Lucas`: “Without being rude” also applies to her exchanges with Lady Lucas.
+# review (gpt-6.2-astra): add `implied [she = Mrs. Bennet] | forgives | [their daughter = Charlotte Lucas]`: “Many months were gone before she could at all forgive” suggests eventual, if limited, forgiveness.
 
 @ 9 1342 309864 names | Pride and Prejudice
 ~ It was reasonable, however, to hope that they would not continue long.
@@ -164,10 +173,12 @@ Mrs. Gardiner gave her the particulars also of Miss Bingley’s visit in Gracech
 Mrs. Gardiner | speaks_to | [her = Elizabeth]
 Miss Bingley | visits | Gracechurch Street
 Jane | speaks_to | Mrs. Gardiner
+Mrs. Gardiner | speaks_to | Jane
 not Miss Bingley | acquaintance_of | Jane ?
 implied Miss Bingley | knows | Jane
 # "the former had given up the acquaintance": Miss Bingley ended it, so the
 # acquaintance is denied from then on; that they knew each other is inferred.
+# review (gpt-6.2-astra): add `Mrs. Gardiner | speaks_to | Jane`: The conversations “between Jane and herself” are two-way exchanges, and `speaks_to` is directional.
 
 @ 10 1342 332865 relation word | Pride and Prejudice
 ~ ‘Lady Catherine,’ said she, ‘you have given me a treasure.’
@@ -189,8 +200,10 @@ Miss De Bourgh | speaks_to | Charlotte
 “He did not talk to me of his own arts,” said Fitzwilliam, smiling.
 =
 Fitzwilliam | speaks_to | [the listener = Elizabeth]
+# outside the vocabulary: not [he = Mr. Darcy] | discloses_own_methods_to | Fitzwilliam
 implied [he = Mr. Darcy] | knows | Fitzwilliam
 # "He did not talk to me of his own arts" denies one topic, not speaking.
+# review (gpt-6.2-astra): add `not [he = Mr. Darcy] | discloses_own_methods_to | Fitzwilliam`: Fitzwilliam denies that Darcy told him about his methods, not that Darcy spoke to him.
 
 @ 13 1342 390417 random | Pride and Prejudice
 ~ But there were other causes of repugnance; causes which, though still existing, and existing to an equal degree in both instances, I had myself endeavoured to forget, because they were not immediately before me.
@@ -202,16 +215,17 @@ These causes must be stated, though briefly.
 “But you blame me for having spoken so warmly of Wickham?”
 =
 [I = Elizabeth] | speaks_to | [you = Jane]
-[I = Elizabeth] | praises | Wickham
+# outside the vocabulary: [I = Elizabeth] | praises | Wickham
 
 @ 15 1342 440792 names | Pride and Prejudice
 ~ I want to be told whether I ought, or ought not, to make our acquaintance in general understand Wickham’s character.”
 Miss Bennet paused a little, and then replied, “Surely there can be no occasion for exposing him so dreadfully.
 =
 Miss Bennet | speaks_to | [the asker = Elizabeth]
-Miss Bennet | protects | Wickham ?
+# outside the vocabulary: Miss Bennet | opposes_exposure_of | Wickham
 # "him" is Wickham from the `~` line; arguing against exposing him is
 # protective, a judgement call.
+# review (gpt-6.2-astra): edit `Miss Bennet | opposes_exposure_of | Wickham`: Miss Bennet argues against exposing Wickham; the reply states her position without establishing that she protects him.
 
 @ 16 1342 463978 random | Pride and Prejudice
 ~ Everything wore a happier aspect.
@@ -223,9 +237,10 @@ The families who had been in town for the winter came back again, and summer fin
 The rooms were lofty and handsome, and their furniture suitable to the fortune of their proprietor; but Elizabeth saw, with admiration of his taste, that it was neither gaudy nor uselessly fine,--with less of splendour, and more real elegance, than the furniture of Rosings.
 =
 Elizabeth | admires | [their proprietor = Mr. Darcy]
-[their proprietor = Mr. Darcy] | owns | [the rooms = Pemberley]
-implied Elizabeth | visits | [the rooms = Pemberley]
 # She admires "his taste", which is an attitude toward him.
+# review (gpt-6.2-astra): edit `Elizabeth | admires_taste_of | [their proprietor = Mr. Darcy]`: The stated object of Elizabeth’s admiration is the proprietor’s taste.
+# review (gpt-6.2-astra): remove `[their proprietor = Mr. Darcy] | owns | [the rooms = Pemberley]`: The rooms have a proprietor, but neither line names the estate to which they belong.
+# review (gpt-6.2-astra): remove `implied Elizabeth | visits | [the rooms = Pemberley]`: Elizabeth sees the rooms, but identifying her destination as Pemberley requires information outside the two lines.
 
 @ 18 1342 537850 random | Pride and Prejudice
 ~ “What is all settled?” repeated the other, as she ran into her room to prepare.
@@ -237,7 +252,15 @@ implied Elizabeth | visits | [the rooms = Pemberley]
 ~ Though her brother and sister were persuaded that there was no real occasion for such a seclusion from the family, they did not attempt to oppose it; for they knew that she had not prudence enough to hold her tongue before the servants, while they waited at table, and judged it better that _one_ only of the household, and the one whom they could most trust, should comprehend all her fears and solicitude on the subject.
 In the dining-room they were soon joined by Mary and Kitty, who had been too busily engaged in their separate apartments to make their appearance before.
 =
+Mary | meets | [her brother = Mr. Gardiner]
+Mary | meets | [her sister = Mrs. Gardiner]
+Kitty | meets | [her brother = Mr. Gardiner]
+Kitty | meets | [her sister = Mrs. Gardiner]
 # "they" and "Mary and Kitty" join as groups; nothing between two people.
+# review (gpt-6.2-astra): add `Mary | meets | [her brother = Mr. Gardiner]`: Mary joins the brother included in “they.”
+# review (gpt-6.2-astra): add `Mary | meets | [her sister = Mrs. Gardiner]`: Mary also joins the sister in the dining-room.
+# review (gpt-6.2-astra): add `Kitty | meets | [her brother = Mr. Gardiner]`: Kitty is named alongside Mary as joining the brother.
+# review (gpt-6.2-astra): add `Kitty | meets | [her sister = Mrs. Gardiner]`: Kitty likewise joins the sister.
 
 @ 20 1342 556873 relation word | Pride and Prejudice
 ~ “Oh, Jane, had we been less secret, had we told what we knew of him, this could not have happened!”
@@ -253,10 +276,12 @@ Jane | speaks_to | [her = Elizabeth]
 Then, after a short silence, he continued, “Lizzy, I bear you no ill-will for being justified in your advice to me last May, which, considering the event, shows some greatness of mind.”
 =
 [he = Mr. Bennet] | speaks_to | Lizzy
-Lizzy | advises | [he = Mr. Bennet]
+Lizzy | speaks_to | [he = Mr. Bennet]
+# outside the vocabulary: not [he = Mr. Bennet] | bears_ill_will_toward | Lizzy
 implied Lizzy | daughter_of | [he = Mr. Bennet]
 # "he" is "her father" in the `~` line; that the father of the girl he
 # discusses is also Lizzy's is inferred.
+# review (gpt-6.2-astra): add `not [he = Mr. Bennet] | bears_ill_will_toward | Lizzy`: “I bear you no ill-will” explicitly denies ill will toward Lizzy.
 
 @ 22 1342 633006 random | Pride and Prejudice
 ~ I was only confused for the moment, because I felt that I _should_ be looked at.
@@ -291,9 +316,13 @@ Elizabeth | speaks_to | [the speaker = Lady Catherine]
 ~ In the interview which followed between him and Mrs. Reed, I presume, from after-occurrences, that the apothecary ventured to recommend my being sent to school; and the recommendation was no doubt readily enough adopted; for as Abbot said, in discussing the subject with Bessie when both sat sewing in the nursery one night, after I was in bed, and, as they thought, asleep, “Missis was, she dared say, glad enough to get rid of such a tiresome, ill-conditioned child, who always looked as if she were watching everybody, and scheming plots underhand.”
 Abbot, I think, gave me credit for being a sort of infantine Guy Fawkes.
 =
-implied Abbot | dislikes | [me = Jane Eyre]
+# outside the vocabulary: implied Abbot | dislikes | [me = Jane Eyre]
+# outside the vocabulary: [me = Jane Eyre] | likened_to | Guy Fawkes
+implied not Abbot | trusts | [me = Jane Eyre]
 # Crediting a child with being "a sort of infantine Guy Fawkes" is a low
 # opinion, inferred; Guy Fawkes is only a comparison.
+# review (gpt-6.2-astra): add `[me = Jane Eyre] | likened_to | Guy Fawkes`: Jane uses Guy Fawkes as the comparison for how she thinks Abbot sees her.
+# review (gpt-6.2-astra): add `implied Abbot | distrusts | [me = Jane Eyre]`: The Guy Fawkes comparison recalls Abbot’s suspicion that Jane is “scheming plots underhand.”
 
 @ 27 1260 95095 names | Jane Eyre
 ~ The porridge is burnt again!”
@@ -305,7 +334,7 @@ implied Abbot | dislikes | [me = Jane Eyre]
 ~ Well, our ship stopped in the morning, before it was quite daylight, at a great city—a huge city, with very dark houses and all smoky; not at all like the pretty clean town I came from; and Mr. Rochester carried me in his arms over a plank to the land, and Sophie came after, and we all got into a coach, which took us to a beautiful large house, larger than this and finer, called an hotel.
 We stayed there nearly a week: I and Sophie used to walk every day in a great green place full of trees, called the Park; and there were many children there besides me, and a pond with beautiful birds in it, that I fed with crumbs.”
 =
-[I = Adèle] | walks_with | Sophie
+# outside the vocabulary: [I = Adèle] | walks_with | Sophie
 [I = Adèle] | visits | the Park
 Sophie | visits | the Park
 # The speaker is Adèle telling her story; "I and Sophie used to walk".
@@ -327,10 +356,14 @@ Two thin hands, joined under the forehead, and supporting it, drew up before the
 =
 [I = Jane Eyre] | speaks_to | Mrs. Fairfax
 [I = Jane Eyre] | meets | Mrs. Fairfax
-[I = Jane Eyre] | cares_for | Adèle
+# outside the vocabulary: [I = Jane Eyre] | cares_for | Adèle
 implied Mrs. Fairfax | knows | Mr. Rochester
+# outside the vocabulary: Mrs. Fairfax | speaks_about | Mr. Rochester
+implied Mrs. Fairfax | speaks_to | [I = Jane Eyre]
 # "rejoined her" is coming together; "putting Adèle to bed" is care. What
 # Mrs. Fairfax said about Mr. Rochester means she knows him.
+# review (gpt-6.2-astra): add `Mrs. Fairfax | speaks_about | Mr. Rochester`: “You said Mr. Rochester was not strikingly peculiar” identifies Rochester as the subject of Fairfax’s earlier remark.
+# review (gpt-6.2-astra): add `implied Mrs. Fairfax | speaks_to | [I = Jane Eyre]`: Jane’s reminder suggests that Fairfax made the earlier remark to her, though Jane does not say “to me.”
 
 @ 32 1260 289308 random | Jane Eyre
 ~ In the mornings he seemed much engaged with business, and, in the afternoon, gentlemen from Millcote or the neighbourhood called, and sometimes stayed to dine with him.
@@ -343,12 +376,16 @@ When his sprain was well enough to admit of horse exercise, he rode out a good d
 ~ “Then no more need be said: change the subject.”
 Amy Eshton, not hearing or not heeding this dictum, joined in with her soft, infantine tone: “Louisa and I used to quiz our governess too; but she was such a good creature, she would bear anything: nothing put her out.
 =
-Amy Eshton | mocks | [our governess]
-Louisa | mocks | [our governess]
-[our governess] | governess_of | Amy Eshton
-[our governess] | governess_of | Louisa
+# outside the vocabulary: Amy Eshton | mocks | [our governess]
+# outside the vocabulary: Louisa | mocks | [our governess]
+[our governess] | teacher_of | Amy Eshton
+[our governess] | teacher_of | Louisa
 implied Louisa | sister_of | Amy Eshton ?
+implied Amy Eshton | sister_of | Louisa ?
 # "quiz" is to tease. Sharing "our governess" suggests sisters.
+# review (gpt-6.2-astra): edit `[our governess] | teacher_of | Amy Eshton`: The listed teacher_of relation fits the governess’s role, and the bracketed phrase preserves her specific title.
+# review (gpt-6.2-astra): edit `[our governess] | teacher_of | Louisa`: “Our” places Louisa under the same governess’s instruction, so teacher_of fits here too.
+# review (gpt-6.2-astra): add `implied Amy Eshton | sister_of | Louisa ?`: The shared governess suggests, but does not establish, that the girls are sisters; sister_of is directional.
 
 @ 34 1260 439441 random | Jane Eyre
 ~ “I cannot possibly countenance any such inconsistent proceeding,” chimed in the Dowager Ingram.
@@ -356,15 +393,21 @@ implied Louisa | sister_of | Amy Eshton ?
 =
 Blanche | speaks_to | Dowager Ingram
 Blanche | daughter_of | Dowager Ingram
+Dowager Ingram | mother_of | Blanche
 # "Indeed, mama" answers the Dowager Ingram from the `~` line.
+# review (gpt-6.2-astra): add `Dowager Ingram | mother_of | Blanche`: Blanche directly identifies the Dowager as her mother by addressing her as “mama.”
 
 @ 35 1260 467754 names | Jane Eyre
 ~ I sought Mr. Mason, delivered the message, and preceded him from the room: I ushered him into the library, and then I went upstairs.
 At a late hour, after I had been in bed some time, I heard the visitors repair to their chambers: I distinguished Mr. Rochester’s voice, and heard him say, “This way, Mason; this is your room.”
 =
 Mr. Rochester | speaks_to | Mason
-implied Mr. Rochester | hosts | Mason
+# outside the vocabulary: implied Mr. Rochester | hosts | Mason
+# outside the vocabulary: [I = Jane Eyre] | hears | Mr. Rochester
+implied Mr. Rochester | leads | Mason
 # "this is your room": Mason is his guest.
+# review (gpt-6.2-astra): add `[I = Jane Eyre] | hears | Mr. Rochester`: Jane explicitly says she distinguished Rochester’s voice and heard him speak.
+# review (gpt-6.2-astra): add `implied Mr. Rochester | leads | Mason`: “This way, Mason; this is your room” suggests that Rochester is guiding Mason to his chamber.
 
 @ 36 1260 491056 random | Jane Eyre
 ~ “Come where there is some freshness, for a few moments,” he said; “that house is a mere dungeon: don’t you feel it so?”
@@ -383,26 +426,28 @@ implied Mr. Rochester | hosts | Mason
 So I addressed the housekeeper; asked her to show me a room, told her I should probably be a visitor here for a week or two, had my trunk conveyed to my chamber, and followed it thither myself: I met Bessie on the landing.
 =
 [I = Jane Eyre] | speaks_to | [the housekeeper]
-[I = Jane Eyre] | visits | [here = Gateshead]
 [I = Jane Eyre] | meets | Bessie
 # "a visitor here" is stated; the place is not named in the sentence.
+# review (gpt-6.2-astra): remove `[I = Jane Eyre] | visits | [here = Gateshead]`: Neither line names Gateshead; “here” does not supply the required named place.
 
 @ 39 1260 571080 names | Jane Eyre
 ~ “I am attached to it, indeed.”
 “And though I don’t comprehend how it is, I perceive you have acquired a degree of regard for that foolish little child Adèle, too; and even for simple dame Fairfax?”
 =
 [the speaker = Mr. Rochester] | speaks_to | [you = Jane Eyre]
-[you = Jane Eyre] | likes | Adèle
-[you = Jane Eyre] | likes | dame Fairfax
+# outside the vocabulary: [you = Jane Eyre] | likes | Adèle
 # "a degree of regard for" is liking, an attitude the speaker states.
+# review (gpt-6.2-astra): remove `[you = Jane Eyre] | likes | dame Fairfax`: Rochester says he perceives Jane’s regard for Adèle, then asks whether it extends “even” to Fairfax.
 
 @ 40 1260 625836 random | Jane Eyre
 ~ It was all right: at present I decidedly preferred these fierce favours to anything more tender.
 Mrs. Fairfax, I saw, approved me: her anxiety on my account vanished; therefore I was certain I did well.
 =
-Mrs. Fairfax | approves_of | [me = Jane Eyre]
-implied Mrs. Fairfax | cares_for | [me = Jane Eyre]
+# outside the vocabulary: Mrs. Fairfax | approves_of | [me = Jane Eyre]
+# outside the vocabulary: implied Mrs. Fairfax | cares_for | [me = Jane Eyre]
+# outside the vocabulary: not Mrs. Fairfax | worries_about | [me = Jane Eyre]
 # "her anxiety on my account" shows concern for her, inferred.
+# review (gpt-6.2-astra): add `not Mrs. Fairfax | worries_about | [me = Jane Eyre]`: “Her anxiety on my account vanished” explicitly says Fairfax no longer worries about Jane at that point.
 
 @ 41 1260 690919 names | Jane Eyre
 ~ He looked at me long and hard: I turned my eyes from him, fixed them on the fire, and tried to assume and maintain a quiet, collected aspect.
@@ -430,7 +475,11 @@ Whitcross is no town, nor even a hamlet; it is but a stone pillar set up where f
 =
 Diana | speaks_to | [me = Jane Eyre]
 Diana | helps | [me = Jane Eyre]
+Diana | comforts | [me = Jane Eyre]
+# outside the vocabulary: Diana | touches | [me = Jane Eyre]
 # "you shall stay here" grants her shelter.
+# review (gpt-6.2-astra): add `Diana | comforts | [me = Jane Eyre]`: Diana reassures Jane that she can stay, answering her expressed fear of homelessness.
+# review (gpt-6.2-astra): add `Diana | touches | [me = Jane Eyre]`: Diana puts her hand on Jane’s head.
 
 @ 45 1260 808162 relation word | Jane Eyre
 ~ Often, of an evening, when he sat at the window, his desk and papers before him, he would cease reading or writing, rest his chin on his hand, and deliver himself up to I know not what course of thought; but that it was perturbed and exciting might be seen in the frequent flash and changeful dilation of his eye.
@@ -450,29 +499,39 @@ implied Diana | lives_with | Mary ?
 “St. John! you used to call Jane your third sister, but you don’t treat her as such: you should kiss her too.”
 =
 Diana | speaks_to | St. John
+# outside the vocabulary: St. John | calls_sister | Jane
+# outside the vocabulary: not St. John | treats_as_sister | Jane
 implied Diana | sister_of | St. John
 implied St. John | kissed | Diana ?
 # "your third sister" means he has two others, Diana among them. "you should
 # kiss her too" is a suggestion, but "too" implies he kissed his sisters.
+# review (gpt-6.2-astra): add `St. John | calls_sister | Jane`: Diana says St. John used to call Jane his third sister; she does not assert literal kinship.
+# review (gpt-6.2-astra): add `not St. John | treats_as_sister | Jane`: Diana explicitly denies that he treats Jane as a sister.
 
 @ 48 1260 944350 relation word | Jane Eyre
 ~ “No,” said he; “it is a long-cherished scheme, and the only one which can secure my great end: but I shall urge you no further at present.
 To-morrow, I leave home for Cambridge: I have many friends there to whom I should wish to say farewell.
 =
-[I = St. John] | plans_to_visit | Cambridge
+# outside the vocabulary: [I = St. John] | plans_to_visit | Cambridge
+[I = St. John] | speaks_to | [you = Jane Eyre]
 # A stated intention ("To-morrow, I leave home for Cambridge"); the friends
 # are a group.
+# review (gpt-6.2-astra): add `[I = St. John] | speaks_to | [you = Jane Eyre]`: St. John continues his address to Jane by telling her his travel plans.
 
 @ 49 1260 992111 relation word | Jane Eyre
 ~ “Who is with him?”
 “Old John and his wife: he would have none else.
 =
 [his wife = Mary] | wife_of | Old John
-Old John | lives_with | [him = Mr. Rochester]
-[his wife = Mary] | lives_with | [him = Mr. Rochester]
-implied Old John | servant_of | [him = Mr. Rochester] ?
+Old John | companion_of | [him = Mr. Rochester]
+[his wife = Mary] | companion_of | [him = Mr. Rochester]
+[the speaker] | speaks_to | [the questioner = Jane Eyre]
 # "Who is with him?" "Old John and his wife": they are with him; that they
 # serve him is inferred.
+# review (gpt-6.2-astra): edit `Old John | companion_of | [him = Mr. Rochester]`: The answer identifies John as someone Rochester has with him, not necessarily someone who lives there.
+# review (gpt-6.2-astra): edit `[his wife = Mary] | companion_of | [him = Mr. Rochester]`: John’s wife is also there as company; the answer does not establish her residence.
+# review (gpt-6.2-astra): remove `implied Old John | servant_of | [him = Mr. Rochester] ?`: Rochester’s choice of John’s company gives no indication that John serves him.
+# review (gpt-6.2-astra): add `[the speaker] | speaks_to | [the questioner = Jane Eyre]`: The speaker directly answers Jane’s question about who is with Rochester.
 
 @ 50 1260 1033014 relation word | Jane Eyre
 ~ I kept these things then, and pondered them in my heart.
@@ -487,10 +546,16 @@ implied Old John | servant_of | [him = Mr. Rochester] ?
 ~ As if _they_ had any help for anybody in their absurd baskets!
 “--rendered it necessary that I should go to Paris, there to communicate with a gentleman of the Bank, so good as to be despatched to Paris for the purpose.”
 =
-[the speaker = Mr. Lorry] | speaks_to | [the listener = Lucie Manette]
-[I = Mr. Lorry] | plans_to_visit | Paris
+[the speaker = Lucie Manette] | speaks_to | [the listener = Mr. Lorry]
+# outside the vocabulary: [I = Lucie Manette] | plans_to_visit | Paris
+# outside the vocabulary: [I = Lucie Manette] | plans_to_contact | [a gentleman of the Bank = Mr. Lorry]
+# outside the vocabulary: [a gentleman of the Bank = Mr. Lorry] | dispatched_to | Paris
 # "communicate with a gentleman of the Bank" is the purpose of a trip, not a
 # contact that happened.
+# review (gpt-6.2-astra): edit `[the speaker = Lucie Manette] | speaks_to | [the listener = Mr. Lorry]`: Lucie is explaining to Mr. Lorry what she was told; the speaker and listener were reversed.
+# review (gpt-6.2-astra): edit `[I = Lucie Manette] | plans_to_visit | Paris`: Lucie is the “I” who is to go to Paris.
+# review (gpt-6.2-astra): add `[I = Lucie Manette] | plans_to_contact | [a gentleman of the Bank = Mr. Lorry]`: Lucie states the purpose of her journey: to communicate with the Bank’s gentleman.
+# review (gpt-6.2-astra): add `[a gentleman of the Bank = Mr. Lorry] | dispatched_to | Paris`: Paris is also the gentleman’s assigned destination.
 
 @ 52 98 171663 names | A Tale of Two Cities
 ~ A kettle steamed upon the hob, and in the midst of the wreck of papers a table shone, with plenty of wine upon it, and brandy, and rum, and sugar, and lemons.
@@ -520,9 +585,10 @@ The tall man called out again with a most unearthly cry, “Dead!”
 ~ In a little while he came.
 He had been known in England as Charles Darnay.
 =
-implied Charles Darnay | lives_in | England
+# outside the vocabulary: Charles Darnay | known_in | England
 # Being known by a name in England means he lived there. That "he" is
 # Charles Darnay is an alias, not a relation.
+# review (gpt-6.2-astra): edit `Charles Darnay | known_in | England`: England is where he was known by that name; neither sentence identifies it as his home.
 
 @ 57 98 266523 relation word | A Tale of Two Cities
 ~ “I know,” said Darnay, respectfully, “how can I fail to know, Doctor Manette, I who have seen you together from day to day, that between you and Miss Manette there is an affection so unusual, so touching, so belonging to the circumstances in which it has been nurtured, that it can have few parallels, even in the tenderness between a father and child.
@@ -531,19 +597,28 @@ I know, Doctor Manette--how can I fail to know--that, mingled with the affection
 Darnay | speaks_to | Doctor Manette
 Miss Manette | daughter_of | Doctor Manette
 Miss Manette | loves | Doctor Manette
-Miss Manette | relies_on | Doctor Manette
+# outside the vocabulary: Miss Manette | relies_on | Doctor Manette
+# outside the vocabulary: Miss Manette | feels_duty_toward | Doctor Manette
 # "her" is Miss Manette from the `~` line; "the affection and duty of a
 # daughter ... towards you".
+# review (gpt-6.2-astra): add `Miss Manette | feels_duty_toward | Doctor Manette`: Darnay distinguishes her sense of duty to her father from her love and reliance.
 
 @ 58 98 284252 random | A Tale of Two Cities
 ~ After trying it, Stryver, C. J., was satisfied that no plainer case could be.
 Accordingly, Mr. Stryver inaugurated the Long Vacation with a formal proposal to take Miss Manette to Vauxhall Gardens; that failing, to Ranelagh; that unaccountably failing too, it behoved him to present himself in Soho, and there declare his noble mind.
 =
-Mr. Stryver | plans_to_visit | Soho
-Mr. Stryver | plans_to_propose_to | Miss Manette ?
-implied Mr. Stryver | courts | Miss Manette
+# outside the vocabulary: Mr. Stryver | invites | Miss Manette
+# outside the vocabulary: Mr. Stryver | proposes_visit_to | Vauxhall Gardens
+# outside the vocabulary: Mr. Stryver | proposes_visit_to | Ranelagh
+# outside the vocabulary: Mr. Stryver | plans_to_visit | Soho
+# outside the vocabulary: implied Mr. Stryver | plans_to_propose_to | Miss Manette ?
+implied Mr. Stryver | dating | Miss Manette
 # "declare his noble mind" is the planned proposal; outings to Vauxhall and
 # Ranelagh are plans that failed, not visits.
+# review (gpt-6.2-astra): add `Mr. Stryver | invites | Miss Manette`: The “formal proposal to take Miss Manette” is an invitation to an outing.
+# review (gpt-6.2-astra): add `Mr. Stryver | proposes_visit_to | Vauxhall Gardens`: Vauxhall Gardens is the first proposed destination, not a place they actually visit.
+# review (gpt-6.2-astra): add `Mr. Stryver | proposes_visit_to | Ranelagh`: Stryver offers Ranelagh when the first invitation fails.
+# review (gpt-6.2-astra): edit `implied Mr. Stryver | plans_to_propose_to | Miss Manette ?`: “Declare his noble mind” suggests a marriage proposal; the only explicit proposal is for an outing.
 
 @ 59 98 334273 relation word | A Tale of Two Cities
 ~ He looked at no one present, and no one now looked at him; not even Madame Defarge, who had taken up her knitting, and was at work.
@@ -577,9 +652,9 @@ They had lounged away in a poverty-stricken, purposeless, accidental manner, qui
 Bankruptcy must inevitably have come of this young Pagan, in Lombard-street, London, and also of a curtained alcove in the rear of the immortal boy, and also of a looking-glass let into the wall, and also of clerks not at all old, who danced in public on the slightest provocation.
 =
 Lombard-street | located_in | London
-implied Tellson's | located_in | Lombard-street
 # The `~` line puts the Cupid in Tellson's; this sentence puts it in
 # Lombard-street.
+# review (gpt-6.2-astra): remove `implied Tellson's | located_in | Lombard-street`: Lombard-street is where such décor would have caused bankruptcy, not an address given for Tellson’s.
 
 @ 64 98 527242 random | A Tale of Two Cities
 ~ All such circumstances were indifferent to him, so that he did his duty.
@@ -593,17 +668,22 @@ On the opposite side of the courtyard, under a colonnade, was extensive standing
 =
 Madame Defarge | speaks_to | [her = Lucie]
 [her = Lucie] | daughter_of | [your father = Doctor Manette]
+[your father = Doctor Manette] | father_of | [her = Lucie]
+# outside the vocabulary: Madame Defarge | has_business_with | [her = Lucie]
 # "the daughter of your father" is Lucie herself. The husband is in the `~`
 # line, context only.
+# review (gpt-6.2-astra): add `[your father = Doctor Manette] | father_of | [her = Lucie]`: “Your father” explicitly identifies Manette as the addressee’s father.
+# review (gpt-6.2-astra): add `Madame Defarge | has_business_with | [her = Lucie]`: “Who is my business here” identifies Lucie as the purpose of Madame Defarge’s visit.
 
 @ 66 98 549581 names | A Tale of Two Cities
 ~ That, hereupon he had ascertained, through the registers on the table, that his son-in-law was among the living prisoners, and had pleaded hard to the Tribunal--of whom some members were asleep and some awake, some dirty with murder and some clean, some sober and some not--for his life and liberty.
 That, in the first frantic greetings lavished on himself as a notable sufferer under the overthrown system, it had been accorded to him to have Charles Darnay brought before the lawless Court, and examined.
 =
-[him = Doctor Manette] | helps | Charles Darnay
-implied Charles Darnay | son_in_law_of | [him = Doctor Manette]
+implied [him = Doctor Manette] | helps | Charles Darnay
+# outside the vocabulary: implied Charles Darnay | son_in_law_of | [him = Doctor Manette]
 # Getting Darnay brought before the court is helping him; "his son-in-law"
 # in the `~` line identifies Darnay.
+# review (gpt-6.2-astra): edit `implied [him = Doctor Manette] | helps | Charles Darnay`: The sentence reports that Manette secured an examination; his earlier plea shows why this was help for Darnay.
 
 @ 67 98 571964 random | A Tale of Two Cities
 ~ A murky red and yellow sky, and a rising mist from the Seine, denoted the approach of darkness.
@@ -616,8 +696,10 @@ It was almost dark when they arrived at the Bank.
 He also referred with confidence to the citizen’s letter, which had been taken from him at the Barrier, but which he did not doubt would be found among the papers then before the President.
 =
 implied [the citizen = Gabelle] | contacts | [the accused = Charles Darnay]
+implied [the accused = Charles Darnay] | located_in | the Barrier
 # "the citizen's letter, which had been taken from him": a letter from the
 # citizen that the accused carried.
+# review (gpt-6.2-astra): add `implied [the accused = Charles Darnay] | located_in | the Barrier`: The letter was taken from Darnay at the Barrier, placing him there at the time of seizure.
 
 @ 69 98 591261 names | A Tale of Two Cities
 ~ Nice toasts these Redheads will be drinking, wherever we buy it.”
@@ -632,8 +714,12 @@ Impossible, here in raging Paris, with Suspicion filling the air, for you to out
 [the speaker = Sydney Carton] | speaks_to | Mr. Barsad
 Mr. Barsad | contacts | [another aristocratic spy = Roger Cly]
 implied Mr. Barsad | colleague_of | [another aristocratic spy = Roger Cly]
+[the speaker = Sydney Carton] | located_in | Paris
+implied Mr. Barsad | located_in | Paris
 # "in communication with" is contact; "of the same antecedents as yourself"
 # makes them fellow spies.
+# review (gpt-6.2-astra): add `[the speaker = Sydney Carton] | located_in | Paris`: “Here in raging Paris” identifies the speaker’s location.
+# review (gpt-6.2-astra): add `implied Mr. Barsad | located_in | Paris`: Carton warns Barsad of the danger he faces “here,” implying that Barsad is also in Paris.
 
 @ 71 98 637902 names | A Tale of Two Cities
 ~ As the grinning little man held out the pipe he was smoking, to explain how he timed the executioner, Carton was so sensible of a rising desire to strike the life out of him, that he turned away.
@@ -646,8 +732,9 @@ implied Mr. Barsad | colleague_of | [another aristocratic spy = Roger Cly]
 “‘Do you doubt them?’ asked the younger brother.
 =
 [the younger brother] | speaks_to | [the doctor = Doctor Manette]
-implied [the younger brother] | sibling_of | [the elder brother]
+implied [the younger brother] | brother_of | [the elder brother]
 # Inside Doctor Manette's written account; the brothers are never named in it.
+# review (gpt-6.2-astra): edit `implied [the younger brother] | brother_of | [the elder brother]`: “The younger brother” supports the more specific brother_of rather than sibling_of.
 
 @ 73 98 679685 relation word | A Tale of Two Cities
 ~ I was brought here, I was brought to my living grave.
@@ -669,10 +756,11 @@ implied Defarge | visits | the Bastille
 ~ The key was put in the lock, and turned.
 Before the door was opened, or as it opened, a man said in a low voice, in English: “He has never seen me here; I have kept out of his way.
 =
-not [he = Charles Darnay] | sees | [me = Barsad] ?
-[me = Barsad] | avoids | [he = Charles Darnay] ?
+# outside the vocabulary: not [he = Charles Darnay] | sees_here | [me = Barsad] ?
+# outside the vocabulary: [me = Barsad] | avoids | [he = Charles Darnay] ?
 # "He has never seen me here; I have kept out of his way." Who the two are
 # comes from the book, hence the `?`.
+# review (gpt-6.2-astra): edit `not [he = Charles Darnay] | sees_here | [me = Barsad] ?`: “Never seen me here” denies a sighting at this location, not a sighting elsewhere.
 
 @ 76 2701 63545 relation word | Moby-Dick
 ~ “Do you pretend to say, landlord, that this harpooneer is actually engaged this blessed Saturday night, or rather Sunday morning, in peddling his head around this town?”
@@ -680,25 +768,29 @@ not [he = Charles Darnay] | sees | [me = Barsad] ?
 =
 [the landlord = Peter Coffin] | speaks_to | [the asker = Ishmael]
 [the landlord = Peter Coffin] | speaks_to | [him = Queequeg]
-implied [him = Queequeg] | lodges_at | [here = the Spouter-Inn]
 # "I told him he couldn't sell it here": the harpooneer is a guest of the inn.
+# review (gpt-6.2-astra): remove `implied [him = Queequeg] | lodges_at | [here = the Spouter-Inn]`: “Here” identifies the market where Queequeg hoped to sell, not where he lodges.
 
 @ 77 2701 66222 relation word | Moby-Dick
 ~ He wanted to, last Sunday, but I stopped him just as he was goin’ out of the door with four heads strung on a string, for all the airth like a string of inions.”
 This account cleared up the otherwise unaccountable mystery, and showed that the landlord, after all, had had no idea of fooling me—but at the same time what could I think of a harpooneer who stayed out of a Saturday night clean into the holy Sabbath, engaged in such a cannibal business as selling the heads of dead idolators?
 =
-not [the landlord = Peter Coffin] | deceives | [me = Ishmael]
-implied [I = Ishmael] | distrusts | [a harpooneer = Queequeg]
+# outside the vocabulary: not [the landlord = Peter Coffin] | intends_to_deceive | [me = Ishmael]
+# outside the vocabulary: implied [I = Ishmael] | disapproves_of | [a harpooneer = Queequeg]
 # "had had no idea of fooling me" denies it; the closing question shows
 # distrust without stating it.
+# review (gpt-6.2-astra): edit `not [the landlord = Peter Coffin] | intends_to_deceive | [me = Ishmael]`: “Had had no idea of fooling me” denies the landlord’s intention to deceive.
+# review (gpt-6.2-astra): edit `implied [I = Ishmael] | disapproves_of | [a harpooneer = Queequeg]`: “Such a cannibal business” conveys moral disapproval without specifically questioning Queequeg’s trustworthiness.
 
 @ 78 2701 113270 random | Moby-Dick
 ~ He thinks that a ship made by men will carry him into countries where God does not reign, but only the Captains of this earth.
 He skulks about the wharves of Joppa, and seeks a ship that’s bound for Tarshish.
 =
-[he = Jonah] | visits | Joppa
-[he = Jonah] | plans_to_visit | Tarshish
+[he = Jonah] | located_in | Joppa
+# outside the vocabulary: implied [he = Jonah] | plans_to_visit | Tarshish
 # "seeks a ship that's bound for Tarshish" is a stated intention.
+# review (gpt-6.2-astra): edit `[he = Jonah] | located_in | Joppa`: Skulking about Joppa’s wharves establishes Jonah’s location, not that he is a visitor.
+# review (gpt-6.2-astra): edit `implied [he = Jonah] | plans_to_visit | Tarshish`: Tarshish is the ship’s stated destination; Jonah’s plan is inferred from his search for that ship.
 
 @ 79 2701 121039 relation word | Moby-Dick
 ~ Aye, shipmates, Jonah was gone down into the sides of the ship—a berth in the cabin as I have taken it, and was fast asleep.
@@ -720,25 +812,31 @@ He’s a grand, ungodly, god-like man, Captain Ahab; doesn’t speak much; but, 
 =
 [the speaker = Peleg] | speaks_to | [the listener = Ishmael]
 implied [the speaker = Peleg] | knows | Captain Ahab
+implied [the speaker = Peleg] | admires | Captain Ahab
 # A prediction ("thou'lt like him") is in the `~` line; this sentence
 # describes Ahab from acquaintance.
+# review (gpt-6.2-astra): add `implied [the speaker = Peleg] | admires | Captain Ahab`: Calling Ahab “grand” and “god-like” conveys admiration.
 
 @ 82 2701 203813 relation word | Moby-Dick
 ~ “He’s killed himself,” she cried.
 “It’s unfort’nate Stiggs done over again—there goes another counterpane—God pity his poor mother!—it will be the ruin of my house.
 =
-[his poor mother] | mother_of | Stiggs
+[his poor mother] | mother_of | [he = Queequeg]
 [she = Mrs. Hussey] | owns | [my house = the Try Pots]
 implied Stiggs | died_in | [my house = the Try Pots]
+implied Stiggs | killed | Stiggs
 # "done over again" after "He's killed himself" means Stiggs died there.
+# review (gpt-6.2-astra): edit `[his poor mother] | mother_of | [he = Queequeg]`: Mrs. Hussey pities the mother of the man she now fears dead; Stiggs is the earlier case.
+# review (gpt-6.2-astra): add `implied Stiggs | killed | Stiggs`: “Stiggs done over again” identifies Stiggs’s death as the precedent for the suspected suicide.
 
 @ 83 2701 216317 names | Moby-Dick
 ~ “Quick, Bildad,” said Peleg, his partner, who, aghast at the close vicinity of the flying harpoon, had retreated towards the cabin gangway.
 “Quick, I say, you Bildad, and get the ship’s papers.
 =
-[the speaker = Peleg] | speaks_to | Bildad
-implied Peleg | partner_of | Bildad
+Peleg | speaks_to | Bildad
 # "Peleg, his partner" is in the `~` line.
+# review (gpt-6.2-astra): edit `Peleg | speaks_to | Bildad`: The context explicitly names Peleg as the speaker of “I say,” so his name needs no brackets.
+# review (gpt-6.2-astra): remove `implied Peleg | partner_of | Bildad`: The partnership is stated only in the context line, not in the command.
 
 @ 84 2701 232541 names | Moby-Dick
 ~ “There are some sailors running ahead there, if I see right,” said I to Queequeg, “it can’t be shadows; she’s off by sunrise, I guess; come on!”
@@ -748,14 +846,22 @@ implied Peleg | partner_of | Bildad
 [a voice = Elijah] | meets | [me = Ishmael]
 [a voice = Elijah] | speaks_to | Queequeg
 [a voice = Elijah] | speaks_to | [me = Ishmael]
+# outside the vocabulary: [a voice = Elijah] | touches | Queequeg
+# outside the vocabulary: [a voice = Elijah] | touches | [me = Ishmael]
+# outside the vocabulary: [a voice = Elijah] | looks_at | Queequeg
+# outside the vocabulary: [a voice = Elijah] | looks_at | [me = Ishmael]
 implied [me = Ishmael] | companion_of | Queequeg
 # He comes up behind them and lays a hand on both; "Avast!" is to both.
+# review (gpt-6.2-astra): add `[a voice = Elijah] | touches | Queequeg`: “Both our shoulders” includes Queequeg’s shoulder.
+# review (gpt-6.2-astra): add `[a voice = Elijah] | touches | [me = Ishmael]`: The narrator also feels Elijah’s hand on his shoulder.
+# review (gpt-6.2-astra): add `[a voice = Elijah] | looks_at | Queequeg`: Queequeg is the first person Elijah peers at.
+# review (gpt-6.2-astra): add `[a voice = Elijah] | looks_at | [me = Ishmael]`: “From Queequeg to me” says Elijah turns his gaze to Ishmael.
 
 @ 85 2701 252892 names | Moby-Dick
 ~ Why did the Dutch in De Witt’s time have admirals of their whaling fleets?
 Why did Louis XVI. of France, at his own personal expense, fit out whaling ships from Dunkirk, and politely invite to that town some score or two of families from our own island of Nantucket?
 =
-Louis XVI. | king_of | France
+# outside the vocabulary: Louis XVI. | king_of | France
 implied Dunkirk | located_in | France
 # The invited families are a group.
 
@@ -778,8 +884,12 @@ The second Emir lounges about the rigging awhile, and then slightly shaking the 
 =
 [the second Emir = Stubb] | speaks_to | Mr. Flask
 implied [the second Emir = Stubb] | colleague_of | Mr. Flask ?
+# outside the vocabulary: implied [the second Emir = Stubb] | follows | Starbuck
+implied [the second Emir = Stubb] | colleague_of | Starbuck
 # "his predecessors" are a group. The mates dining in turn are fellow
 # officers, inferred.
+# review (gpt-6.2-astra): add `implied [the second Emir = Stubb] | follows | Starbuck`: Starbuck’s descent identifies him as one of the predecessors Stubb follows.
+# review (gpt-6.2-astra): add `implied [the second Emir = Stubb] | colleague_of | Starbuck`: The first and second “Emirs” take successive turns in the same shipboard routine.
 
 @ 89 2701 430459 names | Moby-Dick
 ~ And those sublimer towers, the White Mountains of New Hampshire, whence, in peculiar moods, comes that gigantic ghostliness over the soul at the bare mention of that name, while the thought of Virginia’s Blue Ridge is full of a soft, dewy, distant dreaminess?
@@ -796,16 +906,19 @@ This vigilance was not long without reward.
 ~ But quitting all these unprofessional attempts, let us glance at those pictures of leviathan purporting to be sober, scientific delineations, by those who know.
 In old Harris’s collection of voyages there are some plates of whales extracted from a Dutch book of voyages, A.D. 1671, entitled “A Whaling Voyage to Spitzbergen in the ship Jonas in the Whale, Peter Peterson of Friesland, master.”
 =
-Peter Peterson | captain_of | Jonas in the Whale
-Peter Peterson | from | Friesland
+# outside the vocabulary: Peter Peterson | from | Friesland
+# outside the vocabulary: implied Peter Peterson | sailed_to | Spitzbergen
 # "Peter Peterson of Friesland, master" of the ship.
+# review (gpt-6.2-astra): remove `Peter Peterson | captain_of | Jonas in the Whale`: The title identifies Jonas in the Whale as a ship, not a person or place.
+# review (gpt-6.2-astra): add `implied Peter Peterson | sailed_to | Spitzbergen`: Naming Peterson as master on the voyage to Spitzbergen implies that he sailed there.
 
 @ 92 2701 633857 names | Moby-Dick
 ~ “Woo-hoo!
 Wa-hee!” screamed the Gay-Header in reply, raising some old war-whoop to the skies; as every oarsman in the strained boat involuntarily bounced forward with the one tremendous leading stroke which the eager Indian gave.
 =
-[the Gay-Header = Tashtego] | speaks_to | [the boat-header = Stubb] ?
+[the Gay-Header = Tashtego] | speaks_to | [the previous speaker = Stubb] ?
 # "in reply": who he answers comes from the book.
+# review (gpt-6.2-astra): edit `[the Gay-Header = Tashtego] | speaks_to | [the previous speaker = Stubb] ?`: “In reply” identifies the addressee as the previous speaker; the excerpt does not give his rank.
 
 @ 93 2701 728760 random | Moby-Dick
 ~ Man may, in effect, be said to look out on the world from a sentry-box with two joined sashes for his window.
@@ -822,8 +935,8 @@ There—still high elevated above the rest of the company, to whom he vivaciousl
 ~ With one intent all the combined rival boats were pointed for this one fish, because not only was he the largest, and therefore the most valuable whale, but he was nearest to them, and the other whales were going with such great velocity, moreover, as almost to defy pursuit for the time.
 At this juncture the Pequod’s keels had shot by the three German boats last lowered; but from the great start he had had, Derick’s boat still led the chase, though every moment neared by his foreign rivals.
 =
-implied Derick | rival_of | Pequod ?
 # The Pequod's boats are among "his foreign rivals"; the Pequod is a ship.
+# review (gpt-6.2-astra): remove `implied Derick | rival_of | Pequod ?`: Derick competes with the crews of the Pequod’s boats; no individual rival is identified.
 
 @ 96 2701 798911 relation word | Moby-Dick
 ~ In fact, placed before the strict and piercing truth, this whole story will fare like that fish, flesh, and fowl idol of the Philistines, Dagon by name; who being planted before the ark of Israel, his horse’s head and both the palms of his hands fell off from him, and only the stump or fishy part of him remained.
@@ -843,37 +956,41 @@ High times, indeed, if unprincipled young rakes like him are to be permitted to 
 Another has the toothache: the carpenter out pincers, and clapping one hand upon his bench bids him be seated there; but the poor fellow unmanageably winces under the unconcluded operation; whirling round the handle of his wooden vice, the carpenter signs him to clap his jaw in that, if he would have him draw the tooth.
 =
 [the carpenter] | helps | [the poor fellow]
+[the carpenter] | speaks_to | [the poor fellow]
 # Habitual and unnamed on both sides.
+# review (gpt-6.2-astra): add `[the carpenter] | speaks_to | [the poor fellow]`: Before gesturing toward the vice, the carpenter tells the sailor to sit on the bench.
 
 @ 99 2701 1107664 names | Moby-Dick
 ~ Aye, and say’st the men have vow’d thy vow; say’st all of us are Ahabs.
 Great God forbid!—But is there no other way? no lawful way?—Make him a prisoner to be taken home?
 =
-implied [the speaker = Starbuck] | opposes | [him = Ahab] ?
+# outside the vocabulary: implied [the speaker = Starbuck] | opposes | [him = Ahab] ?
 # Questions; "Great God forbid!" rejects being one of the "Ahabs".
 
 @ 100 2701 1193626 names | Moby-Dick
 ~ Ah! how they still strove through that infinite blueness to seek out the thing that might destroy them!
 “Why sing ye not out for him, if ye see him?” cried Ahab, when, after the lapse of some minutes since the first cry, no more had been heard.
 =
-implied Ahab | looks_for | [him = Moby Dick]
 # Ahab addresses the crew, a group; "him" is the whale they watch for.
+# review (gpt-6.2-astra): remove `implied Ahab | looks_for | [him = Moby Dick]`: The sought “him” is the whale, not a person or place.
 
 @ 101 768 72941 random | Wuthering Heights
 ~ “And I pray that he may break your neck: take him, and be damned, you beggarly interloper! and wheedle my father out of all he has: only afterwards show him what you are, imp of Satan.—And take that, I hope he’ll kick out your brains!”
 Heathcliff had gone to loose the beast, and shift it to his own stall; he was passing behind it, when Hindley finished his speech by knocking him under its feet, and without stopping to examine whether his hopes were fulfilled, ran away as fast as he could.
 =
-Hindley | attacks | Heathcliff
+# outside the vocabulary: Hindley | attacks | Heathcliff
 implied Hindley | hates | Heathcliff
+implied Hindley | speaks_to | Heathcliff
 # "knocking him under its feet"; the curse in the `~` line shows the hatred.
+# review (gpt-6.2-astra): add `implied Hindley | speaks_to | Heathcliff`: The target mentions Hindley finishing his speech; the threat and the blow identify Heathcliff as its likely addressee.
 
 @ 102 768 91430 random | Wuthering Heights
 ~ He carried her in; I followed, grumbling execrations and vengeance.
 ‘What prey, Robert?’ hallooed Linton from the entrance.
 =
 Linton | speaks_to | Robert
-implied Robert | servant_of | Linton ?
 # Hallooed to a man who has carried in the catch, like a servant.
+# review (gpt-6.2-astra): remove `implied Robert | servant_of | Linton ?`: Calling Robert by name to ask a question gives no indication that he serves Linton.
 
 @ 103 768 93386 relation word | Wuthering Heights
 ~ And yet, my dear, the child is in mourning—surely it is—and she may be lamed for life!’
@@ -881,9 +998,9 @@ implied Robert | servant_of | Linton ?
 =
 Mr. Linton | speaks_to | Catherine
 [her brother = Hindley] | brother_of | Catherine
-Mr. Linton | blames | [her brother = Hindley]
-implied Mr. Linton | speaks_to | [me = Heathcliff]
+# outside the vocabulary: Mr. Linton | blames | [her brother = Hindley]
 # "turning from me to Catherine": he had been speaking to the narrator.
+# review (gpt-6.2-astra): remove `implied Mr. Linton | speaks_to | [me = Heathcliff]`: Turning away from Heathcliff does not establish that Mr. Linton spoke to him.
 
 @ 104 768 97752 names | Wuthering Heights
 ~ I removed the habit, and there shone forth beneath a grand plaid silk frock, white trousers, and burnished shoes; and, while her eyes sparkled joyfully when the dogs came bounding up to welcome her, she dared hardly touch them lest they should fawn upon her splendid garments.
@@ -901,8 +1018,10 @@ Dame Archer brought the cherub down to master, in the house, and his face just b
 [the cherub = Hareton] | son_of | [your wife = Frances]
 [your wife = Frances] | wife_of | Earnshaw
 [the old croaker = Mr. Kenneth] | speaks_to | Earnshaw
+# outside the vocabulary: Dame Archer | brings | [the cherub = Hareton]
 # "your wife has been spared to leave you this son". "master" and "Earnshaw"
 # are the same man.
+# review (gpt-6.2-astra): add `Dame Archer | brings | [the cherub = Hareton]`: Dame Archer explicitly brings the child down to Earnshaw.
 
 @ 106 768 130070 names | Wuthering Heights
 ~ On the before-named occasion he came into the house to announce his intention of doing nothing, while I was assisting Miss Cathy to arrange her dress: she had not reckoned on his taking it into his head to be idle; and imagining she would have the whole place to herself, she managed, by some means, to inform Mr. Edgar of her brother’s absence, and was then preparing to receive him.
@@ -915,26 +1034,31 @@ Heathcliff | speaks_to | Cathy
 “Silence, eavesdropper!” cried Catherine; “none of your insolence before me!
 =
 Catherine | speaks_to | [eavesdropper = Joseph]
+# duplicate after revision: Catherine | rebukes | [eavesdropper = Joseph]
 # The `~` line is Joseph's speech, context only.
+# review (gpt-6.2-astra): add `Catherine | rebukes | [eavesdropper = Joseph]`: Catherine orders Joseph to be silent and reproves him for his insolence.
 
 @ 108 768 216150 names | Wuthering Heights
 ~ A deliberate deceiver.”
 “Who is, Nelly?” said Catherine’s voice at my elbow: I had been over-intent on watching the pair outside to mark her entrance.
 =
 Catherine | speaks_to | Nelly
-implied Catherine | meets | Nelly
 # "at my elbow ... her entrance": she came up to Nelly.
+# review (gpt-6.2-astra): remove `implied Catherine | meets | Nelly`: Nelly notices Catherine speaking beside her; Catherine's entrance establishes her presence, not a meeting.
 
 @ 109 768 217038 names | Wuthering Heights
 ~ Heathcliff, what are you about, raising this stir?
 I said you must let Isabella alone!—I beg you will, unless you are tired of being received here, and wish Linton to draw the bolts against you!”
 =
 [the speaker = Catherine] | speaks_to | Heathcliff
-[the speaker = Catherine] | warns | Heathcliff
-implied Heathcliff | courts | Isabella
-implied Linton | hosts | Heathcliff
+# duplicate after revision: [the speaker = Catherine] | warns | Heathcliff
+# outside the vocabulary: implied Heathcliff | bothers | Isabella
+# outside the vocabulary: implied Linton | hosts | Heathcliff
+implied [the speaker = Catherine] | protects | Isabella
 # "let Isabella alone" implies his attentions; "tired of being received here"
 # makes him Linton's guest.
+# review (gpt-6.2-astra): edit `implied Heathcliff | bothers | Isabella`: “Let Isabella alone” suggests Heathcliff has been bothering her but does not identify his conduct as courtship.
+# review (gpt-6.2-astra): add `implied [the speaker = Catherine] | protects | Isabella`: Catherine intervenes on Isabella's behalf by insisting that Heathcliff leave her alone.
 
 @ 110 768 220297 relation word | Wuthering Heights
 ~ The spirit which served her was growing intractable: she could neither lay nor control it.
@@ -942,44 +1066,48 @@ He stood on the hearth with folded arms, brooding on his evil thoughts; and in t
 =
 [I = Nelly] | looks_for | [the master = Edgar Linton]
 implied [the master = Edgar Linton] | master_of | [I = Nelly]
+# outside the vocabulary: [the master = Edgar Linton] | wonders_about | Catherine
 # "He" is Heathcliff; brooding names no one.
+# review (gpt-6.2-astra): add `[the master = Edgar Linton] | wonders_about | Catherine`: The sentence states that the master wonders why Catherine has stayed below so long.
 
 @ 111 768 254041 names | Wuthering Heights
 ~ He was a plain rough man; and he made no scruple to speak his doubts of her surviving this second attack; unless she were more submissive to his directions than she had shown herself before.
 “Nelly Dean,” said he, “I can’t help fancying there’s an extra cause for this.
 =
 [he = Mr. Kenneth] | speaks_to | Nelly Dean
-implied [he = Mr. Kenneth] | doctor_of | [her = Catherine]
 # "his directions" about "her surviving this second attack" in the `~` line.
+# review (gpt-6.2-astra): remove `implied [he = Mr. Kenneth] | doctor_of | [her = Catherine]`: The evidence that he directs her treatment is in the context line; the target states his suspicion to Nelly.
 
 @ 112 768 270459 random | Wuthering Heights
 ~ “Who are you?”
 “My name _was_ Isabella Linton,” I replied.
 =
-Isabella Linton | speaks_to | [the asker = Hareton] ?
-implied Isabella Linton | spouse_of | [her husband = Heathcliff]
+Isabella Linton | speaks_to | [the asker = Hindley]
 # "My name was Isabella Linton": the past tense means she has married.
+# review (gpt-6.2-astra): edit `Isabella Linton | speaks_to | [the asker = Hindley]`: Isabella is answering Hindley Earnshaw, not his son Hareton.
+# review (gpt-6.2-astra): remove `implied Isabella Linton | spouse_of | [her husband = Heathcliff]`: “Was” suggests a change of name, but neither line identifies a spouse or establishes marriage as the cause.
 
 @ 113 768 285230 relation word | Wuthering Heights
 ~ I sometimes wonder at him with an intensity that deadens my fear: yet, I assure you, a tiger or a venomous serpent could not rouse terror in me equal to that which he wakens.
 He told me of Catherine’s illness, and accused my brother of causing it; promising that I should be Edgar’s proxy in suffering, till he could get hold of him.
 =
 [he = Heathcliff] | speaks_to | [me = Isabella]
-[he = Heathcliff] | accuses | Edgar
+# outside the vocabulary: [he = Heathcliff] | accuses | Edgar
 Edgar | brother_of | [me = Isabella]
-[he = Heathcliff] | threatens | [me = Isabella]
-[he = Heathcliff] | threatens | Edgar
+# duplicate after revision: [he = Heathcliff] | threatens | [me = Isabella]
+implied [he = Heathcliff] | speaks_to | Edgar
 implied [he = Heathcliff] | hates | Edgar
 # "accused my brother ... I should be Edgar's proxy in suffering, till he
 # could get hold of him" names Edgar as "my brother".
+# review (gpt-6.2-astra): edit `implied [he = Heathcliff] | threatens | Edgar`: He explicitly promises Isabella suffering; the threat of harm to Edgar is conveyed by calling her his proxy until he can be caught.
 
 @ 114 768 311118 names | Wuthering Heights
 ~ “What now?” said Catherine, leaning back, and returning his look with a suddenly clouded brow: her humour was a mere vane for constantly varying caprices.
 “You and Edgar have broken my heart, Heathcliff!
 =
 Catherine | speaks_to | Heathcliff
-Heathcliff | hurts | Catherine
-Edgar | hurts | Catherine
+# outside the vocabulary: Heathcliff | hurts | Catherine
+# outside the vocabulary: Edgar | hurts | Catherine
 # "You and Edgar have broken my heart"; the speaker is Catherine from the
 # `~` line.
 
@@ -996,80 +1124,104 @@ Edgar | hurts | Catherine
 =
 [she = Cathy] | speaks_to | Ellen
 [he = Hareton] | speaks_to | [me = Cathy]
-implied [she = Cathy] | resents | [he = Hareton]
+# outside the vocabulary: implied [she = Cathy] | resents | [he = Hareton]
 # "how dare he speak so to me?" presupposes that he spoke to her.
 
 @ 117 768 414947 relation word | Wuthering Heights
 ~ And he must have a fire in the middle of summer; and Joseph’s bacca-pipe is poison; and he must always have sweets and dainties, and always milk, milk for ever—heeding naught how the rest of us are pinched in winter; and there he’ll sit, wrapped in his furred cloak in his chair by the fire, with some toast and water or other slop on the hob to sip at; and if Hareton, for pity, comes to amuse him—Hareton is not bad-natured, though he’s rough—they’re sure to part, one swearing and the other crying.
 I believe the master would relish Earnshaw’s thrashing him to a mummy, if he were not his son; and I’m certain he would be fit to turn him out of doors, if he knew half the nursing he gives hisseln.
 =
-[him = Linton] | son_of | [the master = Heathcliff]
-implied [the master = Heathcliff] | dislikes | [him = Linton]
+implied [him = Linton] | son_of | [the master = Heathcliff]
+# outside the vocabulary: implied [the master = Heathcliff] | dislikes | [him = Linton]
 # "if he were not his son" presupposes that he is; Earnshaw's thrashing and
 # turning him out are conditional.
+# review (gpt-6.2-astra): edit `implied [him = Linton] | son_of | [the master = Heathcliff]`: “If he were not his son” invokes a contrary-to-fact condition, implying the positive kinship rather than asserting it outright.
 
 @ 118 768 419539 names | Wuthering Heights
 ~ “You suppose papa is highly esteemed and respected, then?” he said, sarcastically.
 “And what are you?” inquired Catherine, gazing curiously on the speaker.
 =
-Catherine | speaks_to | [the speaker]
+Catherine | speaks_to | [the speaker = Heathcliff]
+# outside the vocabulary: Catherine | looks_at | [the speaker = Heathcliff]
 # Who "he" is is not settled by the shown text.
+# review (gpt-6.2-astra): edit `Catherine | speaks_to | [the speaker = Heathcliff]`: The speaker Catherine questions is Heathcliff.
+# review (gpt-6.2-astra): add `Catherine | looks_at | [the speaker = Heathcliff]`: “Gazing curiously on the speaker” states a second action directed at him.
 
 @ 119 768 468752 random | Wuthering Heights
 ~ “You little liar!
 I hate you now!” she panted, and her face grew red with passion.
 =
-[she = Cathy] | speaks_to | [you = Linton] ?
-[she = Cathy] | hates | [you = Linton] ?
+[she = Cathy] | speaks_to | [you = Linton]
+[she = Cathy] | hates | [you = Linton]
 # "I hate you now!" is stated; who the two are comes from the book.
+# review (gpt-6.2-astra): edit `[she = Cathy] | speaks_to | [you = Linton]`: Cathy is addressing Linton in this quarrel, so the uncertainty marker is unnecessary.
+# review (gpt-6.2-astra): edit `[she = Cathy] | hates | [you = Linton]`: Cathy expressly declares her present hatred of Linton.
 
 @ 120 768 494578 names | Wuthering Heights
 ~ He let go, thundering one of his horrid curses, and I galloped home more than half out of my senses.
 “I didn’t bid you good-night that evening, and I didn’t go to Wuthering Heights the next: I wished to go exceedingly; but I was strangely excited, and dreaded to hear that Linton was dead, sometimes; and sometimes shuddered at the thought of encountering Hareton.
 =
+[I = Cathy] | speaks_to | [you = Nelly]
+# outside the vocabulary: not [I = Cathy] | bids_goodnight_to | [you = Nelly]
 not [I = Cathy] | visits | Wuthering Heights
-[I = Cathy] | wants_to_visit | Wuthering Heights
-[I = Cathy] | worries_about | Linton
-[I = Cathy] | fears | Hareton
+# outside the vocabulary: [I = Cathy] | wants_to_visit | Wuthering Heights
+# outside the vocabulary: [I = Cathy] | worries_about | Linton
+# outside the vocabulary: [I = Cathy] | fears | Hareton
 # "didn't bid you good-night" denies a goodnight, not speaking.
+# review (gpt-6.2-astra): add `[I = Cathy] | speaks_to | [you = Nelly]`: Cathy addresses Nelly directly in giving this account.
+# review (gpt-6.2-astra): add `not [I = Cathy] | bids_goodnight_to | [you = Nelly]`: Cathy specifically denies having said good-night to Nelly that earlier evening.
 
 @ 121 768 547647 random | Wuthering Heights
 ~ And you say she’s sick; and yet you leave her alone, up there in a strange house! _You_ who have felt what it is to be so neglected!
 You could pity your own sufferings; and she pitied them, too; but you won’t pity hers!
 =
 [the speaker = Nelly] | speaks_to | [you = Linton]
-[she = Cathy] | pities | [you = Linton]
-not [you = Linton] | pities | [she = Cathy]
-[you = Linton] | neglects | [she = Cathy]
+# outside the vocabulary: [you = Linton] | pities | [you = Linton]
+# outside the vocabulary: [she = Cathy] | pities | [you = Linton]
+# outside the vocabulary: not [you = Linton] | pities | [she = Cathy]
+# review (gpt-6.2-astra): add `[you = Linton] | pities | [you = Linton]`: “Your own sufferings” makes Linton’s self-pity the point of contrast with his refusal to pity Cathy.
+# review (gpt-6.2-astra): remove `[you = Linton] | neglects | [she = Cathy]`: Nelly accuses him of leaving Cathy alone in the context line, not in the target sentence.
 
 @ 122 768 552078 relation word | Wuthering Heights
 ~ I said Heathcliff forced me to go in: which was not quite true.
 I uttered as little as possible against Linton; nor did I describe all his father’s brutal conduct—my intentions being to add no bitterness, if I could help it, to his already overflowing cup.
 =
 [his father = Heathcliff] | father_of | Linton
-implied [I = Cathy] | protects | Linton ?
+[I = Nelly] | speaks_to | [the listener = Edgar Linton]
+# outside the vocabulary: [I = Nelly] | limits_criticism_of | Linton
+# outside the vocabulary: [I = Nelly] | intends_to_spare_distress | [his = Edgar Linton]
 # Saying "as little as possible against Linton" shields him; Heathcliff in
 # the `~` line identifies "his father".
+# review (gpt-6.2-astra): add `[I = Nelly] | speaks_to | [the listener = Edgar Linton]`: Nelly is recounting what happened to Edgar.
+# review (gpt-6.2-astra): add `[I = Nelly] | limits_criticism_of | Linton`: Nelly expressly says she uttered as little as possible against Linton.
+# review (gpt-6.2-astra): edit `[I = Nelly] | intends_to_spare_distress | [his = Edgar Linton]`: The stated intention is Nelly’s wish not to add to Edgar’s distress, not Cathy’s protection of Linton.
 
 @ 123 768 576161 relation word | Wuthering Heights
 ~ The lands, being a minor, he could not meddle with.
 However, Mr. Heathcliff has claimed and kept them in his wife’s right and his also: I suppose legally; at any rate, Catherine, destitute of cash and friends, cannot disturb his possession.
 =
 [his wife = Isabella] | wife_of | Mr. Heathcliff
+# outside the vocabulary: Mr. Heathcliff | claims | [the lands = the Thrushcross Grange estate]
 Mr. Heathcliff | owns | [the lands = the Thrushcross Grange estate]
+# outside the vocabulary: not Catherine | can_dispossess | Mr. Heathcliff
 # "claimed and kept them in his wife's right".
+# review (gpt-6.2-astra): add `Mr. Heathcliff | claims | [the lands = the Thrushcross Grange estate]`: The narrator distinguishes making a claim from keeping the land.
+# review (gpt-6.2-astra): edit `Mr. Heathcliff | possesses | [the lands = the Thrushcross Grange estate]`: Possession is stated as fact; its legality, which would support “owns,” is only supposed.
+# review (gpt-6.2-astra): add `not Catherine | can_dispossess | Mr. Heathcliff`: The final clause explicitly denies Catherine’s ability to disturb his possession.
 
 @ 124 768 623194 names | Wuthering Heights
 ~ I’d rayther arn my bite an’ my sup wi’ a hammer in th’ road!”
 “Now, now, idiot!” interrupted Heathcliff, “cut it short!
 =
 Heathcliff | speaks_to | [idiot = Joseph]
+# duplicate after revision: Heathcliff | interrupts | [idiot = Joseph]
+# review (gpt-6.2-astra): add `Heathcliff | interrupts | [idiot = Joseph]`: The dialogue tag states that Heathcliff cuts Joseph off, not merely that he addresses him.
 
 @ 125 768 658685 names | Wuthering Heights
 ~ Idle tales, you’ll say, and so say I. Yet that old man by the kitchen fire affirms he has seen two on ’em looking out of his chamber window on every rainy night since his death:—and an odd thing happened to me about a month ago.
 I was going to the Grange one evening—a dark evening, threatening thunder—and, just at the turn of the Heights, I encountered a little boy with a sheep and two lambs before him; he was crying terribly; and I supposed the lambs were skittish, and would not be guided.
 =
-[I = Nelly] | travels_to | the Grange
+# outside the vocabulary: [I = Nelly] | travels_to | the Grange
 [I = Nelly] | meets | [a little boy]
 # "I encountered a little boy": a meeting. The old man's ghosts are hearsay.
 
@@ -1079,9 +1231,10 @@ I am sure she will be an excellent servant; and it will be a great comfort to po
 =
 [the speaker = Mr. Woodhouse] | speaks_to | [you = Emma]
 Miss Taylor | knows | [she = Hannah]
-implied [she = Hannah] | servant_of | Miss Taylor
+# outside the vocabulary: implied [she = Hannah] | expected_to_serve | Miss Taylor
 # "she will be an excellent servant ... to poor Miss Taylor": a planned
 # post, so inferred; "somebody ... she is used to see" is stated.
+# review (gpt-6.2-astra): edit `implied [she = Hannah] | expected_to_serve | Miss Taylor`: Mr. Woodhouse looks forward to Hannah’s service; he does not say she already serves Miss Taylor.
 
 @ 127 158 42040 names | Emma
 ~ She had been satisfied to hear and believe just what Mrs. Goddard chose to tell her; and looked no farther.
@@ -1103,7 +1256,7 @@ It was accepted; and from that period Jane had belonged to Colonel Campbell’s 
 =
 Jane | lives_with | Colonel Campbell
 [her grandmother = Mrs. Bates] | grandmother_of | Jane
-Jane | visits | [her grandmother = Mrs. Bates]
+Jane | meets | [her grandmother = Mrs. Bates]
 implied Colonel Campbell | guardian_of | Jane
 # "the whole charge of her education" in the `~` line makes him her
 # guardian.
@@ -1113,18 +1266,24 @@ implied Colonel Campbell | guardian_of | Jane
 “Well, sir,” cried Mr. Weston, “as I took Miss Taylor away, it is incumbent on me to supply her place, if I can; and I will step to Mrs. Goddard in a moment, if you wish it.”
 =
 Mr. Weston | speaks_to | [sir = Mr. Woodhouse]
-Mr. Weston | plans_to_visit | Mrs. Goddard
+# outside the vocabulary: Mr. Weston | took_away | Miss Taylor
+# outside the vocabulary: Mr. Weston | offers_to_visit | Mrs. Goddard
 implied Mr. Weston | spouse_of | Miss Taylor
 # "as I took Miss Taylor away" after "if you had not married" in the `~`
 # line.
+# review (gpt-6.2-astra): add `Mr. Weston | took_away | Miss Taylor`: Mr. Weston explicitly takes responsibility for Miss Taylor’s departure from Mr. Woodhouse’s home.
+# review (gpt-6.2-astra): edit `Mr. Weston | offers_to_visit | Mrs. Goddard`: “If you wish it” makes this an offer to Mr. Woodhouse rather than a settled plan.
 
 @ 131 158 418775 names | Emma
 ~ Mrs. Weston, capital in her country-dances, was seated, and beginning an irresistible waltz; and Frank Churchill, coming up with most becoming gallantry to Emma, had secured her hand, and led her up to the top.
 While waiting till the other young people could pair themselves off, Emma found time, in spite of the compliments she was receiving on her voice and her taste, to look about, and see what became of Mr. Knightley.
 =
 Emma | looks_for | Mr. Knightley
-implied Emma | dances_with | Frank Churchill
+implied Emma | partner_of | Frank Churchill
+# outside the vocabulary: implied Frank Churchill | compliments | Emma ?
 # The `~` line has him lead her up the dance.
+# review (gpt-6.2-astra): edit `implied Emma | partner_of | Frank Churchill`: Emma and Frank are paired for the waltz, but they are still waiting for the other pairs to form.
+# review (gpt-6.2-astra): add `implied Frank Churchill | compliments | Emma ?`: Frank is beside Emma as her partner, making him the likely, though unnamed, source of the compliments.
 
 @ 132 158 423625 names | Emma
 ~ Miss Nash thinks either of the Coxes would be very glad to marry him.”
@@ -1139,12 +1298,16 @@ They were stopping, however, in the first place at Mrs. Bates’s; whose house w
 =
 Mrs. Weston | meets | Emma
 [her son-in-law = Frank Churchill] | meets | Emma
-Mrs. Weston | plans_to_visit | [Mrs. Bates's house]
-[her son-in-law = Frank Churchill] | plans_to_visit | [Mrs. Bates's house]
-[Mrs. Bates's house] | near | Randalls ?
-implied [her son-in-law = Frank Churchill] | stepson_of | Mrs. Weston
+# outside the vocabulary: Mrs. Weston | stops_at | Mrs. Bates’s
+# outside the vocabulary: [her son-in-law = Frank Churchill] | stops_at | Mrs. Bates’s
+Mrs. Bates | lives_in | Mrs. Bates’s
 # "they" is the two people the `~` line names, so each gets a line. "had all
 # but knocked" is a visit begun. "son-in-law" meant stepson.
+# review (gpt-6.2-astra): edit `Mrs. Weston | stops_at | Mrs. Bates’s`: Mrs. Weston has reached the door and all but knocked; the stop itself is not merely planned.
+# review (gpt-6.2-astra): edit `[her son-in-law = Frank Churchill] | stops_at | Mrs. Bates’s`: The plural “they were stopping” includes Frank in the actual stop.
+# review (gpt-6.2-astra): add `Mrs. Bates | lives_in | Mrs. Bates’s`: “Whose house” identifies the stopping place as Mrs. Bates’s residence.
+# review (gpt-6.2-astra): remove `[Mrs. Bates's house] | near | Randalls ?`: “A little nearer” compares distances; it does not say that the house is near Randalls.
+# review (gpt-6.2-astra): remove `implied [her son-in-law = Frank Churchill] | stepson_of | Mrs. Weston`: The kin term occurs only in the context line, and the target adds no evidence about the kind of kinship.
 
 @ 134 158 457808 relation word | Emma
 ~ Mr. Perry is extremely concerned when any of us are ill.
@@ -1152,7 +1315,8 @@ But I do not understand how the room at the Crown can be safer for you than your
 =
 [the speaker = Mr. Woodhouse] | speaks_to | [you = Frank Churchill]
 [your father = Mr. Weston] | father_of | [you = Frank Churchill]
-[your father = Mr. Weston] | owns | [your father's house = Randalls]
+[your father = Mr. Weston] | lives_in | [your father's house = Randalls]
+# review (gpt-6.2-astra): edit `[your father = Mr. Weston] | lives_in | [your father's house = Randalls]`: “Your father’s house” identifies his home without distinguishing ownership from tenancy.
 
 @ 135 158 458363 relation word | Emma
 ~ I never heard of such a thing.
@@ -1160,9 +1324,11 @@ Dancing with open windows!—I am sure, neither your father nor Mrs. Weston (poo
 =
 [the speaker = Mr. Woodhouse] | speaks_to | [you = Frank Churchill]
 [your father = Mr. Weston] | father_of | [you = Frank Churchill]
-implied Mrs. Weston | spouse_of | [your father = Mr. Weston]
-implied Mrs. Weston | stepmother_of | [you = Frank Churchill]
+# outside the vocabulary: Mrs. Weston | formerly_known_as | Miss Taylor
 # "Mrs. Weston (poor Miss Taylor that was)" is an alias, not a relation.
+# review (gpt-6.2-astra): add `Mrs. Weston | formerly_known_as | Miss Taylor`: “Poor Miss Taylor that was” explicitly gives Mrs. Weston’s former name.
+# review (gpt-6.2-astra): remove `implied Mrs. Weston | spouse_of | [your father = Mr. Weston]`: Naming two people who would object does not identify the father as Mrs. Weston’s husband.
+# review (gpt-6.2-astra): remove `implied Mrs. Weston | stepmother_of | [you = Frank Churchill]`: Mrs. Weston’s anticipated objection does not establish a parental relationship to the listener.
 
 @ 136 158 512188 random | Emma
 ~ She had a little beauty and a little accomplishment, but so little judgment that she thought herself coming with superior knowledge of the world, to enliven and improve a country neighbourhood; and conceived Miss Hawkins to have held such a place in society as Mrs. Elton’s consequence only could surpass.
@@ -1176,27 +1342,32 @@ There was no reason to suppose Mr. Elton thought at all differently from his wif
 “My dear Jane, what is this I hear?—Going to the post-office in the rain!—This must not be, I assure you.—You sad girl, how could you do such a thing?—It is a sign I was not there to take care of you.”
 =
 Mrs. Elton | speaks_to | Jane
-Jane | visits | [the post-office]
-implied Mrs. Elton | patronizes | Jane
+# duplicate after revision: Mrs. Elton | scolds | Jane
+# outside the vocabulary: not Mrs. Elton | accompanies | Jane
+# outside the vocabulary: implied Mrs. Elton | patronizes | Jane
 # "I was not there to take care of you" claims a protector's role.
+# review (gpt-6.2-astra): remove `Jane | visits | [the post-office]`: The post-office is a generic destination, not a named place.
+# review (gpt-6.2-astra): add `Mrs. Elton | scolds | Jane`: “You sad girl, how could you do such a thing?” directly rebukes Jane for the walk.
+# review (gpt-6.2-astra): add `not Mrs. Elton | accompanies | Jane`: “I was not there to take care of you” explicitly denies that Mrs. Elton was with Jane on the walk.
 
 @ 138 158 643754 names | Emma
 ~ He found he could not be useful, and his feelings were too much irritated for talking.
 That he might not be irritated into an absolute fever, by the fire which Mr. Woodhouse’s tender habits required almost every evening throughout the year, he soon afterwards took a hasty leave, and walked home to the coolness and solitude of Donwell Abbey.
 =
 [he = Mr. Knightley] | lives_in | Donwell Abbey
-implied [he = Mr. Knightley] | visits | Mr. Woodhouse
-implied Mr. Woodhouse | lives_in | [Hartfield]
+implied [he = Mr. Knightley] | meets | Mr. Woodhouse
 # "walked home to ... Donwell Abbey"; "took a hasty leave" of the house with
 # Mr. Woodhouse's fire.
+# review (gpt-6.2-astra): remove `implied Mr. Woodhouse | lives_in | [Hartfield]`: The fire explains the visitor’s departure, but neither line identifies the place he leaves as Hartfield.
 
 @ 139 158 661652 names | Emma
 ~ Now they seemed in pleasant conversation.
 There had been a time also when Emma would have been sorry to see Harriet in a spot so favourable for the Abbey Mill Farm; but now she feared it not.
 =
-Emma | sees | Harriet
-Harriet | near | Abbey Mill Farm
+# outside the vocabulary: implied Emma | sees | Harriet
 # "a spot so favourable for the Abbey Mill Farm"; Emma no longer fears it.
+# review (gpt-6.2-astra): edit `implied Emma | sees | Harriet`: The contrast with Emma’s former reaction implies a present sighting; “would have been sorry to see” does not directly assert one.
+# review (gpt-6.2-astra): remove `Harriet | near | Abbey Mill Farm`: A spot “so favourable for the Abbey Mill Farm” does not specify Harriet’s distance from the farm.
 
 @ 140 158 665835 relation word | Emma
 ~ “But it is too far, indeed it is, to be walking quite alone.
@@ -1205,6 +1376,8 @@ Let my father’s servant go with you.—Let me order the carriage.
 [the speaker = Emma] | speaks_to | [you = Jane Fairfax] ?
 [my father's servant] | servant_of | [my father = Mr. Woodhouse]
 [my father = Mr. Woodhouse] | father_of | [the speaker = Emma]
+# outside the vocabulary: [the speaker = Emma] | offers_to_help | [you = Jane Fairfax]
+# review (gpt-6.2-astra): add `[the speaker = Emma] | offers_to_help | [you = Jane Fairfax]`: Emma offers Jane an escort or a carriage; the offer is made whether or not Jane accepts.
 
 @ 141 158 703122 relation word | Emma
 ~ So then, I try to put it out of her thoughts, and say, Come ma’am, do not let us think about it any more.”
@@ -1212,9 +1385,9 @@ Let my father’s servant go with you.—Let me order the carriage.
 =
 [the speaker = Emma] | speaks_to | [the listener = Miss Bates]
 implied Colonel Campbell | spouse_of | Mrs. Campbell
-implied Colonel Campbell | cares_for | [she = Jane Fairfax]
 # A question; "Colonel and Mrs. Campbell" are a couple, and would be sorry
 # at her engagement.
+# review (gpt-6.2-astra): remove `implied Colonel Campbell | cares_for | [she = Jane Fairfax]`: Emma asks how the Campbells will feel; she does not state the Colonel’s attitude toward Jane.
 
 @ 142 158 723522 names | Emma
 ~ “Your word!—why not your honour!—why not say upon your honour, that it has nothing to do with any of them?
@@ -1233,18 +1406,22 @@ Emma | speaks_to | Harriet
 ~ He was coming through the hall.
 Harriet was too much agitated to encounter him.
 =
-not Harriet | meets | [him = Mr. Knightley]
-implied Harriet | avoids | [him = Mr. Knightley]
+not Harriet | meets | [him = Mr. Woodhouse]
+# outside the vocabulary: implied Harriet | avoids | [him = Mr. Woodhouse]
 # "too much agitated to encounter him".
+# review (gpt-6.2-astra): edit `not Harriet | meets | [him = Mr. Woodhouse]`: The man coming through the hall is Mr. Woodhouse, not Mr. Knightley.
+# review (gpt-6.2-astra): edit `implied Harriet | avoids | [him = Mr. Woodhouse]`: It is Mr. Woodhouse whom Harriet is too agitated to face.
 
 @ 145 158 764961 random | Emma
 ~ In spite of all her faults, she knew she was dear to him; might she not say, very dear?—When the suggestions of hope, however, which must follow here, presented themselves, she could not presume to indulge them.
 Harriet Smith might think herself not unworthy of being peculiarly, exclusively, passionately loved by Mr. Knightley. _She_ could not.
 =
+# outside the vocabulary: [she = Emma] | feels_unworthy_of_love_from | Mr. Knightley
 implied [she = Emma] | loves | Mr. Knightley ?
-implied Mr. Knightley | loves | [she = Emma] ?
 # Harriet's hope is hers, not a fact; Emma's "She could not" and "she was
 # dear to him" in the `~` line.
+# review (gpt-6.2-astra): add `[she = Emma] | feels_unworthy_of_love_from | Mr. Knightley`: “She could not” states that Emma cannot think herself worthy of the passionate love just described.
+# review (gpt-6.2-astra): remove `implied Mr. Knightley | loves | [she = Emma] ?`: Emma’s hope does not establish that Mr. Knightley returns her love.
 
 @ 146 158 778350 relation word | Emma
 ~ Alas! such delightful proofs of Hartfield’s attraction, as those sort of visits conveyed, might shortly be over.
@@ -1257,9 +1434,10 @@ The picture which she had then drawn of the privations of the approaching winter
 She thought so well of the letter, that when Mr. Knightley came again, she desired him to read it.
 =
 [she = Emma] | speaks_to | Mr. Knightley
-Mr. Knightley | visits | [Hartfield]
+Mr. Knightley | meets | [she = Emma]
 # "when Mr. Knightley came again, she desired him to read it". The `~` line
 # is context only.
+# review (gpt-6.2-astra): edit `Mr. Knightley | meets | [she = Emma]`: Mr. Knightley comes again and Emma addresses him, but neither line identifies the place as Hartfield.
 
 @ 148 158 841393 random | Emma
 ~ Things did not seem—that is, there seemed a little cloud upon the spirits of some.—So it appeared to me at least, but I might be mistaken.
@@ -1271,12 +1449,13 @@ However, I think it answered so far as to tempt one to go again.
 I wish I may not sink into ‘poor Emma’ with him at once.—His tender compassion towards oppressed worth can go no farther.”
 =
 Emma | speaks_to | [you = Mr. Knightley]
-implied Emma | engaged_to | [you = Mr. Knightley] ?
+# outside the vocabulary: Emma | hopes_not_to_be_pitied_by | [him = Mr. Woodhouse]
 # "poor Emma" names the speaker; "your side of the question" is their match.
+# review (gpt-6.2-astra): remove `implied Emma | engaged_to | [you = Mr. Knightley] ?`: The two lines contrast merit and advantage without identifying an engagement.
+# review (gpt-6.2-astra): add `Emma | hopes_not_to_be_pitied_by | [him = Mr. Woodhouse]`: “I wish I may not sink into ‘poor Emma’ with him” states Emma’s wish, not that her father already pities her.
 
 @ 150 158 877136 names | Emma
 ~ “Do you dare say this?” cried Mr. Knightley.
 “Do you dare to suppose me so great a blockhead, as not to know what a man is talking of?—What do you deserve?”
 =
 Mr. Knightley | speaks_to | [you = Emma]
-
