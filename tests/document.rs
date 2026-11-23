@@ -82,14 +82,18 @@ fn dialogue_keeps_repeated_and_partially_attributed_turns() {
 #[test]
 fn a_caller_alias_can_identify_a_listener_who_only_appears_in_speech() {
     let opts = Options {
-        aliases: [("Dev".into(), "dev_mehta".into())].into(),
+        aliases: [
+            ("Dev".into(), "devon".into()),
+            ("Elena".into(), "captain".into()),
+        ]
+        .into(),
         ..Options::default()
     };
     let doc = analyze_document("“Dev!” cried Elena.", &opts).unwrap();
     assert_eq!(doc.dialogue.lines.len(), 1);
     let line = &doc.dialogue.lines[0];
-    assert_eq!(line.speaker.as_deref(), Some("elena"));
-    assert_eq!(line.listener.as_deref(), Some("dev_mehta"));
+    assert_eq!(line.speaker.as_deref(), Some("captain"));
+    assert_eq!(line.listener.as_deref(), Some("devon"));
     assert_eq!(doc.dialogue.unattributed, 0);
 }
 

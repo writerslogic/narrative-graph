@@ -211,19 +211,20 @@ impl Turn {
         let mut lines = self.lines.take().unwrap_or_default();
         let known: BTreeSet<&str> = aliases.values().map(String::as_str).collect();
         let allowed = |name: &String| {
-            !register.is_thing(name)
-                && !common.contains(name)
-                && !pack.sentence_openers.contains(&name.as_str())
-                && !matches!(
-                    name.as_str(),
-                    "anyone"
-                        | "anybody"
-                        | "someone"
-                        | "somebody"
-                        | "nobody"
-                        | "everyone"
-                        | "everybody"
-                )
+            known.contains(name.as_str())
+                || (!register.is_thing(name)
+                    && !common.contains(name)
+                    && !pack.sentence_openers.contains(&name.as_str())
+                    && !matches!(
+                        name.as_str(),
+                        "anyone"
+                            | "anybody"
+                            | "someone"
+                            | "somebody"
+                            | "nobody"
+                            | "everyone"
+                            | "everybody"
+                    ))
         };
         for line in &mut lines {
             line.speaker = line.speaker.take().filter(allowed);
