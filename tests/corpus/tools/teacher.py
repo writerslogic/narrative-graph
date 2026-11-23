@@ -18,6 +18,8 @@ import urllib.request
 from collections import Counter
 from pathlib import Path
 
+from revise_relations import vocabulary
+
 HONORIFIC = r"(?:Mr|Mrs|Miss|Ms|Dr|Lady|Lord|Sir|Captain|Colonel|Aunt|Uncle)\.?"
 NAME = re.compile(rf"\b(?:{HONORIFIC} )?[A-Z][a-z]+(?: [A-Z][a-z]+)?\b")
 COMMON = set(
@@ -78,7 +80,7 @@ def side(raw: str):
     return raw or None
 
 
-def claims(answer: str):
+def claims(answer: str, vocab):
     for line in answer.splitlines():
         line = line.strip().strip("`").strip()
         line = re.sub(r"^[-*\d.)\s]+", "", line).rstrip("?").strip()
@@ -90,7 +92,7 @@ def claims(answer: str):
         subject = side(parts[0].removeprefix("not "))
         object_ = side(parts[2])
         relation = parts[1].strip().lower().replace(" ", "_")
-        if subject and object_ and re.fullmatch(r"[a-z_]+", relation):
+        if subject and object_ and relation in vocab:
             yield ("not " if negated else "") + subject, relation, object_
 
 
@@ -108,7 +110,9 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    guide, items = parse_items((args.root / "labels.txt").read_text())
+    labels = (args.root / "labels.txt").read_text()
+    guide, items = parse_items(labels)
+    vocab = vocabulary(labels.split("\n@ ", 1)[0])
     keep = {"even": lambda n: n % 2 == 0, "odd": lambda n: n % 2 == 1, "all": lambda n: True}[args.half]
     books, casts = {}, {}
     out, raw = [], []
@@ -129,20 +133,22 @@ def main():
             f"<<<{before}>>>\n\n"
             f"Sentence to label:\n<<<{item['sentence']}>>>\n\n"
             "Answer with one `A | relation | B` line per relation the sentence states "
-            "(prefix `implied ` for what a careful reader infers), nothing else. For a person "
-            "the sentence only describes, write `[description = Name]` with their name from the "
-            "text when you know it. Remember `speaks_to` for anyone who says something to another. "
-            "If the sentence states none, answer `none`."
+            "(prefix `implied ` for what a careful reader infers), nothing else. Use only these "
+            f"relations, never another: {' '.join(sorted(vocab))}. Each side must be a person's "
+            "or place's name: resolve he, she, I, you, me and descriptions (`her sister`, `the "
+            "old man`) to the name the text gives them, writing `[description = Name]`; if the "
+            "text never names them, leave that relation out. In dialogue, the speaker of each "
+            "line `speaks_to` the person addressed, even when the line has no tag: follow the "
+            "turns of the conversation. If the sentence states none, answer `none`."
         )
         answer = ask(args.model, prompt, args.host, args.num_ctx, args.think)
         raw.append(f"@ {item['number']}\n{answer}\n")
-        for subject, relation, object_ in claims(answer):
+        for subject, relation, object_ in claims(answer, vocab):
             out.append(f"{item['number']} | {subject} | {relation} | {object_}")
         logging.info("%d/%d item %d", k, len(chosen), item["number"])
-
-    args.out.write_text("\n".join(out) + "\n")
-    if args.raw:
-        args.raw.write_text("\n".join(raw))
+        args.out.write_text("\n".join(out) + "\n")
+        if args.raw:
+            args.raw.write_text("\n".join(raw))
 
 
 if __name__ == "__main__":

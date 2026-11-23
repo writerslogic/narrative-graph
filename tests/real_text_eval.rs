@@ -183,24 +183,27 @@ fn parse(labels: &str) -> (bool, Vec<Item>) {
 }
 
 /// The relations the label guide offers: the lists under "Relations the
-/// library knows", the ones its rules name in backticks (`speaks_to`), and
-/// every relation the library has a rule for.
+/// library knows", the ones it names in backticks (`speaks_to`, or the middle
+/// of `Longbourn | near | Meryton`), and every relation the library has a
+/// rule for.
 fn vocabulary(labels: &str, known: &BTreeSet<&'static str>) -> BTreeSet<String> {
     let header = labels.split("\n@ ").next().unwrap_or("");
     let is_relation =
-        |w: &str| w.contains('_') && w.chars().all(|c| c.is_ascii_lowercase() || c == '_');
+        |w: &&str| !w.is_empty() && w.chars().all(|c| c.is_ascii_lowercase() || c == '_');
     let listed = header
         .split_once("Relations the library knows")
         .map_or("", |(_, rest)| rest)
         .lines()
         .filter_map(|l| l.strip_prefix("#   "))
         .flat_map(str::split_whitespace)
-        .filter(|w| w.chars().all(|c| c.is_ascii_lowercase() || c == '_'));
-    let quoted = header
-        .split('`')
-        .skip(1)
-        .step_by(2)
-        .filter(|w| is_relation(w));
+        .filter(is_relation);
+    let quoted = header.split('`').skip(1).step_by(2).filter_map(|q| {
+        let parts: Vec<&str> = q.split('|').map(str::trim).collect();
+        match parts.as_slice() {
+            [one] | [_, one, _] => Some(*one).filter(is_relation),
+            _ => None,
+        }
+    });
     listed
         .chain(quoted)
         .chain(known.iter().copied())
