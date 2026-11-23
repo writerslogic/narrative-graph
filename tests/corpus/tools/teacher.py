@@ -120,17 +120,19 @@ def main():
     for k, item in enumerate(chosen, 1):
         book = item["book"]
         if book not in books:
-            books[book] = (args.root / f"{book}.txt").read_text()
-            casts[book] = cast(books[book])
-        text = books[book]
-        before = text[max(0, item["start"] - args.window) : item["start"]]
-        before = " ".join(before.split()[1:])
+            books[book] = (args.root / f"{book}.txt").read_bytes()
+            casts[book] = cast(books[book].decode("utf-8", "replace"))
+        # The label offsets are bytes; the books are full of three-byte quotes.
+        start = item["start"]
+        before = books[book][max(0, start - args.window * 2) : start].decode("utf-8", "ignore")
+        before = " ".join(before[-args.window :].split()[1:])
         prompt = (
             "You label relations between people in a novel, following this guide exactly.\n\n"
             f"=== GUIDE ===\n{guide}\n=== END GUIDE ===\n\n"
             f"Frequent names in this book: {', '.join(casts[book])}\n\n"
             "Text before the sentence, for knowing who is who (do not label it):\n"
             f"<<<{before}>>>\n\n"
+            f"The sentence just before it:\n<<<{item['context']}>>>\n\n"
             f"Sentence to label:\n<<<{item['sentence']}>>>\n\n"
             "Answer with one `A | relation | B` line per relation the sentence states "
             "(prefix `implied ` for what a careful reader infers), nothing else. Use only these "

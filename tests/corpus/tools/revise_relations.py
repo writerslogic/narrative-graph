@@ -80,6 +80,10 @@ def revise(line: str, vocab):
     subject, relation, object_ = [p.strip() for p in body.split("|")]
     if relation in vocab:
         return line.rstrip()
+    if denied:
+        # Denying a specific act ("did not disclose his methods to") is not
+        # denying the broader relation it maps to: he still spoke to him.
+        return None
     if relation == "visits" and name_of(object_) in VISITED_PEOPLE:
         relation = "meets"
     elif relation in MAP:
@@ -103,7 +107,7 @@ def main():
 
     lines = text.splitlines()
     out, seen = [], set()
-    in_item, rewritten, removed = False, 0, 0
+    in_item, rewritten, removed, duplicates = False, 0, 0, 0
     for i, line in enumerate(lines):
         if line.startswith("@ "):
             in_item, seen = False, set()
@@ -115,7 +119,8 @@ def main():
             if new is None or key in seen:
                 if args.dry_run:
                     logging.info("- %s", line)
-                removed += 1
+                removed += new is None
+                duplicates += new is not None
                 line = f"# outside the vocabulary: {line.strip()}" if new is None else f"# duplicate after revision: {line.strip()}"
             else:
                 seen.add(key)
@@ -127,7 +132,7 @@ def main():
         out.append(line)
     if not args.dry_run:
         args.labels.write_text("\n".join(out) + "\n", encoding="utf-8")
-    logging.info("%d rewritten, %d commented out", rewritten, removed)
+    logging.info("%d rewritten, %d outside the vocabulary, %d duplicates", rewritten, removed, duplicates)
 
 
 if __name__ == "__main__":
