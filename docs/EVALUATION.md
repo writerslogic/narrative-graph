@@ -465,3 +465,15 @@ target, so the rule path alone will not reach it: most remaining `speaks_to`
 misses are turns no tag in their stretch reaches, narrators the vote does not
 find (Wuthering Heights has two, Moby-Dick's Ishmael is rarely addressed),
 and aliases (Nelly and Ellen, Cathy and Catherine, Lizzy and Elizabeth).
+
+### Paid teacher (2026-11-23)
+
+Authorised by the user as an exception to the paid-API rule: score a frontier
+model as teacher on public even items first; if it reaches about 0.6 recall
+at 0.7 precision, it labels public-domain training windows only. Private
+text is never sent (`teacher.py --provider openai` refuses any other corpus).
+Requests go through the OpenAI Batch API (`--batch submit`, then `--batch
+collect`) at half price, with the guide first so its prefix is cached.
+gpt-6.2-astra also reviewed the labels, so its agreement with them may read
+high. Batch `batch_6b040fc3ffe081908bd1cd8b71d7af54`, state in
+`/Volumes/C/ng-teacher/public-even-astra.txt.batch.json`.
