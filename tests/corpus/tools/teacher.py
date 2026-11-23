@@ -55,14 +55,14 @@ def cast(text: str, size: int = 60):
     return [name for name, n in counts.most_common(size * 2) if n >= 3 and name not in COMMON][:size]
 
 
-def ask(model: str, prompt: str, host: str, num_ctx: int) -> str:
+def ask(model: str, prompt: str, host: str, num_ctx: int, think: bool) -> str:
     body = json.dumps(
         {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
-            "think": False,
-            "options": {"temperature": 0, "num_ctx": num_ctx, "num_predict": 400},
+            "think": think,
+            "options": {"temperature": 0, "num_ctx": num_ctx, "num_predict": 4000 if think else 400},
         }
     ).encode()
     request = urllib.request.Request(f"{host}/api/chat", body, {"Content-Type": "application/json"})
@@ -103,6 +103,7 @@ def main():
     parser.add_argument("--host", default="http://127.0.0.1:11434")
     parser.add_argument("--window", type=int, default=3000, help="characters of text before the sentence")
     parser.add_argument("--num-ctx", type=int, default=8192)
+    parser.add_argument("--think", action="store_true", help="let the model reason before answering")
     parser.add_argument("--raw", type=Path, help="also write each answer here")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -133,7 +134,7 @@ def main():
             "text when you know it. Remember `speaks_to` for anyone who says something to another. "
             "If the sentence states none, answer `none`."
         )
-        answer = ask(args.model, prompt, args.host, args.num_ctx)
+        answer = ask(args.model, prompt, args.host, args.num_ctx, args.think)
         raw.append(f"@ {item['number']}\n{answer}\n")
         for subject, relation, object_ in claims(answer):
             out.append(f"{item['number']} | {subject} | {relation} | {object_}")

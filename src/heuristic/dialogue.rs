@@ -41,10 +41,6 @@ impl Turn {
             return;
         }
         for m in mentions {
-            // `[Illustration]` and the like are a transcriber's markers.
-            if sentence[..m.start].ends_with('[') {
-                continue;
-            }
             if m.quoted {
                 if !m.pronoun
                     && !pack.honorifics.contains(&m.normalized.as_str())

@@ -182,6 +182,32 @@ fn parse(labels: &str) -> (bool, Vec<Item>) {
     (labelled.expect("labels have a `status:` line"), items)
 }
 
+/// The relations the label guide offers: the lists under "Relations the
+/// library knows", the ones its rules name in backticks (`speaks_to`), and
+/// every relation the library has a rule for.
+fn vocabulary(labels: &str, known: &BTreeSet<&'static str>) -> BTreeSet<String> {
+    let header = labels.split("\n@ ").next().unwrap_or("");
+    let is_relation =
+        |w: &str| w.contains('_') && w.chars().all(|c| c.is_ascii_lowercase() || c == '_');
+    let listed = header
+        .split_once("Relations the library knows")
+        .map_or("", |(_, rest)| rest)
+        .lines()
+        .filter_map(|l| l.strip_prefix("#   "))
+        .flat_map(str::split_whitespace)
+        .filter(|w| w.chars().all(|c| c.is_ascii_lowercase() || c == '_'));
+    let quoted = header
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .filter(|w| is_relation(w));
+    listed
+        .chain(quoted)
+        .chain(known.iter().copied())
+        .map(String::from)
+        .collect()
+}
+
 /// Which items a run scores, from `NG_HALF`: `even` to tune on, `odd` for the
 /// held-out half at a milestone, both when unset.
 #[derive(Clone, Copy, Debug)]
@@ -384,11 +410,12 @@ fn evaluate(root: &Path, predictions: Option<&Path>) -> (bool, f64, f64) {
     let mut known_missed = 0;
     let mut known_gold = 0;
     let mut stated_gold = 0;
-    let mut other_tiers: BTreeMap<Tier, (usize, usize)> = BTreeMap::new();
     let mut by_relation: BTreeMap<String, Tally> = BTreeMap::new();
     let mut report = Vec::new();
-    // (labels, found, labels with a nameless side, which nothing can match)
-    let mut pooled = (0, 0, 0);
+    let vocabulary = vocabulary(&labels, &known);
+    // Per tier: labels, found, matchable, found among the matchable.
+    let mut ceiling: BTreeMap<Tier, [usize; 4]> = BTreeMap::new();
+    let mut invented: BTreeMap<&str, usize> = BTreeMap::new();
 
     for item in &items {
         let (text, aggregates) = &books[item.book.as_str()];
@@ -419,13 +446,18 @@ fn evaluate(root: &Path, predictions: Option<&Path>) -> (bool, f64, f64) {
         }
         for claim in &item.claims {
             let found = extracted.iter().any(|a| matches(claim, a));
-            pooled.0 += 1;
-            pooled.1 += usize::from(found);
-            pooled.2 += usize::from(claim.subject.is_none() || claim.object.is_none());
+            let named = claim.subject.is_some() && claim.object.is_some();
+            let listed = vocabulary.contains(claim.relation.as_str());
+            if !listed {
+                *invented.entry(&claim.relation).or_default() += 1;
+            }
+            let row = ceiling.entry(claim.tier).or_default();
+            let matchable = named && listed;
+            row[0] += 1;
+            row[1] += usize::from(found);
+            row[2] += usize::from(matchable);
+            row[3] += usize::from(found && matchable);
             if claim.tier != Tier::Stated {
-                let (gold, hit) = other_tiers.entry(claim.tier).or_default();
-                *gold += 1;
-                *hit += usize::from(found);
                 if !found {
                     report.push(format!(
                         "  item {} missed ({:?}): {claim:?}",
@@ -468,16 +500,32 @@ fn evaluate(root: &Path, predictions: Option<&Path>) -> (bool, f64, f64) {
     println!(
         "precision {precision:.3}  recall (relations with a rule) {recall_known:.3}  recall (all) {recall_all:.3}"
     );
-    println!(
-        "all tiers: {} labels, recall {:.3}; {} have a nameless side, ceiling {:.3}",
-        pooled.0,
-        ratio(pooled.1, pooled.0),
-        pooled.2,
-        ratio(pooled.0 - pooled.2, pooled.0)
-    );
-    for (tier, (gold, hit)) in &other_tiers {
-        println!("{tier:?}: {gold} labels, recall {:.3}", ratio(*hit, *gold));
+    // A label is matchable when both sides are named and its relation is one
+    // the guide lists: what an extractor bound to that vocabulary can reach.
+    let total = ceiling.values().fold([0; 4], |mut t, row| {
+        t.iter_mut().zip(row).for_each(|(a, b)| *a += b);
+        t
+    });
+    for (tier, row) in ceiling
+        .iter()
+        .map(|(tier, row)| (format!("{tier:?}"), row))
+        .chain([("all tiers".to_string(), &total)])
+    {
+        println!(
+            "{tier}: {} labels, recall {:.3}; {} matchable (ceiling {:.3}), recall over them {:.3}",
+            row[0],
+            ratio(row[1], row[0]),
+            row[2],
+            ratio(row[2], row[0]),
+            ratio(row[3], row[2])
+        );
     }
+    println!(
+        "relations outside the guide: {} labels, {} names, {} used once",
+        invented.values().sum::<usize>(),
+        invented.len(),
+        invented.values().filter(|&&n| n == 1).count()
+    );
     for (relation, t) in &by_relation {
         println!(
             "  {relation:<20} tp {:>3} fp {:>3} missed {:>3}",

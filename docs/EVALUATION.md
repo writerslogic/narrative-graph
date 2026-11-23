@@ -349,23 +349,35 @@ and `speaks_to` is the most frequent relation.
 
 ### Ceiling and teacher (2026-11-22)
 
-`NG_HALF=even|odd` scores one half; the report adds recall pooled over all
-tiers. `NG_PREDICTIONS` (public) and `NG_PRIVATE_PREDICTIONS` (private) score
-a file of `item | A | relation | B` lines with the same matcher instead of the
-library; `tests/corpus/tools/teacher.py` writes one from a local ollama model.
+`NG_HALF=even|odd` scores one half. `NG_PREDICTIONS` (public) and
+`NG_PRIVATE_PREDICTIONS` (private) score a file of `item | A | relation | B`
+lines with the same matcher instead of the library;
+`tests/corpus/tools/teacher.py` writes one from a local ollama model. Builds
+use `CARGO_TARGET_DIR=/Volumes/C/rust-target-narrative-graph`, because other
+sessions hold the lock on the shared target directory for hours.
 
-- Library, pooled over all tiers: even 3/150 (0.020), odd 0/170. Private not
-  rerun on the split.
-- The matcher needs the relation string exactly, and the labels invent
-  relations freely (`limits_criticism_of`, `wants_to_visit`). Share of labels
-  whose relation is in the guide's vocabulary (plus `speaks_to`, `near`,
-  `visits`) and whose sides are both named: public even 0.60, odd 0.58;
-  private even 0.36, odd 0.35. That is the recall of a perfect extractor
-  limited to the vocabulary, so 0.7 over all tiers is out of reach without
-  either mapping invented relations onto the vocabulary in the labels or
-  scoring only the matchable labels.
+The report gives each tier a ceiling: the share of labels that are
+matchable, with both sides named and a relation from the guide (its lists,
+the relations its rules name in backticks such as `speaks_to`, and every
+relation the library has a rule for). The matcher needs the relation string
+exactly, and the labels invent relations freely (`limits_criticism_of`,
+`wants_to_visit`), most of them used once.
+
+| set, half | labels | ceiling all tiers | stated | implied | described | invented names, used once |
+|---|---|---|---|---|---|---|
+| public even | 150 | 0.593 | 0.421 | 0.700 | 0.612 | 38, 29 |
+| public odd | 170 | 0.576 | 0.538 | 0.682 | 0.569 | 52, 45 |
+| private even | 121 | 0.331 | 0.438 | 0.692 | 0.261 | 45, 38 |
+| private odd | 126 | 0.341 | 0.500 | 0.875 | 0.275 | 49, 41 |
+
+So recall of 0.7 over all tiers is out of reach for any extractor, not only a
+vocabulary-bound one, while the labels stand: a model cannot learn names used
+once. Private described labels are mostly nameless (`[the man]`).
+
+- Library, recall over all tiers: public even 0.020, odd 0.000; private even
+  0.000, odd 0.016 (stated 2/16, no false positives).
 - Teacher, qwen3:14b without thinking, 3000 characters of preceding text, a
-  cast of frequent names and the label guide as the prompt: public even
-  pooled recall 0.093 (stated 5/19, implied 1/10, described 8/121), precision
+  cast of frequent names and the label guide as the prompt, public even:
+  recall 0.093 over all tiers and 0.135 over the matchable labels, precision
   0.136 over 103 extractions. Most false positives are invented relations or
   common nouns as sides. Not good enough to label training text.
