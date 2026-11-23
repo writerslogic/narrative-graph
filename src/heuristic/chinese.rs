@@ -215,7 +215,7 @@ const SPEECH_VERBS: &[&str] = &[
 const ADDRESSING_VERBS: &[&str] = &["告訴", "告诉", "問", "问"];
 
 /// Conditionals hold the claim open; nothing in their sentence is asserted.
-const CONDITIONALS: &[&str] = &["如果", "假如", "倘若", "倘或", "若是", "要是", "如若"];
+const CONDITIONALS: &[&str] = &["如果", "假如", "倘若", "倘或", "若是", "如若"];
 
 const OPENERS: &[char] = &['“', '「', '『', '‘'];
 const CLOSERS: &[char] = &['”', '」', '』', '’'];
@@ -290,7 +290,7 @@ pub fn relations(text: &str, opts: &Options) -> Vec<RelationCandidate> {
                     let between = &para.chars[a.end..b.start];
                     if between
                         .iter()
-                        .any(|c| OPENERS.contains(c) || CLOSERS.contains(c))
+                        .any(|c| *c == '"' || OPENERS.contains(c) || CLOSERS.contains(c))
                     {
                         continue;
                     }
@@ -538,23 +538,50 @@ fn paragraphs(text: &str) -> Vec<Paragraph> {
 
 /// Whether each character is inside a quotation, its marks included. Nested
 /// quotations count once; an unclosed one runs to the end of the paragraph.
+///
+/// This edition closes many curly quotations with a straight mark
+/// (“你作什么來的？"), and pairs straight marks inline ("是"字), so a straight
+/// mark closes whatever is open and otherwise opens. The exception is a
+/// paragraph whose first mark closes speech: a quotation carried over from the
+/// paragraph before (了不成？"寶玉和襲人嗤的一笑). Everything before that mark is
+/// speech, and the mark opens nothing.
 fn quote_depths(chars: &[char]) -> Vec<bool> {
+    let mut quoted = vec![false; chars.len()];
     let mut depth = 0usize;
-    chars
+    let mut seen_mark = false;
+    for (i, c) in chars.iter().enumerate() {
+        let straight = *c == '"';
+        let opener = OPENERS.contains(c);
+        let closer = CLOSERS.contains(c);
+        if !(straight || opener || closer) {
+            quoted[i] = depth > 0;
+            continue;
+        }
+        let first = !seen_mark;
+        seen_mark = true;
+        quoted[i] = true;
+        if opener {
+            depth += 1;
+        } else if depth > 0 {
+            depth -= 1;
+        } else if first && (closer || after_terminator(&chars[..i])) {
+            quoted[..i].iter_mut().for_each(|q| *q = true);
+        } else if straight {
+            depth += 1;
+        } else {
+            quoted[i] = false;
+        }
+    }
+    quoted
+}
+
+/// Whether the text before a mark ends a sentence, spaces aside.
+fn after_terminator(before: &[char]) -> bool {
+    before
         .iter()
-        .map(|c| {
-            if OPENERS.contains(c) {
-                depth += 1;
-                true
-            } else if CLOSERS.contains(c) {
-                let inside = depth > 0;
-                depth = depth.saturating_sub(1);
-                inside
-            } else {
-                depth > 0
-            }
-        })
-        .collect()
+        .rev()
+        .find(|c| !c.is_whitespace())
+        .is_some_and(|c| TERMINATORS.contains(c))
 }
 
 /// Sentence ranges `[from, to)`, each ending after its terminators and any
@@ -567,7 +594,9 @@ fn sentences(chars: &[char]) -> Vec<(usize, usize)> {
         if TERMINATORS.contains(&chars[i]) {
             let mut end = i + 1;
             while end < chars.len()
-                && (TERMINATORS.contains(&chars[end]) || CLOSERS.contains(&chars[end]))
+                && (TERMINATORS.contains(&chars[end])
+                    || CLOSERS.contains(&chars[end])
+                    || chars[end] == '"')
             {
                 end += 1;
             }

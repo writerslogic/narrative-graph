@@ -123,3 +123,30 @@ fn english_options_find_nothing_in_chinese_text() {
         .unwrap()
         .is_empty());
 }
+
+#[test]
+fn a_straight_mark_closes_a_curly_quotation() {
+    // Two quotations in this paragraph close on `"`. Read as still open, they
+    // would put 黛玉's later tag inside speech, and the vocative would have no
+    // speaker.
+    let text = "\u{3000}\u{3000}倒是\n襲人听見帘子響，從屋里出來一看，見是黛玉，便讓道：“姑娘屋里坐罷。”黛\n玉笑著道：“寶二爺在家么？\"襲人不知底里，剛要答言，只見紫鵑在黛玉身后\n和他努嘴儿，指著黛玉，又搖搖手儿．襲人不解何意，也不敢言語．\n听著黛玉說道：“寶玉，你為什么病了？\"寶玉";
+    let cast = [
+        ("寶玉", "baoyu"),
+        ("黛玉", "daiyu"),
+        ("襲人", "xiren"),
+        ("紫鵑", "zijuan"),
+    ];
+    let found = extract(text, &cast);
+    assert_eq!(triples(&found), vec![("daiyu", "speaks_to", "baoyu")]);
+    assert_eq!(found[0].rule, "zh-vocative");
+}
+
+#[test]
+fn a_quotation_carried_into_a_paragraph_ends_at_its_first_mark() {
+    // The paragraph opens inside speech begun in the one before; its first
+    // mark closes it. Read as an opener, every later tag would sit in speech.
+    let text = "\u{3000}\u{3000}了不成？\"寶玉和襲人嗤的一笑．寶玉道：“你何苦來替他招罵名儿．”襲人笑道：“林姑娘，你不知道我的心事。”";
+    let cast = [("寶玉", "baoyu"), ("襲人", "xiren")];
+    let found = extract(text, &cast);
+    assert_eq!(triples(&found), vec![("xiren", "speaks_to", "林姑娘")]);
+}

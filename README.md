@@ -123,6 +123,8 @@ narrative-graph extract chapter.txt --min-confidence 0.6 --format json
 narrative-graph extract 紅樓夢.txt --language chinese
 ```
 
+The CLI takes no alias map, so on Chinese text it finds only names written with a title (王夫人, 邢氏); bare given names such as 黛玉 need `aliases` through the library.
+
 Installed alongside the crate (`cargo install narrative-graph --features cli` provides the `narrative-graph` binary), the same way `holographic-memory` ships `hms-admin` and `hms-eval` as bins in its own crate rather than separate packages. Useful for shell pipelines, CI checks, and inspecting output before wiring the library into an application.
 
 </details>
