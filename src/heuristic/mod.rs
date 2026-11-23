@@ -229,10 +229,20 @@ fn collect_candidates(
         );
     }
     found.extend(turn.finish(&opts.ontology).into_iter().map(|r| (r, 0)));
+    let common = dialogue::common_words(
+        text,
+        found
+            .iter()
+            .filter(|(r, _)| r.rule == dialogue::RULE)
+            .flat_map(|(r, _)| [r.subject.as_str(), r.object.as_str()]),
+    );
     found.retain(|(r, _)| {
         r.rule != dialogue::RULE
             || (dialogue::is_voice(&r.subject, 2, &turn, &register)
-                && dialogue::is_voice(&r.object, 1, &turn, &register))
+                && dialogue::is_voice(&r.object, 1, &turn, &register)
+                && ![&r.subject, &r.object]
+                    .iter()
+                    .any(|n| common.contains(*n) || pack.sentence_openers.contains(&n.as_str())))
     });
 
     // Each span is relative to its offset: the sentence's start, or 0 for a

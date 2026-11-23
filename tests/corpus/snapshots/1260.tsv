@@ -1,12 +1,10 @@
 bessie	speaks_to	miss_abbot	Asserted	1	17641	dialogue-vocative
-miss_abbot	speaks_to	besides	Asserted	1	19614	dialogue-vocative
 miss_abbot	speaks_to	miss_eyre	Asserted	1	19844	dialogue-vocative
 bessie	speaks_to	miss_eyre	Asserted	1	30164	dialogue-vocative
 miss_scatcherd	speaks_to	burns	Asserted	1	113139	dialogue-vocative
 temple	speaks_to	jane	Asserted	1	142388	dialogue-vocative
 miss_temple	speaks_to	barbara	Asserted	1	157806	dialogue-vocative
 helen	speaks_to	jane	Asserted	1	179428	dialogue-vocative
-presently	speaks_to	jane	Asserted	1	181440	dialogue-vocative
 mrs_fairfax	speaks_to	john	Asserted	1	376262	dialogue-vocative
 mrs_fairfax	speaks_to	miss_ingram	Asserted	1	377144	dialogue-vocative
 miss_ingram	speaks_to	mr_rochester	Asserted	1	406607	dialogue-vocative

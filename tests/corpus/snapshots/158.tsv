@@ -1,6 +1,5 @@
 mr_knightley	speaks_to	mrs_weston	Asserted	2	59059	dialogue-vocative
 john	loves	emma	Asserted	1	66989	phrase-love
-emma	speaks_to	yes	Asserted	1	77941	dialogue-vocative
 mr_knightley	speaks_to	emma	Asserted	3	82110	dialogue-vocative
 emma	speaks_to	harriet	Asserted	4	87584	dialogue-vocative
 harriet	speaks_to	miss_woodhouse	Asserted	4	91890	dialogue-vocative
@@ -24,5 +23,4 @@ mrs_bragge	acquaintance_of	mrs_suckling	Asserted	1	658995	of-genitive-acquaintan
 mrs_weston	kissed	weston	Asserted	1	729415	phrase-kiss
 emma	speaks_to	mrs_smallridge	Asserted	1	731933	dialogue-vocative
 harriet	speaks_to	emma	Asserted	1	739627	dialogue-vocative
-harriet	speaks_to	but	Asserted	1	740653	dialogue-vocative
 mrs_elton	meets	elton	Asserted	1	838488	phrase-meet

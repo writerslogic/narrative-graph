@@ -346,3 +346,26 @@ and `speaks_to` is the most frequent relation.
   private: 115 of 173). Removals mostly enforce the rule that only the target
   sentence is labelled. After the review and the apostrophe fix: public 0/58
   stated, private 2/32 stated with no false positives.
+
+### Ceiling and teacher (2026-11-22)
+
+`NG_HALF=even|odd` scores one half; the report adds recall pooled over all
+tiers. `NG_PREDICTIONS` (public) and `NG_PRIVATE_PREDICTIONS` (private) score
+a file of `item | A | relation | B` lines with the same matcher instead of the
+library; `tests/corpus/tools/teacher.py` writes one from a local ollama model.
+
+- Library, pooled over all tiers: even 3/150 (0.020), odd 0/170. Private not
+  rerun on the split.
+- The matcher needs the relation string exactly, and the labels invent
+  relations freely (`limits_criticism_of`, `wants_to_visit`). Share of labels
+  whose relation is in the guide's vocabulary (plus `speaks_to`, `near`,
+  `visits`) and whose sides are both named: public even 0.60, odd 0.58;
+  private even 0.36, odd 0.35. That is the recall of a perfect extractor
+  limited to the vocabulary, so 0.7 over all tiers is out of reach without
+  either mapping invented relations onto the vocabulary in the labels or
+  scoring only the matchable labels.
+- Teacher, qwen3:14b without thinking, 3000 characters of preceding text, a
+  cast of frequent names and the label guide as the prompt: public even
+  pooled recall 0.093 (stated 5/19, implied 1/10, described 8/121), precision
+  0.136 over 103 extractions. Most false positives are invented relations or
+  common nouns as sides. Not good enough to label training text.

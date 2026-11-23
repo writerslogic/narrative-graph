@@ -15,7 +15,6 @@ isabella	speaks_to	mr_heathcliff	Asserted	1	205030	dialogue-vocative
 mrs_linton	speaks_to	heathcliff	Asserted	1	206995	dialogue-vocative
 catherine	speaks_to	edgar	Asserted	1	231016	dialogue-vocative
 mrs_linton	speaks_to	catherine	Asserted	1	250164	dialogue-vocative
-joseph	speaks_to	ech	Asserted	1	282466	dialogue-vocative
 joseph	speaks_to	miss_cathy	Asserted	1	282511	dialogue-vocative
 heathcliff	speaks_to	nelly	Asserted	1	298851	dialogue-vocative
 joseph	servant_of	mr_heathcliff	Asserted	1	397127	kin-prefix-servant-pattern

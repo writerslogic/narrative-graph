@@ -11,7 +11,7 @@ use super::pack::LanguagePack;
 use super::quotes::{is_quote_mark, QuoteMap};
 use super::register::Register;
 use super::relations::{normalize_relation, RelationCandidate, Stance};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Base confidence of a speaker and a vocative in the same paragraph.
 const BASE: f32 = 0.7;
@@ -41,6 +41,10 @@ impl Turn {
             return;
         }
         for m in mentions {
+            // `[Illustration]` and the like are a transcriber's markers.
+            if sentence[..m.start].ends_with('[') {
+                continue;
+            }
             if m.quoted {
                 if !m.pronoun
                     && !pack.honorifics.contains(&m.normalized.as_str())
@@ -96,6 +100,38 @@ impl Turn {
 pub fn is_voice(name: &str, tags: usize, turn: &Turn, register: &Register) -> bool {
     !register.is_thing(name)
         && (register.is_person(name) || turn.voices.get(name).is_some_and(|&n| n >= tags))
+}
+
+/// The single-word names among `names` that `text` writes in lowercase at
+/// least as often as capitalized: words like "presently", "besides" or "yes"
+/// that a capital at the start of speech or a sentence made look like names.
+/// A name that is also a word ("Rose", "Will") is capitalized far more often
+/// in a book that has the character.
+pub fn common_words<'a>(text: &str, names: impl Iterator<Item = &'a str>) -> BTreeSet<String> {
+    let mut counts: BTreeMap<String, (usize, usize)> = names
+        .filter(|n| n.chars().all(char::is_alphabetic))
+        .map(|n| (n.to_string(), (0, 0)))
+        .collect();
+    if counts.is_empty() {
+        return BTreeSet::new();
+    }
+    for word in text.split(|c: char| !c.is_alphabetic()) {
+        let Some(first) = word.chars().next() else {
+            continue;
+        };
+        if let Some((lower, capital)) = counts.get_mut(word.to_lowercase().as_str()) {
+            if first.is_lowercase() {
+                *lower += 1;
+            } else {
+                *capital += 1;
+            }
+        }
+    }
+    counts
+        .into_iter()
+        .filter(|(_, (lower, capital))| lower >= capital)
+        .map(|(name, _)| name)
+        .collect()
 }
 
 /// A name in speech set off on both sides: by the opening mark or a comma
@@ -163,4 +199,23 @@ fn interrupted(sentence: &str, m: &EntityCandidate, quotes: &QuoteMap) -> bool {
     };
     let resumed = rest[next..].chars().skip(1).find(|c| !c.is_whitespace());
     resumed.is_some_and(char::is_lowercase)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::common_words;
+
+    #[test]
+    fn a_word_written_lowercase_as_often_as_capitalized_is_not_a_name() {
+        let text =
+            "Presently Rose said no. Rose came presently. Rose left; a rose fell. Presently.";
+        let common = common_words(text, ["presently", "rose", "miss_abbot"].into_iter());
+        // presently: 1 lowercase, 2 capitalized; one more lowercase use ties it.
+        assert!(common.is_empty(), "{common:?}");
+        let common = common_words(
+            &format!("{text} It ended presently."),
+            ["presently", "rose"].into_iter(),
+        );
+        assert_eq!(common.into_iter().collect::<Vec<_>>(), ["presently"]);
+    }
 }
