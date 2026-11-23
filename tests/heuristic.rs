@@ -1464,3 +1464,64 @@ fn a_tagged_speaker_speaks_to_the_name_they_address() {
     // A new paragraph is a new turn.
     assert!(speaks("\"Go,\" said Nora.\n\"Marco, wait.\"").is_empty());
 }
+
+#[test]
+fn a_two_person_conversation_carries_its_speakers_across_untagged_turns() {
+    let speaks = |text: &str| -> Vec<(String, String, [usize; 2])> {
+        extract(text)
+            .into_iter()
+            .filter(|c| c.relation == "speaks_to")
+            .map(|c| (c.subject, c.object, c.span))
+            .collect()
+    };
+    let said_in = |found: &[(String, String, [usize; 2])], text: &str, line: &str| {
+        let start = text.find(line).expect("line in text");
+        found
+            .iter()
+            .filter(|(_, _, span)| (start..start + line.len()).contains(&span[0]))
+            .map(|(s, o, _)| (s.as_str().to_owned(), o.as_str().to_owned()))
+            .collect::<Vec<_>>()
+    };
+    let pair = |s: &str, o: &str| vec![(s.to_string(), o.to_string())];
+    // Each is tagged twice elsewhere, which is what makes them voices.
+    let voices = "\nThe sun set.\nIt was late.\n\"Go,\" said Nora.\n\"No,\" said Marco.\n\"Go,\" said Nora.\n\"No,\" said Marco.";
+
+    // The untagged third turn is Nora's again, said to Marco.
+    let text =
+        format!("\"Are you coming?\" asked Nora.\n\"No,\" said Marco.\n\"Why not?\"{voices}");
+    let found = speaks(&text);
+    assert_eq!(
+        said_in(&found, &text, "\"Why not?\""),
+        pair("nora", "marco")
+    );
+    assert_eq!(
+        said_in(&found, &text, "\"No,\" said Marco."),
+        pair("marco", "nora")
+    );
+
+    // Whoever a turn addresses answers it.
+    let text = format!("\"Marco, are you coming?\" asked Nora.\n\"I am tired.\"{voices}");
+    let found = speaks(&text);
+    assert_eq!(
+        said_in(&found, &text, "\"I am tired.\""),
+        pair("marco", "nora")
+    );
+
+    // Speech left open at a paragraph's end is the same speaker's next paragraph.
+    let text = format!(
+        "\"I went to the dock,\" said Nora, \"and then I waited.\n\"Marco, I came home.\"{voices}"
+    );
+    let found = speaks(&text);
+    assert_eq!(
+        said_in(&found, &text, "\"Marco, I came home.\""),
+        pair("nora", "marco")
+    );
+
+    // With a third voice in the conversation, an untagged turn is no one's.
+    let text = format!("\"Are you coming?\" asked Nora.\n\"No,\" said Marco.\n\"Nor I,\" said Elena.\n\"Why not?\"\n\"Go,\" said Elena.{voices}");
+    let found = speaks(&text);
+    assert!(
+        said_in(&found, &text, "\"Why not?\"").is_empty(),
+        "{found:?}"
+    );
+}

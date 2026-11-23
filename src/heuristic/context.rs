@@ -59,8 +59,10 @@ impl Context {
 pub(super) fn observe_text(register: &mut Register, text: &str, pack: &LanguagePack) {
     let mut open = false;
     let mut previous_end = 0usize;
+    // As in the pipeline: hard-wrapped text marks a paragraph with a blank line.
+    let paragraph_break = if text.contains("\n\n") { 2 } else { 1 };
     for (sent_text, sent_start) in segment::split_sentences(text, pack) {
-        if text[previous_end..sent_start].contains('\n') {
+        if text[previous_end..sent_start].matches('\n').count() >= paragraph_break {
             open = false;
         }
         previous_end = sent_start + sent_text.len();

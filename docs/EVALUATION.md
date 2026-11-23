@@ -431,3 +431,22 @@ sentence does not state ("Mrs. Bennet | mother_of" every daughter). With
 thinking on it takes about eight minutes an item. Too weak to label training
 text, so the next work is the rule path for `speaks_to`, about 45% of public
 labels: conversation turns, pronoun speakers, and the narrator's identity.
+
+### Conversation turns (2026-11-23)
+
+`src/heuristic/dialogue.rs` now follows a conversation, not only a
+paragraph: the turn before last speaks an untagged turn, a pronoun tag picks
+whichever of the two people it fits, the name a turn addresses answers it,
+speech left open at a paragraph's end (or a tag with "continued") carries
+the same speaker on, and a turn with no address is said to the previous
+speaker. Inference stops when a third voice joins. Each `speaks_to` carries
+a span on every sentence of the turn. A first-person book gets a narrator:
+the name the turns beside "I said" turns address, at least three times and
+twice the runner-up (Jane Eyre: `jane`; no other public book qualifies), and
+the document is read again with it. Hard-wrapped speech no longer closes at
+every line break, only at a paragraph break.
+
+Public even: recall over all tiers 0.028 to 0.057, precision 0.750 over 8
+extractions on labelled sentences. Most remaining `speaks_to` misses have no
+known speaker on the turn before, so the forward pass never holds two
+people; several also need aliases (Nelly and Ellen, Cathy and Catherine).

@@ -182,11 +182,17 @@ fn collect_candidates(
 
     for (sent_text, sent_start) in segment::split_sentences(text, pack) {
         let breaks = text[previous_end..sent_start].matches('\n').count();
-        if breaks > 0 {
+        // Hard-wrapped speech runs on across line breaks; only a paragraph
+        // break ends it.
+        if breaks >= paragraph_break {
             quote_open = false;
         }
         if breaks >= paragraph_break {
-            found.extend(turn.finish(&opts.ontology).into_iter().map(|r| (r, 0)));
+            found.extend(
+                turn.finish(&opts.ontology, &register, pack)
+                    .into_iter()
+                    .map(|r| (r, 0)),
+            );
         }
         if text[previous_end..sent_start]
             .matches('\n')
@@ -197,6 +203,7 @@ fn collect_candidates(
         }
         previous_end = sent_start + sent_text.len();
 
+        let opened = quote_open;
         let quotes = quotes::QuoteMap::scan(sent_text, quote_open);
         quote_open = quotes.open_at_end;
 
@@ -210,7 +217,7 @@ fn collect_candidates(
             narrator,
         );
         carried = entities::carried_referents(sent_text, &entities, pack);
-        turn.observe(sent_text, sent_start, &entities, &quotes, pack);
+        turn.observe(sent_text, sent_start, &entities, &quotes, opened, pack);
 
         if entities.is_empty() {
             continue;
@@ -228,16 +235,27 @@ fn collect_candidates(
                 .map(|r| (r, sent_start)),
         );
     }
-    found.extend(turn.finish(&opts.ontology).into_iter().map(|r| (r, 0)));
+    found.extend(
+        turn.finish(&opts.ontology, &register, pack)
+            .into_iter()
+            .map(|r| (r, 0)),
+    );
+    // A first-person document is read again with its narrator named, so that
+    // "I" is a mention of someone. The caller's narrator always wins.
+    if narrator.is_none() {
+        if let Some(name) = turn.narrator() {
+            return collect_candidates(text, opts, pack, &context.clone().with_narrator(&name));
+        }
+    }
     let common = dialogue::common_words(
         text,
         found
             .iter()
-            .filter(|(r, _)| r.rule == dialogue::RULE)
+            .filter(|(r, _)| dialogue::is_rule(&r.rule))
             .flat_map(|(r, _)| [r.subject.as_str(), r.object.as_str()]),
     );
     found.retain(|(r, _)| {
-        r.rule != dialogue::RULE
+        !dialogue::is_rule(&r.rule)
             || (dialogue::is_voice(&r.subject, 2, &turn, &register)
                 && dialogue::is_voice(&r.object, 1, &turn, &register)
                 && ![&r.subject, &r.object]

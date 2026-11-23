@@ -96,6 +96,9 @@ pub struct LanguagePack {
     /// Verbs of a dialogue tag ("said Diana", "Heathcliff asked"): the name
     /// next to one, outside quotation marks, is the speaker of the paragraph.
     pub speech_verbs: &'static [&'static str],
+    /// Speech verbs that carry on the previous speaker's turn ("continued my
+    /// master"), whoever the tag goes on to name.
+    pub resuming_verbs: &'static [&'static str],
     /// The pronouns that stand in subject position. IMPORTANT: only these are
     /// read as evidence about the name in front of them. An object or
     /// possessive pronoun after a name usually names someone else — "Archer
@@ -199,6 +202,7 @@ pub static ENGLISH: LanguagePack = LanguagePack {
         "ours",
         "ourselves",
     ],
+    resuming_verbs: &["continued", "resumed", "pursued", "persisted"],
     speech_verbs: &[
         "said",
         "says",
