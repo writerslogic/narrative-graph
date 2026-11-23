@@ -477,3 +477,10 @@ collect`) at half price, with the guide first so its prefix is cached.
 gpt-6.2-astra also reviewed the labels, so its agreement with them may read
 high. Batch `batch_6b040fc3ffe081908bd1cd8b71d7af54`, state in
 `/Volumes/C/ng-teacher/public-even-astra.txt.batch.json`.
+
+Result, public even (106 labels): recall 0.585 over all tiers (0.633 over the
+matchable), precision 0.705 over 88 extractions; stated 9/10, implied 1/9,
+described 52/87. Several of the 26 false positives are spellings the matcher
+does not join (`Adela` for Adèle, `Lizzy` for Elizabeth). That is at the bar
+set for a usable teacher (about 0.6 and 0.7), against 0.206 and 0.163 for
+qwen3:14b. Answers: `/Volumes/C/ng-teacher/public-even-astra.raw.txt`.
