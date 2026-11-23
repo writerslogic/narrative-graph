@@ -9,12 +9,17 @@ answers in the label format; a bracketed side is reduced to the name after
 `=`, and one without a name is dropped, since the matcher cannot use it.
 Tune prompts on even items only.
 
+`--items` labels a `sample_training.py` file with the guide from the public
+corpus. It defaults to all sampled items and saves raw answers beside the
+claims, including explicit negatives.
+
 `--provider openai` sends the prompt to the OpenAI Responses API with
 `OPENAI_API_KEY`. It refuses any corpus but the public one beside this
 script: the private set is copyrighted and never leaves the machine.
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -26,6 +31,7 @@ from collections import Counter
 from pathlib import Path
 
 from revise_relations import vocabulary
+from sample_training import BOOKS, ROOT as PUBLIC, WINDOW, overlaps, sentence_windows
 
 HONORIFIC = r"(?:Mr|Mrs|Miss|Ms|Dr|Lady|Lord|Sir|Captain|Colonel|Aunt|Uncle)\.?"
 NAME = re.compile(rf"\b(?:{HONORIFIC} )?[A-Z][a-z]+(?: [A-Z][a-z]+)?\b")
@@ -49,6 +55,13 @@ def parse_items(labels: str):
             i += 1
             continue
         fields = line[2:].split()
+        if (
+            len(fields) < 3
+            or i + 3 >= len(lines)
+            or not lines[i + 1].startswith("~ ")
+            or lines[i + 3] != "="
+        ):
+            raise ValueError(f"line {i + 1}: expected an item header, context, sentence and '='")
         number, book, start = int(fields[0]), fields[1], int(fields[2])
         context = lines[i + 1].removeprefix("~ ")
         sentence = lines[i + 2]
@@ -64,7 +77,38 @@ def cast(text: str, size: int = 60):
     return [name for name, n in counts.most_common(size * 2) if n >= 3 and name not in COMMON][:size]
 
 
-PUBLIC = (Path(__file__).resolve().parent.parent).resolve()
+def corpus_bytes(root, filename):
+    path = root / filename
+    if root == PUBLIC and path.resolve() != path:
+        raise ValueError(f"expected a regular corpus file at {path}")
+    return path.read_bytes()
+
+
+def training_books(root, items, evaluated):
+    books, windows, protected = {}, {}, {}
+    numbers = {item["number"] for item in evaluated}
+    locations = set()
+    for item in items:
+        number, book, start = item["number"], item["book"], item["start"]
+        if number <= 0 or number in numbers or (book, start) in locations:
+            raise ValueError(f"item {number}: invalid or repeated item number or location")
+        if book not in BOOKS:
+            raise ValueError(f"item {number}: book must be one of the public novels")
+        if book not in books:
+            books[book] = corpus_bytes(root, f"{book}.txt")
+            windows[book] = dict(sentence_windows(books[book].decode("utf-8")))
+            protected[book] = [windows[book][e["start"]][:2] for e in evaluated if e["book"] == book]
+        window = windows[book].get(start)
+        if window is None:
+            raise ValueError(f"item {number}: invalid sentence byte offset")
+        lo, hi, previous, sentence = window
+        if item["sentence"] != " ".join(sentence.split()) or item["context"] != " ".join(previous.split()):
+            raise ValueError(f"item {number}: text differs from the source novel")
+        if overlaps(lo, hi, protected[book]):
+            raise ValueError(f"item {number}: window overlaps an evaluation item")
+        numbers.add(number)
+        locations.add((book, start))
+    return books
 
 
 def ask_openai(model: str, prompt: str) -> str:
@@ -135,11 +179,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("root", type=Path, help="directory with labels.txt and the books")
     parser.add_argument("out", type=Path)
-    parser.add_argument("--half", choices=["even", "odd", "all"], default="even")
+    parser.add_argument("--half", choices=["even", "odd", "all"], help="default: even for eval, all with --items")
+    parser.add_argument("--items", type=Path, help="public training items from sample_training.py")
     parser.add_argument("--provider", choices=["ollama", "openai"], default="ollama")
     parser.add_argument("--model", default="qwen3:14b")
     parser.add_argument("--host", default="http://127.0.0.1:11434")
-    parser.add_argument("--window", type=int, default=3000, help="characters of text before the sentence")
+    parser.add_argument("--window", type=int, default=WINDOW // 2, help="characters of text before the sentence")
     parser.add_argument("--num-ctx", type=int, default=8192)
     parser.add_argument("--think", action="store_true", help="let the model reason before answering")
     parser.add_argument(
@@ -152,20 +197,42 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if args.batch and args.provider != "openai":
         parser.error("--batch needs --provider openai")
-    if args.provider == "openai" and args.root.resolve() != PUBLIC:
-        parser.error(f"--provider openai sends text off the machine; only {PUBLIC} may be sent")
+    root = args.root.resolve()
+    if (args.provider == "openai" or args.items) and root != PUBLIC:
+        parser.error(f"--provider openai and --items require the public corpus at {PUBLIC}")
+    if args.window < 0 or (args.items and args.window > WINDOW // 2):
+        parser.error(f"--window must be nonnegative and at most {WINDOW // 2} with --items")
 
-    labels = (args.root / "labels.txt").read_text()
-    guide, items = parse_items(labels)
+    try:
+        labels = corpus_bytes(root, "labels.txt").decode("utf-8")
+        guide, items = parse_items(labels)
+        books = {}
+        if args.items:
+            _, sampled = parse_items(args.items.read_text(encoding="utf-8"))
+            books = training_books(root, sampled, items)
+            items = sampled
+            if args.raw is None:
+                args.raw = args.out.with_name(args.out.name + ".raw.txt")
+    except (OSError, ValueError, KeyError) as error:
+        parser.error(str(error))
+    output_paths = [path.resolve() for path in (args.out, args.raw) if path is not None]
+    if len(set(output_paths)) != len(output_paths) or (args.items and args.items.resolve() in output_paths):
+        parser.error("items, claims and raw answers need different paths")
     vocab = vocabulary(labels.split("\n@ ", 1)[0])
-    keep = {"even": lambda n: n % 2 == 0, "odd": lambda n: n % 2 == 1, "all": lambda n: True}[args.half]
-    books, casts = {}, {}
+    half = args.half or ("all" if args.items else "even")
+    keep = {"even": lambda n: n % 2 == 0, "odd": lambda n: n % 2 == 1, "all": lambda n: True}[half]
+    casts = {}
     chosen = [item for item in items if keep(item["number"])]
+    if not chosen:
+        parser.error("no items selected")
     prompts = []
     for item in chosen:
         book = item["book"]
         if book not in books:
-            books[book] = (args.root / f"{book}.txt").read_bytes()
+            if root == PUBLIC and book not in BOOKS:
+                parser.error("expected a public book number")
+            books[book] = corpus_bytes(root, f"{book}.txt")
+        if book not in casts:
             casts[book] = cast(books[book].decode("utf-8", "replace"))
         # The label offsets are bytes; the books are full of three-byte quotes.
         start = item["start"]
@@ -192,13 +259,16 @@ def main():
         )
 
     state = args.out.with_name(args.out.name + ".batch.json")
+    selection = hashlib.sha256(json.dumps(list(zip(chosen, prompts))).encode()).hexdigest() if args.batch else ""
     if args.batch == "submit":
-        submit_batch(args.model, chosen, prompts, state)
+        submit_batch(args.model, chosen, prompts, state, selection)
         return
     if args.batch == "collect":
-        answers = collect_batch(state)
+        answers = collect_batch(state, selection, require_selection=bool(args.items))
         if answers is None:
             raise SystemExit(1)
+        if args.items and answers.keys() != {item["number"] for item in chosen}:
+            parser.error(f"batch returned {len(answers)} answers for {len(chosen)} training items")
     else:
         answers = {}
         for k, (item, prompt) in enumerate(zip(chosen, prompts), 1):
@@ -232,7 +302,7 @@ def openai(method: str, path: str, body: bytes | None = None, content_type: str 
         return response.read()
 
 
-def submit_batch(model: str, chosen, prompts, state: Path):
+def submit_batch(model: str, chosen, prompts, state: Path, selection: str):
     """Upload one Responses request per item and start a batch: half the
     price of live calls, finished within 24 hours."""
     lines = "".join(
@@ -253,7 +323,12 @@ def submit_batch(model: str, chosen, prompts, state: Path):
         f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"requests.jsonl\"\r\n"
         "Content-Type: application/jsonl\r\n\r\n"
     ).encode() + lines + f"\r\n--{boundary}--\r\n".encode()
+    manifest = {"batch": None, "model": model, "selection": selection}
+    with state.open("x", encoding="utf-8") as file:
+        json.dump(manifest, file)
     uploaded = json.loads(openai("POST", "files", form, f"multipart/form-data; boundary={boundary}"))
+    manifest["input_file"] = uploaded["id"]
+    save_state(state, manifest)
     batch = json.loads(
         openai(
             "POST",
@@ -263,18 +338,32 @@ def submit_batch(model: str, chosen, prompts, state: Path):
             ).encode(),
         )
     )
-    state.write_text(json.dumps({"batch": batch["id"], "model": model}))
+    manifest["batch"] = batch["id"]
+    save_state(state, manifest)
     logging.info("batch %s submitted, %d requests; state in %s", batch["id"], len(prompts), state)
 
 
-def collect_batch(state: Path):
+def save_state(state, manifest):
+    pending = state.with_suffix(".tmp")
+    pending.write_text(json.dumps(manifest), encoding="utf-8")
+    pending.replace(state)
+
+
+def collect_batch(state: Path, selection: str, require_selection: bool):
     """The answers by item number, or None while the batch is unfinished."""
-    batch_id = json.loads(state.read_text())["batch"]
+    manifest = json.loads(state.read_text(encoding="utf-8"))
+    if (require_selection or "selection" in manifest) and selection != manifest.get("selection"):
+        raise SystemExit("selected items or prompts differ from the submitted batch")
+    batch_id = manifest["batch"]
+    if batch_id is None:
+        raise SystemExit(f"submission was interrupted before the batch ID was recorded in {state}")
     batch = json.loads(openai("GET", f"batches/{batch_id}"))
     logging.info("batch %s: %s %s", batch_id, batch["status"], batch.get("request_counts"))
     if batch["status"] != "completed":
         return None
     answers = {}
+    if not batch.get("output_file_id"):
+        return answers
     for line in openai("GET", f"files/{batch['output_file_id']}/content").decode().splitlines():
         record = json.loads(line)
         number = int(record["custom_id"].removeprefix("item-"))
@@ -282,6 +371,8 @@ def collect_batch(state: Path):
         if response.get("status_code") != 200:
             logging.warning("item %d failed: %s", number, record.get("error"))
             continue
+        if number in answers:
+            raise SystemExit(f"batch returned duplicate answer for item {number}")
         answers[number] = "".join(
             c["text"]
             for o in response["body"]["output"]

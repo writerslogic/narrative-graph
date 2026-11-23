@@ -67,6 +67,7 @@ npm install writerslogic/narrative-graph
 | `bindings` | TypeScript declarations via `ts-rs` | `serde`, `ts-rs` |
 | `node-api` | The Node addon | `napi`, `napi-derive`, `napi-build` |
 | `cli` | The `narrative-graph` binary | `clap`, `anyhow` |
+| `model` | Local DeBERTa relation extraction | Tract, SentencePiece |
 
 ## What It Extracts
 
@@ -123,6 +124,14 @@ narrative-graph extract chapter.txt --min-confidence 0.6 --format json
 ```
 
 Installed alongside the crate (`cargo install narrative-graph --features cli` provides the `narrative-graph` binary), the same way `holographic-memory` ships `hms-admin` and `hms-eval` as bins in its own crate rather than separate packages. Useful for shell pipelines, CI checks, and inspecting output before wiring the library into an application.
+
+With a local [student checkpoint](./tests/corpus/README.md#local-student), add the `model` feature to use it alongside the rules.
+
+```bash
+cargo run --release --features cli,model -- extract chapter.txt --model /path/to/checkpoint
+```
+
+In Rust, load the checkpoint once with `StudentModel::load` and call `extract_candidate_triples` or `extract_aggregates` on it. Both run locally on the CPU.
 
 </details>
 

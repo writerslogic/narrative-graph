@@ -29,6 +29,11 @@ enum Command {
         /// Output format
         #[arg(long, value_enum, default_value_t = Format::Text)]
         format: Format,
+
+        /// Directory containing a local student checkpoint
+        #[cfg(feature = "model")]
+        #[arg(long, value_name = "DIRECTORY")]
+        model: Option<PathBuf>,
     },
 }
 
@@ -43,6 +48,8 @@ fn main() -> anyhow::Result<()> {
         input,
         min_confidence,
         format,
+        #[cfg(feature = "model")]
+        model,
     } = Args::parse().command;
 
     let text = if input.as_os_str() == "-" {
@@ -61,6 +68,14 @@ fn main() -> anyhow::Result<()> {
         rejections: Default::default(),
         ontology: Default::default(),
     };
+    #[cfg(feature = "model")]
+    let candidates = match model {
+        Some(path) => {
+            narrative_graph::StudentModel::load(&path)?.extract_candidate_triples(&text, &opts)?
+        }
+        None => extract_candidate_triples(&text, &opts)?,
+    };
+    #[cfg(not(feature = "model"))]
     let candidates = extract_candidate_triples(&text, &opts)?;
 
     match write_candidates(&candidates, format) {
