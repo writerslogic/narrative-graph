@@ -26,12 +26,18 @@ use std::collections::{BTreeMap, HashMap};
 /// The second vector says, per aggregate, whether every candidate behind it came
 /// from a single-filler relation, which `find_conflicts` needs and the public
 /// type does not carry.
-pub fn aggregate(candidates: Vec<Emitted>) -> (Vec<AggregateTriple>, Vec<bool>) {
+#[derive(Clone, Copy)]
+pub(super) struct Constraints {
+    single_filler: bool,
+    ends_state: bool,
+}
+
+pub fn aggregate(candidates: Vec<Emitted>) -> (Vec<AggregateTriple>, Vec<Constraints>) {
     struct Evidence {
         confidence: f32,
         spans: Vec<[usize; 2]>,
         rules: Vec<String>,
-        single_filler: bool,
+        constraints: Constraints,
     }
 
     let mut merged: BTreeMap<(String, String, String, Polarity), Evidence> = BTreeMap::new();
@@ -40,6 +46,8 @@ pub fn aggregate(candidates: Vec<Emitted>) -> (Vec<AggregateTriple>, Vec<bool>) 
         candidate,
         polarity,
         single_filler,
+        ends_state,
+        ..
     } in candidates
     {
         let TripleCandidate {
@@ -55,7 +63,8 @@ pub fn aggregate(candidates: Vec<Emitted>) -> (Vec<AggregateTriple>, Vec<bool>) 
                 let entry = entry.get_mut();
                 entry.confidence = entry.confidence.max(confidence);
                 entry.spans.push(span);
-                entry.single_filler &= single_filler;
+                entry.constraints.single_filler &= single_filler;
+                entry.constraints.ends_state &= ends_state;
                 if !entry.rules.contains(&rule) {
                     entry.rules.push(rule);
                 }
@@ -65,13 +74,16 @@ pub fn aggregate(candidates: Vec<Emitted>) -> (Vec<AggregateTriple>, Vec<bool>) 
                     confidence,
                     spans: vec![span],
                     rules: vec![rule],
-                    single_filler,
+                    constraints: Constraints {
+                        single_filler,
+                        ends_state,
+                    },
                 });
             }
         }
     }
 
-    let mut aggregates: Vec<(AggregateTriple, bool)> = merged
+    let mut aggregates: Vec<_> = merged
         .into_iter()
         .map(|((subject, relation, object, polarity), evidence)| {
             (
@@ -84,7 +96,7 @@ pub fn aggregate(candidates: Vec<Emitted>) -> (Vec<AggregateTriple>, Vec<bool>) 
                     spans: evidence.spans,
                     rules: evidence.rules,
                 },
-                evidence.single_filler,
+                evidence.constraints,
             )
         })
         .collect();
@@ -117,8 +129,11 @@ pub fn aggregate(candidates: Vec<Emitted>) -> (Vec<AggregateTriple>, Vec<bool>) 
 /// relation before the ontology renamed it. Renaming `mother_of` keeps the
 /// constraint, and mapping another relation onto the same label does not
 /// acquire it; an aggregate merged from both is unconstrained.
-pub fn find_conflicts(aggregates: &[AggregateTriple], single_filler: &[bool]) -> Vec<Conflict> {
-    debug_assert_eq!(aggregates.len(), single_filler.len());
+pub fn find_conflicts(
+    aggregates: &[AggregateTriple],
+    constraints: &[Constraints],
+) -> Vec<Conflict> {
+    debug_assert_eq!(aggregates.len(), constraints.len());
     // Only aggregates sharing these keys can conflict, so grouping replaces a
     // scan of every pair. Indices are pushed in ascending order.
     let mut by_fact: HashMap<(&str, &str, &str), Vec<usize>> = HashMap::new();
@@ -128,7 +143,7 @@ pub fn find_conflicts(aggregates: &[AggregateTriple], single_filler: &[bool]) ->
             .entry((&a.subject, &a.relation, &a.object))
             .or_default()
             .push(i);
-        if a.polarity == Polarity::Asserted && single_filler[i] {
+        if a.polarity == Polarity::Asserted && constraints[i].single_filler {
             by_slot.entry((&a.relation, &a.object)).or_default().push(i);
         }
     }
@@ -137,7 +152,10 @@ pub fn find_conflicts(aggregates: &[AggregateTriple], single_filler: &[bool]) ->
     for group in by_fact.values() {
         for (n, &i) in group.iter().enumerate() {
             for &j in &group[n + 1..] {
-                if aggregates[i].polarity != aggregates[j].polarity {
+                if aggregates[i].polarity != aggregates[j].polarity
+                    && !constraints[i].ends_state
+                    && !constraints[j].ends_state
+                {
                     pairs.push((i, j, ConflictKind::Denial));
                 }
             }
@@ -166,7 +184,7 @@ pub fn find_conflicts(aggregates: &[AggregateTriple], single_filler: &[bool]) ->
 
 /// Order by where the document first states each claim, breaking ties on the
 /// triple so the order is total and reproducible.
-fn sort_by_first_span(aggregates: &mut [(AggregateTriple, bool)]) {
+fn sort_by_first_span(aggregates: &mut [(AggregateTriple, Constraints)]) {
     aggregates.sort_by(|(a, _), (b, _)| {
         a.spans[0].cmp(&b.spans[0]).then_with(|| {
             (&a.subject, &a.relation, &a.object, a.polarity).cmp(&(

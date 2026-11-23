@@ -28,6 +28,10 @@ pub fn is_quote_mark(c: char) -> bool {
 }
 
 impl QuoteMap {
+    pub(super) fn ranges(&self) -> &[(usize, usize)] {
+        &self.ranges
+    }
+
     /// Scan one sentence, starting inside a quotation when `open` says so.
     pub fn scan(text: &str, open: bool) -> Self {
         let mut ranges = Vec::new();

@@ -11,12 +11,16 @@
 //! of a stretch is tagged, every turn in it belongs to its side and is said
 //! to the other person. See [`solve`].
 
+use super::coreference::Sentence;
 use super::entities::EntityCandidate;
 use super::pack::LanguagePack;
 use super::quotes::{is_quote_mark, QuoteMap};
 use super::register::Register;
 use super::relations::{normalize_relation, RelationCandidate, Stance};
+use crate::types::{Dialogue, DialogueLine};
 use std::collections::{BTreeMap, BTreeSet};
+
+mod lines;
 
 /// Base confidence of a tagged speaker and a vocative in the same paragraph.
 const BASE: f32 = 0.7;
@@ -41,6 +45,7 @@ struct Para {
     vocatives: Vec<(String, usize, usize)>,
     /// Absolute byte ranges of the sentences that hold speech.
     speech: Vec<[usize; 2]>,
+    lines: Vec<lines::Line>,
     /// The speech is still open at the paragraph's end.
     open_end: bool,
     /// A tag outside the speech carries on the last turn ("continued").
@@ -65,9 +70,17 @@ pub struct Turn {
     last_turn: Option<(bool, Vec<String>)>,
     /// Names addressed in a turn next to one of the narrator's, by count.
     narrator_votes: BTreeMap<String, usize>,
+    lines: Option<Vec<DialogueLine>>,
 }
 
 impl Turn {
+    pub(super) fn new(record_lines: bool) -> Self {
+        Self {
+            lines: record_lines.then(Vec::new),
+            ..Self::default()
+        }
+    }
+
     /// Read one sentence of the paragraph; `start` is its byte offset and
     /// `open` whether a quotation was open when it began.
     pub fn observe(
@@ -88,6 +101,17 @@ impl Turn {
         }
         para.speech.push([start, start + sentence.len()]);
         para.open_end = quotes.open_at_end;
+        if self.lines.is_some() {
+            lines::observe(
+                &mut para.lines,
+                sentence,
+                start,
+                mentions,
+                quotes,
+                open,
+                pack,
+            );
+        }
         for m in mentions {
             let first_person = pack
                 .first_person_pronouns
@@ -156,6 +180,64 @@ impl Turn {
         pack: &LanguagePack,
         last: bool,
     ) -> Vec<RelationCandidate> {
+        let Some(turns) = self.close_paragraph(last) else {
+            return Vec::new();
+        };
+        let mut output = ConversationOutput {
+            relations: Vec::new(),
+            lines: self.lines.as_mut(),
+            ontology,
+        };
+        solve(&turns, register, pack, &mut output);
+        output.relations
+    }
+
+    pub(super) fn line_names(&self) -> impl Iterator<Item = &str> {
+        self.lines.iter().flatten().flat_map(|line| {
+            line.speaker
+                .iter()
+                .chain(&line.listener)
+                .map(String::as_str)
+        })
+    }
+
+    pub(super) fn into_dialogue(
+        mut self,
+        common: &BTreeSet<String>,
+        register: &Register,
+        pack: &LanguagePack,
+        aliases: &BTreeMap<String, String>,
+    ) -> Dialogue {
+        let mut lines = self.lines.take().unwrap_or_default();
+        let known: BTreeSet<&str> = aliases.values().map(String::as_str).collect();
+        let allowed = |name: &String| {
+            !register.is_thing(name)
+                && !common.contains(name)
+                && !pack.sentence_openers.contains(&name.as_str())
+                && !matches!(
+                    name.as_str(),
+                    "anyone"
+                        | "anybody"
+                        | "someone"
+                        | "somebody"
+                        | "nobody"
+                        | "everyone"
+                        | "everybody"
+                )
+        };
+        for line in &mut lines {
+            line.speaker = line.speaker.take().filter(allowed);
+            line.listener = line.listener.take().filter(|name| {
+                allowed(name)
+                    && (known.contains(name.as_str())
+                        || register.is_established(name)
+                        || is_voice(name, 1, &self, register))
+            });
+        }
+        Dialogue::from_lines(lines)
+    }
+
+    fn close_paragraph(&mut self, last: bool) -> Option<Vec<Para>> {
         let mut para = std::mem::take(&mut self.current);
         // A turn addressing three people or more is recounting a
         // conversation, and its names are the recounted speakers' addresses.
@@ -189,6 +271,7 @@ impl Turn {
                     previous.pronoun_tags.extend(para.pronoun_tags);
                     previous.vocatives.extend(para.vocatives);
                     previous.speech.extend(para.speech);
+                    previous.lines.extend(para.lines);
                     previous.open_end = para.open_end;
                     previous.first_person |= para.first_person;
                 }
@@ -197,10 +280,9 @@ impl Turn {
         }
         if self.quiet >= QUIET || last {
             self.last_turn = None;
-            let turns = std::mem::take(&mut self.conversation);
-            return solve(&turns, ontology, register, pack);
+            return Some(std::mem::take(&mut self.conversation));
         }
-        vec![]
+        None
     }
 
     /// The narrator is whoever the turns beside the narrator's address.
@@ -220,6 +302,43 @@ impl Turn {
     }
 }
 
+struct ConversationOutput<'a> {
+    relations: Vec<RelationCandidate>,
+    lines: Option<&'a mut Vec<DialogueLine>>,
+    ontology: &'a BTreeMap<String, String>,
+}
+
+impl ConversationOutput<'_> {
+    fn record_lines(&mut self, turn: &Para, speaker: Option<&str>, listener: Option<&str>) {
+        if let Some(lines) = &mut self.lines {
+            lines.extend(
+                turn.lines
+                    .iter()
+                    .map(|line| line.attributed(speaker, listener, &turn.vocatives)),
+            );
+        }
+    }
+}
+
+pub(super) fn infer_narrator(sentences: &[Sentence<'_>], pack: &LanguagePack) -> Option<String> {
+    let mut turn = Turn::default();
+    for sentence in sentences {
+        if sentence.paragraph_start {
+            turn.close_paragraph(false);
+        }
+        turn.observe(
+            sentence.text,
+            sentence.start,
+            sentence.named(),
+            &sentence.quotes,
+            sentence.opened,
+            pack,
+        );
+    }
+    turn.close_paragraph(true);
+    turn.narrator()
+}
+
 /// Who speaks each turn of a conversation, and to whom.
 ///
 /// A turn's own tag anchors it, and so does the turn before it addressing
@@ -233,10 +352,10 @@ impl Turn {
 /// someone still count.
 fn solve(
     turns: &[Para],
-    ontology: &BTreeMap<String, String>,
     register: &Register,
     pack: &LanguagePack,
-) -> Vec<RelationCandidate> {
+    out: &mut ConversationOutput<'_>,
+) {
     let mut anchors: Vec<Option<String>> = turns
         .iter()
         .map(|t| match t.speakers.as_slice() {
@@ -261,7 +380,6 @@ fn solve(
         }
     }
 
-    let mut out = Vec::new();
     let mut start = 0;
     // The two sides of the alternation, by the parity of the turn.
     let mut sides: [Option<String>; 2] = [None, None];
@@ -280,15 +398,15 @@ fn solve(
                 [Some(a), Some(b)] if sides_tagged == [true, true] => Some([a.clone(), b.clone()]),
                 _ => None,
             };
-            out.extend(stretch(
+            stretch(
                 &turns[start..i],
                 start,
                 &tagged[start..i],
                 pair,
-                ontology,
                 register,
                 pack,
-            ));
+                out,
+            );
             start = i;
             sides = [None, None];
             sides_tagged = [false, false];
@@ -298,7 +416,6 @@ fn solve(
             sides_tagged[i % 2] |= tagged[i];
         }
     }
-    out
 }
 
 /// One stretch of a conversation; `offset` is its first turn's index, which
@@ -308,10 +425,10 @@ fn stretch(
     offset: usize,
     tagged: &[bool],
     pair: Option<[String; 2]>,
-    ontology: &BTreeMap<String, String>,
     register: &Register,
     pack: &LanguagePack,
-) -> Vec<RelationCandidate> {
+    out: &mut ConversationOutput<'_>,
+) {
     let side = |j: usize| (offset + j) % 2;
     let Some(pair) = pair.filter(|pair| {
         !turns.iter().enumerate().any(|(j, t)| {
@@ -321,13 +438,14 @@ fn stretch(
             })
         })
     }) else {
-        return solve_tagged(turns, tagged, ontology);
+        solve_tagged(turns, tagged, out);
+        return;
     };
 
-    let mut out = Vec::new();
     for (j, turn) in turns.iter().enumerate() {
         let speaker = &pair[side(j)];
         let other = &pair[1 - side(j)];
+        out.record_lines(turn, Some(speaker), Some(other));
         let addressed: Vec<&(String, usize, usize)> = turn
             .vocatives
             .iter()
@@ -335,8 +453,13 @@ fn stretch(
             .collect();
         if addressed.is_empty() {
             for &span in &turn.speech {
-                out.push(candidate(
-                    speaker, other, span, TURN_RULE, INFERRED, ontology,
+                out.relations.push(candidate(
+                    speaker,
+                    other,
+                    span,
+                    TURN_RULE,
+                    INFERRED,
+                    out.ontology,
                 ));
             }
         }
@@ -347,50 +470,50 @@ fn stretch(
         };
         let mut seen: Vec<&str> = Vec::new();
         for (name, start, end) in addressed {
-            out.push(candidate(
+            out.relations.push(candidate(
                 speaker,
                 name,
                 [*start, *end],
                 rule,
                 base,
-                ontology,
+                out.ontology,
             ));
             if !seen.contains(&name.as_str()) {
                 seen.push(name);
                 for &span in &turn.speech {
-                    out.push(candidate(
-                        speaker, name, span, TURN_RULE, INFERRED, ontology,
+                    out.relations.push(candidate(
+                        speaker,
+                        name,
+                        span,
+                        TURN_RULE,
+                        INFERRED,
+                        out.ontology,
                     ));
                 }
             }
         }
     }
-    out
 }
 
 /// Without a two-person alternation, only a tagged turn's own address.
-fn solve_tagged(
-    turns: &[Para],
-    tagged: &[bool],
-    ontology: &BTreeMap<String, String>,
-) -> Vec<RelationCandidate> {
-    let mut out = Vec::new();
-    for (turn, _) in turns.iter().zip(tagged).filter(|(_, &t)| t) {
-        let speaker = &turn.speakers[0];
+fn solve_tagged(turns: &[Para], tagged: &[bool], out: &mut ConversationOutput<'_>) {
+    for (turn, &tagged) in turns.iter().zip(tagged) {
+        let speaker = tagged.then(|| turn.speakers[0].as_str());
+        out.record_lines(turn, speaker, None);
+        let Some(speaker) = speaker else { continue };
         for (name, start, end) in &turn.vocatives {
             if name != speaker {
-                out.push(candidate(
+                out.relations.push(candidate(
                     speaker,
                     name,
                     [*start, *end],
                     RULE,
                     BASE,
-                    ontology,
+                    out.ontology,
                 ));
             }
         }
     }
-    out
 }
 
 fn candidate(
@@ -411,6 +534,9 @@ fn candidate(
         gap: 0,
         stance: Stance::Asserted,
         single_filler: false,
+        role: None,
+        state: None,
+        ends_state: false,
     }
 }
 
@@ -504,6 +630,15 @@ fn tags_speech(
     quotes: &QuoteMap,
     pack: &LanguagePack,
 ) -> bool {
+    speech_tag_span(sentence, m, quotes, pack).is_some()
+}
+
+fn speech_tag_span(
+    sentence: &str,
+    m: &EntityCandidate,
+    quotes: &QuoteMap,
+    pack: &LanguagePack,
+) -> Option<[usize; 2]> {
     let is_verb = |w: &str| pack.speech_verbs.contains(&w.to_lowercase().as_str());
     let head = sentence[..m.start].trim_end();
     let previous = head
@@ -516,7 +651,7 @@ fn tags_speech(
     {
         let at = head.len() - previous.len();
         if !quotes.inside(at) {
-            return true;
+            return Some([at, m.end]);
         }
     }
     let tail = &sentence[m.end..];
@@ -526,7 +661,8 @@ fn tags_speech(
         .split(|c: char| !c.is_alphabetic())
         .next()
         .unwrap_or("");
-    !next.is_empty() && is_verb(next) && !quotes.inside(offset)
+    (!next.is_empty() && is_verb(next) && !quotes.inside(offset))
+        .then_some([m.start, offset + next.len()])
 }
 
 /// A name that is the whole of a quoted fragment, with the speech resuming in

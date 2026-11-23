@@ -69,13 +69,12 @@ pub(super) fn observe_text(register: &mut Register, text: &str, pack: &LanguageP
         let quotes = QuoteMap::scan(sent_text, open);
         open = quotes.open_at_end;
 
-        let mentions: Vec<_> = entities::mentions_for_register(sent_text, pack)
+        let named = entities::mentions_for_register(sent_text, pack);
+        let mentions: Vec<_> = named.iter().filter(|m| !quotes.inside(m.start)).collect();
+        let pronouns: Vec<_> = entities::extract_pronouns(sent_text, pack)
             .into_iter()
-            .filter(|m| !quotes.inside(m.start))
-            .collect();
-        let pronouns: Vec<_> = entities::pronouns_for_register(sent_text, pack)
-            .into_iter()
-            .filter(|(_, start)| !quotes.inside(*start))
+            .filter(|p| !quotes.inside(p.start))
+            .map(|p| (p.text, p.start))
             .collect();
         register.observe(sent_text, &mentions, &pronouns, pack);
     }

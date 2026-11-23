@@ -27,7 +27,7 @@
 //! --nocapture` for the numbers, per relation and per miss.
 
 use narrative_graph::heuristic::pack::ENGLISH;
-use narrative_graph::{extract_aggregates, AggregateTriple, Options, Polarity};
+use narrative_graph::{analyze_document, extract_aggregates, AggregateTriple, Options, Polarity};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -333,16 +333,26 @@ fn same_person(gold: &str, extracted: &str) -> bool {
 }
 
 fn matches(claim: &Claim, a: &AggregateTriple) -> bool {
-    if claim.relation != a.relation || claim.polarity != a.polarity {
+    matches_fact(claim, &a.subject, &a.relation, &a.object, a.polarity)
+}
+
+fn matches_fact(
+    claim: &Claim,
+    subject: &str,
+    relation: &str,
+    object: &str,
+    polarity: Polarity,
+) -> bool {
+    if claim.relation != relation || claim.polarity != polarity {
         return false;
     }
-    let (Some(subject), Some(object)) = (&claim.subject, &claim.object) else {
+    let (Some(expected_subject), Some(expected_object)) = (&claim.subject, &claim.object) else {
         return false;
     };
-    let forward = same_person(subject, &a.subject) && same_person(object, &a.object);
-    let backward = MUTUAL.contains(&a.relation.as_str())
-        && same_person(subject, &a.object)
-        && same_person(object, &a.subject);
+    let forward = same_person(expected_subject, subject) && same_person(expected_object, object);
+    let backward = MUTUAL.contains(&relation)
+        && same_person(expected_subject, object)
+        && same_person(expected_object, subject);
     forward || backward
 }
 
@@ -559,6 +569,67 @@ fn real_text_precision_and_recall() {
     if let Some((min_precision, min_recall)) = FLOOR {
         assert!(precision >= min_precision, "precision {precision:.3}");
         assert!(recall_known >= min_recall, "recall {recall_known:.3}");
+    }
+}
+
+#[test]
+#[ignore = "calibration uses the complete books; run with --release"]
+fn public_confidence_calibration() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
+    let labels = std::fs::read_to_string(root.join("labels.txt")).expect("labels.txt");
+    let (_, items) = parse(&labels);
+    let half = half();
+    let mut books = BTreeMap::new();
+    let mut groups = BTreeMap::<(bool, String), (u32, u32)>::new();
+    let mut held_out = (0u32, 0.0f64, 0.0f64);
+    for item in items.iter().filter(|item| half.keeps(item.number)) {
+        let (text, analysis) = books.entry(&item.book).or_insert_with(|| {
+            let text = std::fs::read_to_string(root.join(format!("{}.txt", item.book)))
+                .expect("novel text");
+            let analysis = analyze_document(&text, &Options::default()).expect("extraction");
+            (text, analysis)
+        });
+        let end = locate(text, item.start, &item.sentence).expect("labelled sentence");
+        let mut predictions = BTreeMap::new();
+        for fact in analysis
+            .timeline
+            .iter()
+            .filter(|f| (item.start..end).contains(&f.candidate.span[0]))
+        {
+            let c = &fact.candidate;
+            predictions
+                .entry((&c.subject, &c.relation, &c.object, fact.polarity))
+                .and_modify(|best: &mut &narrative_graph::FactOccurrence| {
+                    if c.confidence > best.candidate.confidence {
+                        *best = fact;
+                    }
+                })
+                .or_insert(fact);
+        }
+        for fact in predictions.into_values() {
+            let c = &fact.candidate;
+            let correct = item.claims.iter().any(|claim| {
+                matches_fact(claim, &c.subject, &c.relation, &c.object, fact.polarity)
+            });
+            let even = Half::Even.keeps(item.number);
+            let counts = groups.entry((even, c.rule.clone())).or_default();
+            counts.0 += u32::from(correct);
+            counts.1 += 1;
+            if let Some(score) = fact.calibrated_confidence.filter(|_| !even) {
+                let outcome = f64::from(u32::from(correct));
+                held_out.0 += 1;
+                held_out.1 += (f64::from(c.confidence) - outcome).powi(2);
+                held_out.2 += (f64::from(score) - outcome).powi(2);
+            }
+        }
+    }
+    for ((even, rule), (correct, observations)) in groups {
+        let split = if even { "even" } else { "odd" };
+        println!("calibration {split} {rule}: {correct}/{observations} correct");
+    }
+    if held_out.0 > 0 {
+        let n = f64::from(held_out.0);
+        println!("calibration held-out Brier over {n} supported predictions: raw {:.4}, calibrated {:.4}", held_out.1 / n, held_out.2 / n);
     }
 }
 

@@ -21,8 +21,12 @@
 
 use super::cooccurrence::base;
 use super::relations::{normalize_relation, RelationCandidate, Stance};
-use crate::types::Options;
-use std::collections::BTreeSet;
+use super::DocumentEvidence;
+use crate::types::{
+    CharacterMention, CharacterProfile, Dialogue, DialogueLine, MentionKind, Options,
+    RelationshipState,
+};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Widest gap, in characters, any rule reads across. A Han character is
 /// roughly a word, so this is a short clause.
@@ -229,6 +233,12 @@ struct Paragraph {
     spans: Vec<(usize, usize)>,
 }
 
+impl Paragraph {
+    fn span(&self, start: usize, end: usize) -> [usize; 2] {
+        [self.spans[start].0, self.spans[end - 1].1]
+    }
+}
+
 struct Mention {
     start: usize,
     end: usize,
@@ -237,7 +247,11 @@ struct Mention {
 }
 
 /// Every relation the text states, with spans absolute in `text`.
-pub fn relations(text: &str, opts: &Options) -> Vec<RelationCandidate> {
+pub(super) fn read(
+    text: &str,
+    opts: &Options,
+    mut evidence: Option<&mut DocumentEvidence>,
+) -> Vec<RelationCandidate> {
     let mut keys: Vec<(Vec<char>, &str)> = opts
         .aliases
         .iter()
@@ -249,9 +263,27 @@ pub fn relations(text: &str, opts: &Options) -> Vec<RelationCandidate> {
     let surnames = chars_of(SURNAMES);
 
     let mut out = Vec::new();
+    let mut cast: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut dialogue = Vec::new();
     for para in paragraphs(text) {
-        let quoted = quote_depths(&para.chars);
+        let (quoted, ranges) = quotations(&para.chars);
         let mentions = mentions(&para.chars, &quoted, &keys, &surnames, &titles);
+        let mut remaining_quotes = if let Some(evidence) = evidence.as_deref_mut() {
+            for m in &mentions {
+                let [start, end] = para.span(m.start, m.end);
+                cast.entry(m.name.clone())
+                    .or_default()
+                    .insert(text[start..end].to_string());
+                evidence.mentions.push(CharacterMention {
+                    id: m.name.clone(),
+                    kind: MentionKind::Name,
+                    span: [start, end],
+                });
+            }
+            ranges.as_slice()
+        } else {
+            &[]
+        };
         // Mentions are sorted and sentences come in order, so one cursor
         // walks both.
         let mut next = 0;
@@ -264,7 +296,10 @@ pub fn relations(text: &str, opts: &Options) -> Vec<RelationCandidate> {
                 .take_while(|m| m.start < to)
                 .filter(|m| m.end <= to)
                 .collect();
-            if inside.is_empty() {
+            let quote_count = remaining_quotes.partition_point(|&[open, _]| open < to);
+            let (quotes, rest) = remaining_quotes.split_at(quote_count);
+            remaining_quotes = rest;
+            if inside.is_empty() && quotes.is_empty() {
                 continue;
             }
             let held_open = contains_any(&para.chars[from..to], CONDITIONALS);
@@ -279,6 +314,7 @@ pub fn relations(text: &str, opts: &Options) -> Vec<RelationCandidate> {
                 held_open,
                 question,
             };
+            let mut addressed = Vec::new();
             for (i, a) in inside.iter().enumerate() {
                 for b in &inside[i + 1..] {
                     if b.start < a.end || b.start - a.end > MAX_GAP {
@@ -295,6 +331,9 @@ pub fn relations(text: &str, opts: &Options) -> Vec<RelationCandidate> {
                         continue;
                     }
                     if let Some(found) = sentence.pair(b, between) {
+                        if !quotes.is_empty() && !a.quoted && found.rule == "zh-addressed" {
+                            addressed.push((*a, *b));
+                        }
                         out.push(candidate(found, a, b, between.len(), &para, opts));
                     }
                 }
@@ -313,7 +352,22 @@ pub fn relations(text: &str, opts: &Options) -> Vec<RelationCandidate> {
                         candidate(found, a, b, 0, &para, opts)
                     }),
             );
+            dialogue.extend(quotes.iter().filter_map(|&range| {
+                dialogue_line(&para, &quoted, &inside, &addressed, from, range)
+            }));
         }
+    }
+    if let Some(evidence) = evidence {
+        evidence.dialogue = Dialogue::from_lines(dialogue);
+        evidence.characters = cast
+            .into_iter()
+            .map(|(id, aliases)| CharacterProfile {
+                id,
+                aliases: aliases.into_iter().collect(),
+                gender: None,
+                family: Vec::new(),
+            })
+            .collect();
     }
     out
 }
@@ -441,41 +495,105 @@ fn vocatives<'m>(
 ) -> Vec<(&'m Mention, &'m Mention)> {
     let mut out = Vec::new();
     for listener in mentions.iter().filter(|m| m.quoted) {
-        let open = listener.start.checked_sub(1);
-        if !open.is_some_and(|i| i >= from && OPENERS.contains(&chars[i])) {
-            continue;
-        }
-        if !chars
-            .get(listener.end)
-            .is_some_and(|c| matches!(c, '，' | ',' | '！' | '!' | '。' | '．'))
-        {
-            continue;
-        }
-        let mut tag_end = listener.start - 1;
-        while tag_end > from && matches!(chars[tag_end - 1], '：' | ':' | '，' | ',') {
-            tag_end -= 1;
-        }
-        let Some(verb) = SPEECH_VERBS.iter().find(|v| {
-            let v: Vec<char> = v.chars().collect();
-            tag_end >= from + v.len() && chars[tag_end - v.len()..tag_end] == v[..]
-        }) else {
+        let Some(open) = listener.start.checked_sub(1) else {
             continue;
         };
-        let verb_start = tag_end - verb.chars().count();
-        // The speaker is the nearest name before the verb, outside speech, with
-        // no more than a few characters of manner (忙, 笑着) between.
-        let speaker = mentions
-            .iter()
-            .filter(|m| !m.quoted && m.end <= verb_start && verb_start - m.end <= 4)
-            .filter(|m| !quoted[m.end..verb_start].iter().any(|q| *q))
-            .max_by_key(|m| m.end);
-        if let Some(speaker) = speaker {
+        if open < from || !OPENERS.contains(&chars[open]) || !vocative_tail(chars, listener.end) {
+            continue;
+        }
+        let end = tag_end(chars, from, open);
+        let Some(verb) = speech_verb_start(chars, from, end) else {
+            continue;
+        };
+        if let Some(speaker) = tagged_speaker(quoted, mentions, verb) {
             if speaker.name != listener.name {
-                out.push((*speaker, *listener));
+                out.push((speaker, *listener));
             }
         }
     }
     out
+}
+
+fn vocative_tail(chars: &[char], end: usize) -> bool {
+    chars
+        .get(end)
+        .is_some_and(|c| matches!(c, '，' | ',' | '！' | '!' | '。' | '．'))
+}
+
+fn tag_end(chars: &[char], from: usize, open: usize) -> usize {
+    let mut end = open;
+    while end > from && matches!(chars[end - 1], '：' | ':' | '，' | ',') {
+        end -= 1;
+    }
+    end
+}
+
+fn speech_verb_start(chars: &[char], from: usize, end: usize) -> Option<usize> {
+    SPEECH_VERBS.iter().find_map(|verb| {
+        let start = end.checked_sub(verb.chars().count())?;
+        (start >= from && equals(&chars[start..end], verb)).then_some(start)
+    })
+}
+
+fn tagged_speaker<'m>(
+    quoted: &[bool],
+    mentions: &[&'m Mention],
+    verb_start: usize,
+) -> Option<&'m Mention> {
+    mentions
+        .iter()
+        .copied()
+        .filter(|m| !m.quoted && m.end <= verb_start && verb_start - m.end <= 4)
+        .filter(|m| !quoted[m.end..verb_start].iter().any(|q| *q))
+        .max_by_key(|m| m.end)
+}
+
+fn dialogue_line(
+    para: &Paragraph,
+    quoted: &[bool],
+    mentions: &[&Mention],
+    addressed: &[(&Mention, &Mention)],
+    from: usize,
+    [open, close]: [usize; 2],
+) -> Option<DialogueLine> {
+    let chars = &para.chars;
+    if !chars[open..close]
+        .iter()
+        .any(|c| !c.is_whitespace() && *c != '"' && !OPENERS.contains(c) && !CLOSERS.contains(c))
+    {
+        return None;
+    }
+    let end = tag_end(chars, from, open);
+    let directed = addressed
+        .iter()
+        .copied()
+        .filter(|&(_, b)| {
+            b.end <= end
+                && (b.end == end || SPEECH_VERBS.iter().any(|v| equals(&chars[b.end..end], v)))
+        })
+        .max_by_key(|&(_, b)| b.end);
+    let verb = speech_verb_start(chars, from, end);
+    if directed.is_none() && verb.is_none() && !chars[from..open].iter().all(|c| c.is_whitespace())
+    {
+        return None;
+    }
+    let speaker = directed.map(|(a, _)| a).or_else(|| {
+        verb.filter(|&at| !quoted[at])
+            .and_then(|at| tagged_speaker(quoted, mentions, at))
+    });
+    let listener = mentions
+        .iter()
+        .copied()
+        .find(|m| m.quoted && m.start == open + 1 && m.end < close && vocative_tail(chars, m.end))
+        .or_else(|| directed.map(|(_, b)| b))
+        .filter(|m| speaker.map_or(true, |a| a.name != m.name));
+    let span = para.span(open, close);
+    Some(DialogueLine {
+        speaker: speaker.map(|m| m.name.clone()),
+        listener: listener.map(|m| m.name.clone()),
+        span,
+        spoken_spans: vec![span],
+    })
 }
 
 fn candidate(
@@ -488,17 +606,20 @@ fn candidate(
 ) -> RelationCandidate {
     let (subject, object) = if found.swapped { (b, a) } else { (a, b) };
     let first = a.start.min(b.start);
-    let last = a.end.max(b.end) - 1;
+    let last = a.end.max(b.end);
     RelationCandidate {
         subject: subject.name.clone(),
         relation: normalize_relation(found.relation, &opts.ontology),
         object: object.name.clone(),
         rule: found.rule.to_string(),
-        span: [para.spans[first].0, para.spans[last].1],
+        span: para.span(first, last),
         base: found.base,
         gap,
         stance: found.stance,
         single_filler: matches!(found.relation, "mother_of" | "father_of"),
+        state: RelationshipState::from_relation(found.relation),
+        ends_state: false,
+        role: None,
     }
 }
 
@@ -545,9 +666,11 @@ fn paragraphs(text: &str) -> Vec<Paragraph> {
 /// paragraph whose first mark closes speech: a quotation carried over from the
 /// paragraph before (了不成？"寶玉和襲人嗤的一笑). Everything before that mark is
 /// speech, and the mark opens nothing.
-fn quote_depths(chars: &[char]) -> Vec<bool> {
+fn quotations(chars: &[char]) -> (Vec<bool>, Vec<[usize; 2]>) {
     let mut quoted = vec![false; chars.len()];
+    let mut ranges = Vec::new();
     let mut depth = 0usize;
+    let mut start = 0usize;
     let mut seen_mark = false;
     for (i, c) in chars.iter().enumerate() {
         let straight = *c == '"';
@@ -561,18 +684,29 @@ fn quote_depths(chars: &[char]) -> Vec<bool> {
         seen_mark = true;
         quoted[i] = true;
         if opener {
+            if depth == 0 {
+                start = i;
+            }
             depth += 1;
         } else if depth > 0 {
             depth -= 1;
+            if depth == 0 {
+                ranges.push([start, i + 1]);
+            }
         } else if first && (closer || after_terminator(&chars[..i])) {
             quoted[..i].iter_mut().for_each(|q| *q = true);
+            ranges.push([0, i + 1]);
         } else if straight {
             depth += 1;
+            start = i;
         } else {
             quoted[i] = false;
         }
     }
-    quoted
+    if depth > 0 {
+        ranges.push([start, chars.len()]);
+    }
+    (quoted, ranges)
 }
 
 /// Whether the text before a mark ends a sentence, spaces aside.

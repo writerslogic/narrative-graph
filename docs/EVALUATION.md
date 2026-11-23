@@ -466,6 +466,72 @@ misses are turns no tag in their stretch reaches, narrators the vote does not
 find (Wuthering Heights has two, Moby-Dick's Ishmael is rarely addressed),
 and aliases (Nelly and Ellen, Cathy and Catherine, Lizzy and Elizabeth).
 
+### Document character profiles and confidence
+
+The first fit on the existing public evaluation used 11 predictions from
+three rules. On seven held-out predictions its Brier loss was 0.2438,
+compared with 0.2271 for the heuristic. The small sample motivated a
+separate book-level calibration review.
+
+`tests/litbank.rs` aligns the LitBank tokens to the original prose and
+scores all 100 annotated excerpts. A linked pronoun or description matches
+when its span is exact and the predicted ID has an unambiguous named anchor
+in the reference chain. Explicit apposition and copula links can also
+supply the named anchor for a description. This measures links to named
+people. For events it checks whether the extractor's trigger overlaps an
+annotated realis trigger. [LitBank dataset](https://github.com/dbamman/litbank), [Coreference annotation paper](https://aclanthology.org/2020.lrec-1.6/)
+
+| LitBank check | Correct | Predictions | Gold with a named anchor |
+|---|---:|---:|---:|
+| Pronoun links | 1,404 | 2,348 | 9,924 |
+| Description links | 8 | 14 | 1,549 |
+
+The event trigger labels overlap both detected deaths and one of two
+detected journeys. The existing six-book public relation evaluation finds
+13 of 224 labels with 5 extra predictions on labeled sentences. That gives
+0.058 recall over all tiers and 0.722 precision.
+
+The relation review is stored in `tests/corpus/litbank-calibration.tsv`.
+The fixture retains 94 predictions reviewed against their surrounding
+prose in complete LitBank books. One verdict was unclear. It records the
+book, byte span, candidate, polarity and rule so the test can verify the
+same predictions are being scored. The six existing evaluation novels
+and their alternate editions were excluded.
+
+Source IDs divisible by three were excluded from sampling. Books with
+source IDs congruent to 0 or 1 modulo 5 went into the check split.
+The review took at most one candidate per book and rule family. Candidates
+were ranked by a SHA-256 hash prefixed by the sample seed `20261123`.
+Exact phrases and inferred turns received additional fit examples from
+the same ranking. Predictions removed by subsequent rule fixes were
+discarded from the fixture.
+
+Each estimate is `(correct + 4 × heuristic) / (observations + 4)`.
+Families need at least five fit verdicts.
+
+| Family | Correct | Fit verdicts |
+|---|---|---|
+| Inferred dialogue turn | 9 | 23 |
+| Explicit address | 10 | 10 |
+| Nominal relation | 7 | 10 |
+| Exact phrase | 15 | 22 |
+
+On the 23 supported predictions in the check split, Brier loss rose from
+0.2202 with heuristic scores to 0.2253 with the estimates. On the seven
+supported predictions from the original public odd split, it moved from
+0.2271 to 0.2227. These checks provide limited evidence for choosing a
+probability threshold.
+
+LitBank is by David Bamman and collaborators, licensed CC BY 4.0. These
+checks use commit `3e50db0ffc033d7ccbb94f4d88f6b99210328ed8`.
+[Source and attribution](https://github.com/dbamman/litbank/tree/3e50db0ffc033d7ccbb94f4d88f6b99210328ed8)
+
+```sh
+NG_LITBANK_ROOT=/path/to/litbank cargo test --release --test litbank -- --ignored --nocapture
+NG_HALF=even cargo test --release --test real_text_eval -- --include-ignored --nocapture
+NG_HALF=odd cargo test --release --test real_text_eval -- --include-ignored --nocapture
+```
+
 ### Paid teacher (2026-11-23)
 
 Authorised by the user as an exception to the paid-API rule: score a frontier

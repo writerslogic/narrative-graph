@@ -1,4 +1,4 @@
-import { extractCandidateTriplesNapi, NapiOptions, NapiTripleCandidate } from '../../index.js'
+import { analyzeDocumentNapi, extractCandidateTriplesNapi, NarrativeSeries, NapiOptions, NapiTripleCandidate } from '../../index.js'
 
 // Minimal call must type-check with no options.
 const bare: NapiTripleCandidate[] = extractCandidateTriplesNapi('Elena is Marco\'s sister.')
@@ -36,3 +36,14 @@ extractCandidateTriplesNapi()
 // @ts-expect-error minConfidence must be a number, not a string.
 const badOpts: NapiOptions = { minConfidence: 'high' }
 void badOpts
+
+const document = analyzeDocumentNapi('Cass met Nora.')
+const confidence: number | undefined = document.timeline[0]?.calibratedConfidence
+const unattributed: number = document.dialogue.unattributed
+const speaker: string | undefined = document.dialogue.lines[0]?.speaker
+const spokenSpans: number[][] | undefined = document.dialogue.lines[0]?.spokenSpans
+const series = new NarrativeSeries(opts)
+const updated: boolean = series.updateChapter(1, 1, 1, 'Cass met Nora.')
+const span: number[] | undefined = series.aggregates()[0]?.spans[0]?.span
+const historySpan: number[] | undefined = series.relationshipHistory('cass', 'nora')[0]?.fact.candidate.span
+void [confidence, unattributed, speaker, spokenSpans, updated, span, historySpan]

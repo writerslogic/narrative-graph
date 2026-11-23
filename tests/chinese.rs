@@ -2,7 +2,8 @@
 //! domain), hard wraps and fullwidth stops kept as the edition prints them.
 
 use narrative_graph::{
-    extract_aggregates, extract_candidate_triples, Language, Options, Polarity, TripleCandidate,
+    analyze, analyze_document, extract_aggregates, extract_candidate_triples, Language, Options,
+    Polarity, RelationshipState, TripleCandidate,
 };
 
 fn chinese(cast: &[(&str, &str)]) -> Options {
@@ -25,6 +26,45 @@ fn triples(candidates: &[TripleCandidate]) -> Vec<(&str, &str, &str)> {
         .iter()
         .map(|c| (c.subject.as_str(), c.relation.as_str(), c.object.as_str()))
         .collect()
+}
+
+#[test]
+fn document_analysis_keeps_chinese_relations_and_tracks_individual_quotes() {
+    let text = concat!(
+        "寶玉娶了寶釵。",
+        "王夫人對寶玉說：「走吧！」",
+        "寶玉道：“王夫人，請等等。”",
+        "她又問：「誰來了？」"
+    );
+    let opts = chinese(&[("寶玉", "baoyu"), ("寶釵", "baochai")]);
+    let doc = analyze_document(text, &opts).unwrap();
+    assert_eq!(
+        triples(&doc.analysis.candidates),
+        triples(&analyze(text, &opts).unwrap().candidates)
+    );
+    let states: Vec<_> = doc
+        .relationship_history("baoyu", "baochai")
+        .map(|fact| fact.state)
+        .collect();
+    assert_eq!(states, [Some(RelationshipState::Married)]);
+    assert_eq!(doc.dialogue.unattributed, 1);
+    assert_eq!(
+        doc.dialogue
+            .lines
+            .iter()
+            .map(|line| (
+                line.speaker.as_deref(),
+                line.listener.as_deref(),
+                &text[line.span[0]..line.span[1]]
+            ))
+            .collect::<Vec<_>>(),
+        [
+            (Some("王夫人"), Some("baoyu"), "「走吧！」"),
+            (Some("baoyu"), Some("王夫人"), "“王夫人，請等等。”"),
+            (None, None, "「誰來了？」"),
+        ]
+    );
+    assert!(doc.characters.iter().any(|c| c.id == "baoyu"));
 }
 
 #[test]
