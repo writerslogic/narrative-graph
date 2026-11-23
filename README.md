@@ -67,6 +67,7 @@ npm install writerslogic/narrative-graph
 | `bindings` | TypeScript declarations via `ts-rs` | `serde`, `ts-rs` |
 | `node-api` | The Node addon | `napi`, `napi-derive`, `napi-build` |
 | `cli` | The `narrative-graph` binary | `clap`, `anyhow` |
+| `model` | Local DeBERTa relation extraction | Tract, SentencePiece |
 
 ## What It Extracts
 
@@ -126,6 +127,14 @@ narrative-graph extract 紅樓夢.txt --language chinese
 The CLI takes no alias map, so on Chinese text it finds only names written with a title (王夫人, 邢氏); bare given names such as 黛玉 need `aliases` through the library.
 
 Installed alongside the crate (`cargo install narrative-graph --features cli` provides the `narrative-graph` binary), the same way `holographic-memory` ships `hms-admin` and `hms-eval` as bins in its own crate rather than separate packages. Useful for shell pipelines, CI checks, and inspecting output before wiring the library into an application.
+
+For English prose, add the `model` feature to use a local student checkpoint alongside the rules. [Training and evaluation](./tests/corpus/README.md#local-student)
+
+```bash
+cargo run --release --features cli,model -- extract chapter.txt --model /path/to/checkpoint
+```
+
+In Rust, load the checkpoint once with `StudentModel::load` and call `extract_candidate_triples` or `extract_aggregates` on it. Both run locally on the CPU.
 
 </details>
 

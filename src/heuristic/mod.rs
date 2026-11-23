@@ -5,6 +5,8 @@ mod cooccurrence;
 mod dialogue;
 mod entities;
 mod kinds;
+#[cfg(feature = "model")]
+pub mod model;
 pub mod pack;
 mod quotes;
 mod register;
