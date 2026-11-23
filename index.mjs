@@ -8,4 +8,6 @@ export const extractAggregatesNapi = binding.extractAggregatesNapi
 export const findConflictsNapi = binding.findConflictsNapi
 export const analyzeNapi = binding.analyzeNapi
 export const analyzeAsyncNapi = binding.analyzeAsyncNapi
+export const analyzeDocumentNapi = binding.analyzeDocumentNapi
+export const NarrativeSeries = binding.NarrativeSeries
 export default binding

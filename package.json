@@ -36,8 +36,8 @@
     ]
   },
   "scripts": {
-    "build": "napi build --platform --release --features node-api",
-    "build:debug": "napi build --platform --features node-api",
+    "build": "napi build --platform --release --js native.js --dts native.d.ts --features node-api",
+    "build:debug": "napi build --platform --js native.js --dts native.d.ts --features node-api",
     "prepublishOnly": "napi prepublish -t npm",
     "artifacts": "napi artifacts",
     "version": "napi version",
@@ -67,6 +67,8 @@
     "index.js",
     "index.mjs",
     "index.d.ts",
+    "native.js",
+    "native.d.ts",
     "bindings/*.ts",
     "*.node",
     "README.md",

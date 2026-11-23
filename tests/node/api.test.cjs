@@ -8,7 +8,84 @@ const {
   findConflictsNapi,
   analyzeNapi,
   analyzeAsyncNapi,
+  NarrativeSeries,
 } = require('../../index.js')
+
+test('document analysis exposes profiles, calibrated facts, and positioned events', async () => {
+  const { analyzeDocumentNapi } = await import('../../index.mjs')
+  const text = '😀. Mr. Hale waved. He met Nora. Mr. Hale went to Paris. Mr. Hale learned that Nora left.'
+  const result = analyzeDocumentNapi(text)
+  const hale = result.characters.find((person) => person.id === 'mr_hale')
+  assert.equal(hale.gender, 'masculine')
+  assert.deepEqual(hale.aliases, ['Mr. Hale'])
+  const match = result.timeline.find((fact) => fact.candidate.relation === 'meets')
+  assert.equal(match.candidate.subject, hale.id)
+  assert.ok(match.calibratedConfidence > 0 && match.calibratedConfidence < 1)
+  assert.equal(text.slice(...match.candidate.span), 'He met Nora')
+  const [journey] = result.events
+  assert.equal(journey.kind, 'journey')
+  assert.equal(journey.location, 'paris')
+  assert.equal(text.slice(...journey.span), 'Mr. Hale went to Paris')
+  assert.equal(text.slice(...journey.trigger), 'went to')
+  const he = result.mentions.find((mention) => mention.kind === 'pronoun')
+  assert.equal(text.slice(...he.span), 'He')
+  assert.equal(he.id, hale.id)
+  const [learned] = result.knowledge
+  assert.equal(learned.topic, 'nora')
+  assert.equal(text.slice(...learned.content), 'Nora left')
+})
+
+test('series replacement keeps stable IDs and chapter-relative UTF-16 spans', () => {
+  const series = new NarrativeSeries({ aliases: { 'Mr Hale': 'hale', 'Arthur Hale': 'hale' } })
+  const text = '😀. Mr. Hale met Nora.'
+  assert.equal(series.updateChapter(1, 1, 1, text), true)
+  assert.equal(series.updateChapter(1, 1, 1, text), false)
+  assert.equal(series.updateChapter(2, 1, 1, 'Arthur Hale met Nora.'), true)
+  const [found] = series.aggregates()
+  assert.equal(found.subject, 'hale')
+  assert.deepEqual(found.spans.map(({ book }) => book), [1, 2])
+  assert.equal(text.slice(...found.spans[0].span), 'Mr. Hale met Nora')
+  assert.equal(series.chapter(1, 1).analysis.candidates[0].subject, 'hale')
+  assert.equal(series.updateChapter(1, 1, 2, 'Mr. Hale married Nora.'), true)
+  assert.equal(series.aggregates().length, 2)
+  assert.equal(series.removeChapter(2, 1), true)
+  assert.equal(series.aggregates()[0].relation, 'spouse_of')
+  assert.throws(() => series.updateChapter(-1, 1, 1, text), /book must be an integer/)
+  assert.throws(() => series.updateChapter(1, 1, 2 ** 53, text), /revision must be an integer/)
+})
+
+test('chapter views retain each dialogue span and relationship changes', () => {
+  const series = new NarrativeSeries()
+  const first = '🦊. Nora was engaged to Dev. “Dev, hurry,” said Nora, “or we’ll miss it.”'
+  const second = '😀. Dev married Nora. “I’m home,” said Dev.'
+  series.updateChapter(2, 1, 1, second)
+  series.updateChapter(1, 1, 1, first)
+  const firstDialogue = series.chapter(1, 1).dialogue
+  const [line] = firstDialogue.lines
+  assert.equal(line.speaker, 'nora')
+  assert.equal(line.listener, 'dev')
+  assert.deepEqual(line.spokenSpans.map((span) => first.slice(...span)), ['“Dev, hurry,”', '“or we’ll miss it.”'])
+  assert.equal(firstDialogue.lines.length, 1)
+  assert.equal(firstDialogue.unattributed, 0)
+  assert.equal(series.chapter(2, 1).dialogue.unattributed, 1)
+
+  const history = series.relationshipHistory('dev', 'nora')
+  assert.deepEqual(history.map(({ book, chapter, fact }) => [book, chapter, fact.state]), [
+    [1, 1, 'engaged'],
+    [2, 1, 'married'],
+  ])
+  assert.equal(second.slice(...history[1].fact.candidate.span), 'Dev married Nora')
+})
+
+test('series instances keep separate chapter state across entry points', async () => {
+  const { NarrativeSeries: ESMSeries } = await import('narrative-graph')
+  const first = new NarrativeSeries()
+  const second = new ESMSeries()
+  assert.equal(first.updateChapter(1, 1, 1, 'Nora married Dev.'), true)
+  assert.equal(second.chapter(1, 1), null)
+  assert.throws(() => first.removeChapter.call(second.chapter(1, 1), 1, 1), TypeError)
+  assert.equal(first.chapter(1, 1).timeline[0].state, 'married')
+})
 
 test('extracts a possessive-sister relation with a confident score', () => {
   const candidates = extractCandidateTriplesNapi("Elena is Marco's sister.")

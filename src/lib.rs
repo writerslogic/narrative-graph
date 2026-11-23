@@ -1,17 +1,24 @@
+mod calibration;
 pub mod error;
 pub mod heuristic;
+mod series;
 pub mod types;
 
+pub use calibration::{rule_calibration, CalibrationGroup, RuleCalibration};
 pub use error::{NarrativeGraphError, Result};
 #[cfg(feature = "model")]
 pub use heuristic::model::StudentModel;
 pub use heuristic::{
-    analyze, analyze_in, extract_aggregates, extract_aggregates_in, extract_candidate_triples,
-    extract_candidate_triples_in, find_conflicts, find_conflicts_in, Context,
+    analyze, analyze_document, analyze_document_in, analyze_in, extract_aggregates,
+    extract_aggregates_in, extract_candidate_triples, extract_candidate_triples_in, find_conflicts,
+    find_conflicts_in, Context,
 };
+pub use series::{ChapterPosition, ChapterSpan, Series, SeriesAggregate};
 pub use types::{
-    AggregateTriple, Analysis, Conflict, ConflictKind, Language, Options, Polarity, Rejection,
-    TripleCandidate,
+    AggregateTriple, Analysis, CharacterMention, CharacterProfile, Conflict, ConflictKind,
+    Dialogue, DialogueLine, DocumentAnalysis, EventCandidate, EventKind, FactOccurrence,
+    FamilyLink, Gender, KnowledgeFact, KnowledgeKind, Language, MentionKind, Options, Polarity,
+    Rejection, RelationshipState, TripleCandidate,
 };
 
 #[cfg(feature = "node-api")]

@@ -1,9 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use narrative_graph::{
-    extract_aggregates, extract_candidate_triples, find_conflicts, Language, Options,
-};
+use narrative_graph::{analyze_document, Language, Options};
 
 const MAX_INPUT_BYTES: usize = 16 * 1024;
 
@@ -22,8 +20,22 @@ fuzz_target!(|data: &[u8]| {
         chinese.aliases.insert(key.clone(), key);
     }
     for opts in [Options::default(), chinese] {
-        let _ = extract_candidate_triples(&text, &opts);
-        let _ = extract_aggregates(&text, &opts);
-        let _ = find_conflicts(&text, &opts);
+        let document = analyze_document(&text, &opts).expect("default options are valid");
+        for [start, end] in document
+            .timeline
+            .iter()
+            .map(|f| f.candidate.span)
+            .chain(document.events.iter().map(|e| e.span))
+            .chain(document.events.iter().map(|e| e.trigger))
+            .chain(document.knowledge.iter().flat_map(|k| [k.span, k.content]))
+            .chain(document.mentions.iter().map(|m| m.span))
+            .chain(document.dialogue.lines.iter().flat_map(|line| {
+                [line.span]
+                    .into_iter()
+                    .chain(line.spoken_spans.iter().copied())
+            }))
+        {
+            assert!(text.get(start..end).is_some());
+        }
     }
 });

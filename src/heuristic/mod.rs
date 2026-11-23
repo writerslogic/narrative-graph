@@ -2,9 +2,12 @@ mod aggregate;
 mod chinese;
 mod context;
 mod cooccurrence;
+mod coreference;
 mod dialogue;
 mod entities;
+mod events;
 mod kinds;
+mod knowledge;
 #[cfg(feature = "model")]
 pub mod model;
 pub mod pack;
@@ -14,7 +17,9 @@ mod relations;
 mod segment;
 
 use crate::types::{
-    AggregateTriple, Analysis, Conflict, Language, Options, Polarity, TripleCandidate,
+    AggregateTriple, Analysis, CharacterMention, CharacterProfile, Conflict, Dialogue,
+    DocumentAnalysis, EventCandidate, FactOccurrence, KnowledgeFact, Language, MentionKind,
+    Options, Polarity, RelationshipState, TripleCandidate,
 };
 use crate::Result;
 use pack::LanguagePack;
@@ -41,12 +46,11 @@ pub fn extract_candidate_triples_in(
     opts: &Options,
     context: &Context,
 ) -> Result<Vec<TripleCandidate>> {
-    let mut candidates: Vec<TripleCandidate> =
-        collect_candidates(text, opts, &pack::ENGLISH, context)?
-            .into_iter()
-            .filter(|e| e.polarity == Polarity::Asserted)
-            .map(|e| e.candidate)
-            .collect();
+    let mut candidates: Vec<TripleCandidate> = collect_candidates(text, opts, context, None)?
+        .into_iter()
+        .filter(|e| e.polarity == Polarity::Asserted)
+        .map(|e| e.candidate)
+        .collect();
     dedup_candidates(&mut candidates);
     Ok(candidates)
 }
@@ -73,7 +77,7 @@ pub fn extract_aggregates_in(
     opts: &Options,
     context: &Context,
 ) -> Result<Vec<AggregateTriple>> {
-    let candidates = collect_candidates(text, opts, &pack::ENGLISH, context)?;
+    let candidates = collect_candidates(text, opts, context, None)?;
     Ok(aggregate::aggregate(candidates).0)
 }
 
@@ -94,7 +98,7 @@ pub fn find_conflicts(text: &str, opts: &Options) -> Result<Vec<Conflict>> {
 
 /// `find_conflicts` with a shared [`Context`].
 pub fn find_conflicts_in(text: &str, opts: &Options, context: &Context) -> Result<Vec<Conflict>> {
-    let candidates = collect_candidates(text, opts, &pack::ENGLISH, context)?;
+    let candidates = collect_candidates(text, opts, context, None)?;
     let (aggregates, single_filler) = aggregate::aggregate(candidates);
     Ok(aggregate::find_conflicts(&aggregates, &single_filler))
 }
@@ -107,7 +111,50 @@ pub fn analyze(text: &str, opts: &Options) -> Result<Analysis> {
 
 /// `analyze` with a shared [`Context`].
 pub fn analyze_in(text: &str, opts: &Options, context: &Context) -> Result<Analysis> {
-    let emitted = collect_candidates(text, opts, &pack::ENGLISH, context)?;
+    Ok(analysis_from_candidates(collect_candidates(
+        text, opts, context, None,
+    )?))
+}
+
+/// Analyze relations and return the character profiles used to resolve them.
+pub fn analyze_document(text: &str, opts: &Options) -> Result<DocumentAnalysis> {
+    analyze_document_in(text, opts, &Context::default())
+}
+
+/// `analyze_document` with a shared [`Context`].
+pub fn analyze_document_in(
+    text: &str,
+    opts: &Options,
+    context: &Context,
+) -> Result<DocumentAnalysis> {
+    let mut evidence = DocumentEvidence::default();
+    let emitted = collect_candidates(text, opts, context, Some(&mut evidence))?;
+    let mut timeline: Vec<_> = emitted
+        .iter()
+        .map(|e| FactOccurrence {
+            candidate: e.candidate.clone(),
+            polarity: e.polarity,
+            state: e.state,
+            ends_state: e.ends_state,
+            calibrated_confidence: crate::rule_calibration(&e.candidate.rule)
+                .map(|calibration| calibration.estimate(e.candidate.confidence)),
+        })
+        .collect();
+    timeline.sort_by_key(|fact| fact.candidate.span);
+    evidence.mentions.sort_by_key(|m| m.span);
+    evidence.mentions.dedup();
+    Ok(DocumentAnalysis {
+        analysis: analysis_from_candidates(emitted),
+        characters: evidence.characters,
+        mentions: evidence.mentions,
+        timeline,
+        events: evidence.events,
+        knowledge: evidence.knowledge,
+        dialogue: evidence.dialogue,
+    })
+}
+
+fn analysis_from_candidates(emitted: Vec<Emitted>) -> Analysis {
     let mut candidates: Vec<TripleCandidate> = emitted
         .iter()
         .filter(|e| e.polarity == Polarity::Asserted)
@@ -116,11 +163,11 @@ pub fn analyze_in(text: &str, opts: &Options, context: &Context) -> Result<Analy
     dedup_candidates(&mut candidates);
     let (aggregates, single_filler) = aggregate::aggregate(emitted);
     let conflicts = aggregate::find_conflicts(&aggregates, &single_filler);
-    Ok(Analysis {
+    Analysis {
         candidates,
         aggregates,
         conflicts,
-    })
+    }
 }
 
 /// One rule firing, before any collapse.
@@ -128,6 +175,8 @@ pub(crate) struct Emitted {
     candidate: TripleCandidate,
     polarity: Polarity,
     single_filler: bool,
+    state: Option<RelationshipState>,
+    ends_state: bool,
 }
 
 /// Every candidate the rules fire on, in document order and with repeats
@@ -140,9 +189,23 @@ pub(crate) struct Emitted {
 fn collect_candidates(
     text: &str,
     opts: &Options,
-    pack: &LanguagePack,
     context: &Context,
+    evidence: Option<&mut DocumentEvidence>,
 ) -> Result<Vec<Emitted>> {
+    let min_confidence = confidence_threshold(opts)?;
+    if opts.language == Language::Chinese {
+        let found = chinese::read(text, opts, evidence)
+            .into_iter()
+            .map(|r| (r, 0));
+        return Ok(emit(found, opts, min_confidence));
+    }
+    let pack = &pack::ENGLISH;
+    let document = coreference::Document::read(text, &opts.aliases, pack, context);
+    let found = collect_document(text, opts, pack, &document, evidence);
+    Ok(emit(found, opts, min_confidence))
+}
+
+fn confidence_threshold(opts: &Options) -> Result<f32> {
     let min_confidence = opts.min_confidence.unwrap_or(0.0);
     if !(0.0..=1.0).contains(&min_confidence) {
         return Err(crate::NarrativeGraphError::InvalidConfidenceThreshold(
@@ -150,85 +213,47 @@ fn collect_candidates(
         ));
     }
 
-    if text.is_empty() {
-        return Ok(vec![]);
-    }
+    Ok(min_confidence)
+}
 
-    // Consulted per candidate, so it is built once rather than scanned linearly
-    // per emission. Borrowed: a rejection set is caller-owned and not cloned.
-    let rejected: BTreeSet<(&str, &str, &str)> = opts
-        .rejections
-        .iter()
-        .map(|r| (r.subject.as_str(), r.relation.as_str(), r.object.as_str()))
-        .collect();
+#[derive(Default)]
+struct DocumentEvidence {
+    characters: Vec<CharacterProfile>,
+    mentions: Vec<CharacterMention>,
+    events: Vec<EventCandidate>,
+    knowledge: Vec<KnowledgeFact>,
+    dialogue: Dialogue,
+}
 
-    if opts.language == Language::Chinese {
-        let found = chinese::relations(text, opts)
-            .into_iter()
-            .map(|r| (r, 0))
-            .collect();
-        return Ok(emit(found, min_confidence, &rejected));
-    }
-
-    // Referents named by the previous sentence, for pronouns with no antecedent
-    // of their own. Cleared at paragraph breaks.
-    let mut carried: Vec<String> = Vec::new();
-    let mut previous_end = 0usize;
-
-    // IMPORTANT: built over the whole text before any pronoun is resolved. A
-    // name's evidence — a title on it, a determiner in front of it, a capital
-    // no sentence boundary explains — can appear anywhere in the document, and
-    // a register built as the pipeline went would miss whatever came later.
-    // The caller's context seeds it, so evidence from other paragraphs counts.
-    let mut register = context.register().clone();
-    context::observe_text(&mut register, text, pack);
-
-    let narrator = context.narrator();
-    let mut quote_open = false;
-    let mut turn = dialogue::Turn::default();
-    // Hard-wrapped text breaks lines inside a paragraph and marks paragraphs
-    // with a blank line; otherwise each line is a paragraph.
-    let paragraph_break = if text.contains("\n\n") { 2 } else { 1 };
+fn collect_document(
+    text: &str,
+    opts: &Options,
+    pack: &LanguagePack,
+    document: &coreference::Document<'_>,
+    mut evidence: Option<&mut DocumentEvidence>,
+) -> Vec<(relations::RelationCandidate, usize)> {
+    let mut recent = coreference::Recent::default();
+    let register = &document.register;
+    let mut turn = dialogue::Turn::new(evidence.is_some());
     let mut found = Vec::new();
 
-    for (sent_text, sent_start) in segment::split_sentences(text, pack) {
-        let breaks = text[previous_end..sent_start].matches('\n').count();
-        // Hard-wrapped speech runs on across line breaks; only a paragraph
-        // break ends it.
-        if breaks >= paragraph_break {
-            quote_open = false;
-        }
-        if breaks >= paragraph_break {
+    for sentence in &document.sentences {
+        if sentence.paragraph_start {
             found.extend(
-                turn.finish(&opts.ontology, &register, pack, false)
+                turn.finish(&opts.ontology, register, pack, false)
                     .into_iter()
                     .map(|r| (r, 0)),
             );
         }
-        if text[previous_end..sent_start]
-            .matches('\n')
-            .nth(1)
-            .is_some()
-        {
-            carried.clear();
-        }
-        previous_end = sent_start + sent_text.len();
-
-        let opened = quote_open;
-        let quotes = quotes::QuoteMap::scan(sent_text, quote_open);
-        quote_open = quotes.open_at_end;
-
-        let entities = entities::extract_entities_in(
-            sent_text,
-            &opts.aliases,
+        let entities = document.mentions(sentence, &mut recent, pack);
+        turn.observe(
+            sentence.text,
+            sentence.start,
+            &entities,
+            &sentence.quotes,
+            sentence.opened,
             pack,
-            &carried,
-            &register,
-            &quotes,
-            narrator,
         );
-        carried = entities::carried_referents(sent_text, &entities, pack);
-        turn.observe(sent_text, sent_start, &entities, &quotes, opened, pack);
 
         if entities.is_empty() {
             continue;
@@ -236,45 +261,98 @@ fn collect_candidates(
 
         // Look for relations between entity pairs in the same clause
         let scope = relations::Scope {
-            register: &register,
-            quotes: &quotes,
-            mentions: &entities,
+            register,
+            quotes: &sentence.quotes,
         };
+        if let Some(evidence) = evidence.as_deref_mut() {
+            evidence
+                .mentions
+                .extend(
+                    entities
+                        .iter()
+                        .chain(sentence.descriptions())
+                        .filter_map(|mention| {
+                            let kind = kinds::classify(sentence.text, mention, register, pack);
+                            if !matches!(kind, kinds::Kind::Person | kinds::Kind::Unknown) {
+                                return None;
+                            }
+                            let kind = if mention.pronoun {
+                                MentionKind::Pronoun
+                            } else if sentence
+                                .named()
+                                .binary_search_by_key(&mention.start, |m| m.start)
+                                .is_ok_and(|i| sentence.named()[i].end == mention.end)
+                            {
+                                MentionKind::Name
+                            } else {
+                                MentionKind::Description
+                            };
+                            Some(CharacterMention {
+                                id: mention.normalized.clone(),
+                                kind,
+                                span: [
+                                    sentence.start + mention.start,
+                                    sentence.start + mention.end,
+                                ],
+                            })
+                        }),
+                );
+            evidence.events.extend(events::extract(
+                sentence.text,
+                sentence.start,
+                &entities,
+                pack,
+                &scope,
+            ));
+        }
         found.extend(
-            relations::extract_relations(sent_text, &entities, &opts.ontology, pack, &scope)
+            relations::extract_relations(sentence.text, &entities, &opts.ontology, pack, &scope)
                 .into_iter()
-                .map(|r| (r, sent_start)),
+                .map(|r| (r, sentence.start)),
+        );
+        found.extend(
+            knowledge::extract(
+                sentence.text,
+                sentence.start,
+                &entities,
+                pack,
+                &scope,
+                &opts.ontology,
+                evidence.as_deref_mut().map(|e| &mut e.knowledge),
+            )
+            .into_iter()
+            .map(|r| (r, sentence.start)),
         );
     }
     found.extend(
-        turn.finish(&opts.ontology, &register, pack, true)
+        turn.finish(&opts.ontology, register, pack, true)
             .into_iter()
             .map(|r| (r, 0)),
     );
-    // A first-person document is read again with its narrator named, so that
-    // "I" is a mention of someone. The caller's narrator always wins.
-    if narrator.is_none() {
-        if let Some(name) = turn.narrator() {
-            return collect_candidates(text, opts, pack, &context.clone().with_narrator(&name));
-        }
-    }
     let common = dialogue::common_words(
         text,
         found
             .iter()
             .filter(|(r, _)| dialogue::is_rule(&r.rule))
-            .flat_map(|(r, _)| [r.subject.as_str(), r.object.as_str()]),
+            .flat_map(|(r, _)| [r.subject.as_str(), r.object.as_str()])
+            .chain(turn.line_names()),
     );
     found.retain(|(r, _)| {
         !dialogue::is_rule(&r.rule)
-            || (dialogue::is_voice(&r.subject, 2, &turn, &register)
-                && dialogue::is_voice(&r.object, 1, &turn, &register)
+            || (dialogue::is_voice(&r.subject, 2, &turn, register)
+                && dialogue::is_voice(&r.object, 1, &turn, register)
                 && ![&r.subject, &r.object]
                     .iter()
                     .any(|n| common.contains(*n) || pack.sentence_openers.contains(&n.as_str())))
     });
+    if let Some(evidence) = evidence {
+        evidence.characters = document.characters();
+        evidence.dialogue = turn.into_dialogue(&common, register, pack, &opts.aliases);
+    }
 
-    Ok(emit(found, min_confidence, &rejected))
+    found.sort_by_key(|(r, offset)| [offset + r.span[0], offset + r.span[1]]);
+
+    found
 }
 
 /// Score, filter and convert what the readers found.
@@ -282,10 +360,15 @@ fn collect_candidates(
 /// Each span is relative to its offset: the sentence's start, or 0 for a
 /// paragraph-level candidate whose span is already absolute.
 fn emit(
-    found: Vec<(relations::RelationCandidate, usize)>,
+    found: impl IntoIterator<Item = (relations::RelationCandidate, usize)>,
+    opts: &Options,
     min_confidence: f32,
-    rejected: &BTreeSet<(&str, &str, &str)>,
 ) -> Vec<Emitted> {
+    let rejected: BTreeSet<(&str, &str, &str)> = opts
+        .rejections
+        .iter()
+        .map(|r| (r.subject.as_str(), r.relation.as_str(), r.object.as_str()))
+        .collect();
     let mut candidates = Vec::new();
     for (rel, offset) in found {
         let confidence = cooccurrence::score_confidence(rel.base, rel.gap);
@@ -316,6 +399,8 @@ fn emit(
                 },
                 polarity,
                 single_filler: rel.single_filler,
+                state: rel.state,
+                ends_state: rel.ends_state,
             });
         }
     }

@@ -4,7 +4,10 @@ mod input;
 
 use super::{aggregate, collect_candidates, dedup_candidates, normalize_relation, pack::ENGLISH};
 use super::{segment, Context, Emitted};
-use crate::{AggregateTriple, Language, NarrativeGraphError, Options, Polarity, TripleCandidate};
+use crate::{
+    AggregateTriple, Language, NarrativeGraphError, Options, Polarity, RelationshipState,
+    TripleCandidate,
+};
 use anyhow::{ensure, Context as _, Result};
 use input::{MAX_NAMES, MAX_TOKENS};
 use serde::Deserialize;
@@ -118,7 +121,7 @@ impl StudentModel {
             .map(|(sentence, start)| [start, start + sentence.len()])
             .collect();
         let predicted = self.predict(text, &spans, opts)?;
-        let mut emitted = collect_candidates(text, opts, &ENGLISH, &Context::default())?;
+        let mut emitted = collect_candidates(text, opts, &Context::default(), None)?;
         emitted.extend(predicted);
         emitted.sort_by_key(|e| e.candidate.span);
         Ok(emitted)
@@ -214,6 +217,8 @@ impl StudentModel {
                                 single_filler: ENGLISH
                                     .single_filler_relations
                                     .contains(&label.relation.as_str()),
+                                state: RelationshipState::from_relation(&label.relation),
+                                ends_state: false,
                             });
                         }
                     }

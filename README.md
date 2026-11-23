@@ -77,7 +77,7 @@ Segmentation is hand-rolled rather than a naive split on `.`/`!`/`?`, because na
 
 ### Entities
 
-Capitalized-token detection, pronoun-antecedent linking within and across sentences, and an optional caller-supplied alias list so "Marcus" and "Mr. Marcus Hale" resolve to the same entity when you already know that. A title leading a name is dropped from the identity but kept in the surface form, so "Lady Catherine de Bourgh" and "Catherine de Bourgh" already unify without an alias.
+The document's character profiles combine named mentions, unambiguous short forms, title and pronoun cues, and explicit family links. The same profiles resolve narration such as "he", "her sister", and "the old man" before the relation rules run. A description needs support in the text, such as "Mr. Hale, the old man," and a family role needs a unique referent. Caller aliases can supply identities the text leaves ambiguous.
 
 > **You supply:** `{ aliases: { "Marcus": "marcus_hale", "Mr Marcus Hale": "marcus_hale" } }`
 > **Result:** either mention resolves to `marcus_hale` in every candidate.
@@ -98,6 +98,24 @@ Every candidate reports the rule that produced it, not just a score — `possess
 
 Every candidate carries a confidence score from the extraction rule's pattern strength and how close the subject and object are in the source text, plus the byte offset of its extracted span — a range covering the subject, the object, and the token that licensed the relation. Gate on a threshold, route low-confidence candidates to human review, or fetch source context for display.
 
+`analyze_document` adds a calibrated estimate to observations from rule families represented in the reviewed public sample. Use `facts_at_least` to filter those observations, or `calibratedConfidence` in Node. The evaluation reports the evidence behind the estimates. [Evaluation](./docs/EVALUATION.md)
+
+### Story history and events
+
+`analyze_document` returns a `timeline` with each statement's span and polarity. Engagement, marriage, widowhood, divorce, friendship, enmity and alliance have state labels. The order follows the text, including when a story recounts earlier events. Explicit phrases such as "no longer Dev's friend" mark the end of a state. The `events` output covers explicit duels, proposals, journeys and deaths with a named or resolved actor, plus a target and location where the sentence supplies them.
+
+The `mentions` output shows the source spans linked to each character ID. The `knowledge` output preserves the proposition or topic and the recipient of a statement such as "Nora told her about Dev's departure." Grounded topics also produce `learned_about`, `knows_about`, or `told_about` relations. Direct acquaintance uses `knows`.
+
+### Conversation view
+
+`analyze_document` and `analyzeDocumentNapi` return `dialogue.lines` in source order. Each recognized quoted utterance has its own record, even when the same pair speaks repeatedly. `speaker` and `listener` are character IDs when the text supports an attribution. `dialogue.unattributed` counts lines missing either one. For a share-of-dialogue calculation, use `spoken_spans` in Rust or `spokenSpans` in Node to slice the quoted text around any interleaved narration. The ranges include quotation marks and use the same offsets as other evidence.
+
+The English reader uses speech tags, direct addresses and two-person turn-taking. The Chinese reader uses speech tags and direct addresses with names from caller aliases or recognized titles. Character coreference, events and knowledge extraction use the English reader.
+
+### Chapters and series
+
+Use `Series` in Rust or `NarrativeSeries` in Node to analyze a chapter at a time. Assign each chapter a book number, chapter number and revision number. Updating an existing key replaces that chapter's evidence. Passing the cached revision reuses its analysis. The merged graph retains chapter-relative spans. Set a common ID in `Options.aliases` for forms such as `"Mr Darcy"` and `"Fitzwilliam Darcy"` to keep the same character across books and revisions. Query a pair with `relationship_history` in Rust or `relationshipHistory` in Node to read its state changes in book, chapter and source order.
+
 ## API
 
 <details>
@@ -113,6 +131,8 @@ Every candidate carries a confidence score from the extraction rule's pattern st
 | `find_conflicts(text, &Options)` | Claims a passage makes that cannot both be true: a fact and its denial, or two subjects where the relation admits one |
 | `Conflict { kind, left, right }` | Both sides with their evidence; the crate does not decide which one the manuscript meant |
 | `analyze(text, &Options)` | Candidates, aggregates and conflicts from one pass, as `Analysis { candidates, aggregates, conflicts }` |
+| `analyze_document(text, &Options)` | Relation analysis, linked mentions, character profiles, dialogue, story history, events, and knowledge |
+| `Series::update_chapter(position, revision, text)` | Add or replace a chapter and keep its current evidence in `Series::aggregates()` |
 
 </details>
 
@@ -147,10 +167,12 @@ In Rust, load the checkpoint once with `StudentModel::load` and call `extract_ca
 | `extractAggregatesNapi(text, opts?)` / `findConflictsNapi(text, opts?)` | Per-fact aggregates and conflicts, as in Rust |
 | `analyzeNapi(text, opts?)` | All three results from one pass |
 | `analyzeAsyncNapi(text, opts?)` | `analyzeNapi` on the libuv worker pool; returns a `Promise` and leaves the calling thread free |
+| `analyzeDocumentNapi(text, opts?)` | Relation analysis, linked mentions, character profiles, dialogue, timeline, events, and knowledge |
+| `new NarrativeSeries(opts?)` | Incrementally index chapters with `updateChapter(book, chapter, revision, text)` |
 
 Spans in Node are UTF-16 code unit offsets, so `text.slice(span[0], span[1])` returns the evidence. The Rust API reports UTF-8 byte offsets; the two differ on non-ASCII text.
 
-`opts` accepts `aliases`, `minConfidence`, `rejections`, `ontology`, and `language` (`'english'` or `'chinese'`). Full TypeScript definitions ship in the package (`index.d.ts`), generated from the Rust types via `ts-rs` — treat them as the source of truth over this table.
+`opts` accepts `aliases`, `minConfidence`, `rejections`, `ontology`, and `language` (`'english'` or `'chinese'`). The package exports TypeScript definitions through `index.d.ts`.
 
 </details>
 

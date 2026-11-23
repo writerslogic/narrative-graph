@@ -38,12 +38,15 @@ text
 split_sentences            (src/heuristic/segment.rs)
   |  honorifics, initials, ellipses, quoted dialogue
   v
+character profiles          (src/heuristic/coreference.rs)
+  |  named mentions, narrator vote, alias and family evidence
+  v
 for each sentence:
-  extract_entities          (src/heuristic/entities.rs)
-    |  capitalized-token runs + pronoun-antecedent linking + alias resolution
+  resolve mentions
+    |  links to character IDs with the original byte spans
     v
-  extract_relations         (src/heuristic/relations.rs)
-    |  pattern match on the text between each forward entity pair
+  extract relations and events
+    |  pattern match using the resolved mentions
     v
   score_confidence          (src/heuristic/cooccurrence.rs)
     |  rule strength scaled by subject-object character distance
@@ -56,6 +59,9 @@ one of two collapses      (src/heuristic/mod.rs, src/heuristic/aggregate.rs)
   |  aggregate:        every span per (subject, relation, object, polarity)
   v
 Vec<TripleCandidate>  /  Vec<AggregateTriple>  ->  find_conflicts
+
+analyze_document also exposes the profiles, linked mentions, individual facts,
+events, and knowledge statements.
 ```
 
 ## Language pack (`src/heuristic/pack.rs`)
@@ -106,9 +112,8 @@ sentence reading "Newland Archer looked at her" therefore cannot record him as
 female for the whole document. A tie settles nothing, and an unsettled name is
 one no pronoun may take — so ambiguity costs recall and never accuracy.
 
-A link is made only on positive evidence. A plural pronoun is never resolved
-across a sentence boundary at all: "they" names a group assembled over several
-sentences, which a carry holding one referent at a time cannot represent.
+Cross-sentence pronouns use positive evidence from the register. A plural
+pronoun is left unresolved because each mention carries a single character ID.
 
 ## Sentence segmentation (`src/heuristic/segment.rs`)
 
@@ -146,9 +151,7 @@ inherent to abbreviation handling rather than fixable by another rule:
 
 ## Entity detection (`src/heuristic/entities.rs`)
 
-Two independent sources of entity mentions, merged per sentence:
-
-1. **Capitalized-token runs.** `extract_capitalized_entities` scans the
+**Capitalized-token runs.** `extract_capitalized_entities` scans the
    sentence char by char, treats whitespace and `,.!?;:—'’"` as separators
    (both apostrophes, since narrative prose is typeset with the curly one),
    and joins consecutive capitalized words into one entity ("Marco",
@@ -160,19 +163,6 @@ Two independent sources of entity mentions, merged per sentence:
    extends the mention's end offset. English "of" is deliberately not a
    particle: it would swallow "the Duchess of Devonshire" and it is the link
    text the "of" genitive rule matches.
-2. **Pronoun-antecedent linking.** `extract_pronouns` finds word-bounded
-   occurrences of `he/she/they/him/her/them/his/their/it`; for each one,
-   `find_pronoun_antecedent` walks backward from the pronoun and picks the
-   nearest preceding capitalized word as the antecedent. A capitalized pronoun
-   is never an antecedent and never a mention of its own: `she` as a graph node
-   names nobody.
-
-   A pronoun with no antecedent in its own sentence falls back to a referent
-   the previous sentence named, within the same paragraph, consuming them in
-   the order that sentence named them and once each. That fallback is gated by
-   the register below: it links only where the document has positively said
-   what the referent is.
-
 Every mention is normalized (`normalize_entity`: lowercased, spaces replaced
 with underscores) and, if the caller supplied an `aliases` map, remapped to
 its canonical form. Normalization also drops the titles leading the run
@@ -185,20 +175,32 @@ from "Mr. Darcy". `EntityCandidate.text` keeps the full styled surface form,
 and that is the form an uppercase-bearing `aliases` key is matched against. A
 wholly lowercase key is a lexicon entry instead (`lexicon_mentions`): the phrase
 is searched for in the sentence as a literal, word-bounded, case-insensitive
-match and becomes a mention of the mapped canonical name at those offsets, which
-is the only way a referent named by a lowercase phrase ("the detective") is
-reached at all. Longer keys are tried first, and a match overlapping a mention
+match and becomes a mention of the mapped canonical name at those offsets.
+Longer keys are tried first, and a match overlapping a mention
 already produced is dropped, so a key can add a mention but never replace one.
-A lexicon mention is a referent a pronoun can take: `find_pronoun_antecedent`
-still walks the raw text backward for a capitalized word, and the lexicon
-mention wins where it sits nearer the pronoun and where that walk finds no
-capitalized word at all, so a caller supplying no lowercase key resolves exactly
-as before. A lexicon mention covering a pronoun's
-own offsets replaces it rather than standing beside it. Every mention is kept: collapsing repeated mentions of one
-referent would hide the second relation in "Elena is Marco's sister and Marco
-mentors Elena." Duplicate *triples* are collapsed at the end of the pipeline
-instead (`dedup_candidates`), keeping the highest confidence per
-(subject, relation, object).
+
+## Character profiles and mention resolution
+
+`coreference.rs` first inventories named mentions and scores compatible short
+forms. An inferred alias needs a unique full or titled name. Distinct forms
+appearing together are kept apart. A titled surname needs agreeing gender
+evidence and a unique full form. Caller aliases supply canonical IDs directly.
+The narrator can come from a caller-supplied ID, an explicit self-introduction,
+or the dialogue vote.
+
+The profile learns descriptions from appositions and direct identifications.
+It uses asserted named family statements and direct inverse
+links for possessive and genitive descriptions such as "her sister" and
+"the sister of Nora's sister". Every step needs one referent. Identity learned
+later in the document can resolve an earlier mention.
+
+Outside speech, pronouns prefer agreeing names in the current sentence and
+then in the previous three sentences. At a paragraph boundary, only the
+immediately preceding sentence stays in scope. The resolver checks the
+document's gender cues and declines equally plausible referents. A resolved
+mention carries the canonical ID and its own offsets through all relation
+rules and event extraction. The standalone sentence helper `extract_entities`
+uses the nearest in-sentence mention.
 
 ## Relation extraction (`src/heuristic/relations.rs`)
 
@@ -323,6 +325,33 @@ subject and object — up to a 15% reduction as the gap approaches the 30-char
 cap enforced in `find_relation_pattern`. A closer pair is weaker evidence of
 coincidence than a distant one, so it keeps more of the base score.
 
+The document timeline also reports estimates fitted on adjudicated predictions
+from public LitBank books. Rule families pool observations and use four
+prior observations centered on the heuristic score. Families with fewer
+than five reviewed fit predictions have no estimate. [Evaluation](./EVALUATION.md)
+
+## Positions, events and chapters
+
+Occurrences are ordered by their original spans. The timeline retains the
+rule's relationship state before ontology mapping and carries explicit
+state endings through the conflict check. Events use the same resolved
+mentions and quote boundaries and keep a separate record for each occurrence.
+
+Dialogue lines start from quote ranges. The English reader joins a quote
+across sentence breaks or an interleaved tag and uses the conversation
+solver for missing attribution. The Chinese reader uses its own quote map
+and named tags. Both keep partially attributed lines in source order.
+
+Knowledge statements keep actor, recipient, named topic when available, and
+the byte span of the proposition or topic phrase. A reported topic produces a
+knowledge relation using the same alias, ontology, rejection and confidence
+machinery as other triples.
+
+`Series` indexes cached chapter analyses by book and chapter. A new revision
+replaces the affected chapter's entries in the fact index. Use caller aliases
+for stable series identities across surface names. The index stores the
+extracted evidence and keeps spans relative to each chapter.
+
 ## Span and provenance
 
 Each `RelationCandidate` (`src/heuristic/relations.rs`) carries the byte span
@@ -388,12 +417,9 @@ designed, but the design is narrow:
 - **Relation recall**: only the patterns listed above are recognized, and the
   possessive lexicon covers a fraction of the relational nouns English uses.
   Any other phrasing of the same relationship is invisible to the pipeline.
-- **Pronoun resolution**: "nearest preceding capitalized word," with no
-  gender or number agreement — a multi-entity sentence can link a pronoun to
-  the wrong antecedent.
-- **No cross-sentence coreference**: entities and pronouns are resolved
-  within a single sentence only; a pronoun in one sentence never resolves to
-  an entity introduced in a previous one.
+- **Coreference coverage** depends on nearby discourse for pronouns and on
+  named evidence for descriptions. Nicknames with different spellings require
+  a caller alias, and pronouns within dialogue remain unresolved.
 - **Segmentation edge cases**: see the two documented limitations in the
   segmentation section above.
 - **Assertion gating is lexical**: the negation, condition and modal checks

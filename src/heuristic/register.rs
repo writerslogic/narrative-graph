@@ -13,6 +13,7 @@
 
 use super::entities::EntityCandidate;
 use super::pack::LanguagePack;
+use crate::types::Gender;
 use std::collections::BTreeMap;
 
 /// What the pipeline can tell about a pronoun from its surface form alone.
@@ -36,6 +37,8 @@ struct Entry {
     established: bool,
     masculine: u32,
     feminine: u32,
+    masculine_title: bool,
+    feminine_title: bool,
     /// Evidence that the name is a thing: a determiner in front of it, a name
     /// of a time, use only ever as a location, or a neuter pronoun taking it.
     neuter: u32,
@@ -77,18 +80,26 @@ impl Entry {
 
     fn allows(&self, class: PronounClass) -> bool {
         match class {
-            PronounClass::Masculine => {
-                Self::wins(self.personal(), self.thing())
-                    && Self::wins(self.masculine, self.feminine)
-            }
-            PronounClass::Feminine => {
-                Self::wins(self.personal(), self.thing())
-                    && Self::wins(self.feminine, self.masculine)
-            }
+            PronounClass::Masculine => self.gender() == Some(Gender::Masculine),
+            PronounClass::Feminine => self.gender() == Some(Gender::Feminine),
             // "it" needs positive evidence of a thing, not just absence of evidence
             // of a person.
             PronounClass::Neuter => Self::wins(self.thing(), self.personal()),
             PronounClass::Plural => false,
+        }
+    }
+
+    fn gender(&self) -> Option<Gender> {
+        if !Self::wins(self.personal(), self.thing()) {
+            return None;
+        }
+        match (self.feminine_title, self.masculine_title) {
+            (true, false) => Some(Gender::Feminine),
+            (false, true) => Some(Gender::Masculine),
+            (true, true) => None,
+            (false, false) if Self::wins(self.feminine, self.masculine) => Some(Gender::Feminine),
+            (false, false) if Self::wins(self.masculine, self.feminine) => Some(Gender::Masculine),
+            _ => None,
         }
     }
 }
@@ -104,8 +115,8 @@ impl Register {
     pub fn observe(
         &mut self,
         sentence: &str,
-        mentions: &[EntityCandidate],
-        pronouns: &[(String, usize)],
+        mentions: &[&EntityCandidate],
+        pronouns: &[(&str, usize)],
         pack: &LanguagePack,
     ) {
         for mention in mentions {
@@ -116,8 +127,10 @@ impl Register {
                 entry.established = true;
                 if masculine {
                     entry.masculine += TITLE;
+                    entry.masculine_title = true;
                 } else {
                     entry.feminine += TITLE;
+                    entry.feminine_title = true;
                 }
             }
             if !opens_sentence(sentence, mention.start) {
@@ -126,9 +139,9 @@ impl Register {
             if preceded_by(sentence, mention.start, pack.determiners) {
                 entry.neuter += SIGHTING;
             }
-            if pack
-                .temporal_names
-                .contains(&mention.normalized.replace('_', " ").as_str())
+            let normalized = mention.normalized.replace('_', " ");
+            if pack.temporal_names.contains(&normalized.as_str())
+                || pack.place_names.contains(&normalized.as_str())
             {
                 entry.neuter += TITLE;
                 entry.established = true;
@@ -160,8 +173,8 @@ impl Register {
     fn learn_from_unambiguous_pronouns(
         &mut self,
         sentence: &str,
-        mentions: &[EntityCandidate],
-        pronouns: &[(String, usize)],
+        mentions: &[&EntityCandidate],
+        pronouns: &[(&str, usize)],
         pack: &LanguagePack,
     ) {
         for (pronoun, start) in pronouns {
@@ -210,18 +223,39 @@ impl Register {
             .is_some_and(|e| Entry::wins(e.thing(), e.personal()))
     }
 
-    /// Whether `referent` may be what `pronoun` refers to.
-    ///
-    /// IMPORTANT: this is the whole of the agreement check, and it is one-sided
-    /// on purpose. A referent is allowed unless the document says otherwise,
-    /// except for `established`, which must be positively true — an unestablished
-    /// name is not a name, and admitting one costs precision with no recall to
-    /// show for it.
-    ///
-    /// A plural pronoun is never resolved across a sentence boundary. "They"
-    /// in narrative prose names a group assembled over several sentences, and
-    /// a carry that holds one referent at a time cannot represent one; every
-    /// link it could make would name a single person the text did not mean.
+    pub fn is_established(&self, name: &str) -> bool {
+        self.entries
+            .get(name)
+            .is_some_and(|entry| entry.established)
+    }
+
+    pub fn gender(&self, name: &str) -> Option<Gender> {
+        self.entries.get(name).and_then(Entry::gender)
+    }
+
+    pub fn observe_role(&mut self, name: &str, gender: Gender) {
+        let entry = self.entries.entry(name.to_string()).or_default();
+        entry.established = true;
+        match gender {
+            Gender::Feminine => entry.feminine += TITLE,
+            Gender::Masculine => entry.masculine += TITLE,
+        }
+    }
+
+    pub fn compatible(&self, name: &str, class: PronounClass) -> bool {
+        match class {
+            PronounClass::Feminine => {
+                !self.is_thing(name) && self.gender(name) != Some(Gender::Masculine)
+            }
+            PronounClass::Masculine => {
+                !self.is_thing(name) && self.gender(name) != Some(Gender::Feminine)
+            }
+            PronounClass::Neuter => self.is_thing(name),
+            PronounClass::Plural => false,
+        }
+    }
+
+    /// Positive agreement between a pronoun and a previously established name.
     pub fn allows(&self, pronoun: &str, referent: &str, pack: &LanguagePack) -> bool {
         let Some(class) = classify(pronoun, pack) else {
             return false;
@@ -234,7 +268,7 @@ impl Register {
     }
 }
 
-fn classify(pronoun: &str, pack: &LanguagePack) -> Option<PronounClass> {
+pub(super) fn classify(pronoun: &str, pack: &LanguagePack) -> Option<PronounClass> {
     let has = |list: &[&str]| list.iter().any(|p| pronoun.eq_ignore_ascii_case(p));
 
     if has(pack.masculine_pronouns) {
