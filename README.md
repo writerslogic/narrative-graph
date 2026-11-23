@@ -48,7 +48,7 @@ npm install narrative-graph
 
 ```toml
 [dependencies]
-narrative-graph = "0.1"
+narrative-graph = "0.3"
 ```
 
 ### GitHub
