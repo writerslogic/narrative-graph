@@ -434,19 +434,30 @@ labels: conversation turns, pronoun speakers, and the narrator's identity.
 
 ### Conversation turns (2026-11-23)
 
-`src/heuristic/dialogue.rs` now follows a conversation, not only a
-paragraph: the turn before last speaks an untagged turn, a pronoun tag picks
-whichever of the two people it fits, the name a turn addresses answers it,
-speech left open at a paragraph's end (or a tag with "continued") carries
-the same speaker on, and a turn with no address is said to the previous
-speaker. Inference stops when a third voice joins. Each `speaks_to` carries
-a span on every sentence of the turn. A first-person book gets a narrator:
-the name the turns beside "I said" turns address, at least three times and
-twice the runner-up (Jane Eyre: `jane`; no other public book qualifies), and
-the document is read again with it. Hard-wrapped speech no longer closes at
-every line break, only at a paragraph break.
+`src/heuristic/dialogue.rs` solves each conversation whole once two
+paragraphs pass without speech. A turn is anchored by its own tag or by the
+turn before addressing someone; the conversation is cut wherever an anchor
+breaks alternation (a third name, one person on both sides, two tags on one
+turn); a stretch whose two sides each have a tag gives every turn to its
+side, said to the other person unless it addresses someone, and a pronoun
+tag that fits only the other side cancels the stretch. Speech left open at a
+paragraph's end joins the next paragraph when that one reopens the
+quotation, and a turn addressing three people or more is a recounted
+conversation whose addresses are ignored. Each `speaks_to` carries a span on
+every sentence of the turn. A first-person book gets a narrator: the name the
+turns beside "I said" turns address, at least three times and twice the
+runner-up (Jane Eyre: `jane`; no other public book qualifies), and the
+document is read again with it. Hard-wrapped speech no longer closes at every
+line break, only at a paragraph break.
 
-Public even: recall over all tiers 0.028 to 0.057, precision 0.750 over 8
-extractions on labelled sentences. Most remaining `speaks_to` misses have no
-known speaker on the turn before, so the forward pass never holds two
-people; several also need aliases (Nelly and Ellen, Cathy and Catherine).
+| run | public even recall, all tiers | precision on labelled sentences |
+|---|---|---|
+| before | 0.028 | 1.000 (3 of 3) |
+| forward tracker | 0.057 | 0.750 (6 of 8) |
+| conversation resolver | 0.075 | 0.727 (8 of 11) |
+
+Private: even 0.000, odd 0.039 at precision 0.750. That is far below the
+target, so the rule path alone will not reach it: most remaining `speaks_to`
+misses are turns no tag in their stretch reaches, narrators the vote does not
+find (Wuthering Heights has two, Moby-Dick's Ishmael is rarely addressed),
+and aliases (Nelly and Ellen, Cathy and Catherine, Lizzy and Elizabeth).

@@ -3,6 +3,7 @@ use narrative_graph::{
     extract_aggregates, extract_candidate_triples, find_conflicts, ConflictKind, Options, Polarity,
     Rejection, TripleCandidate,
 };
+use std::collections::BTreeSet;
 
 fn extract(text: &str) -> Vec<TripleCandidate> {
     extract_candidate_triples(text, &Options::default()).expect("extraction failed")
@@ -1468,10 +1469,16 @@ fn a_tagged_speaker_speaks_to_the_name_they_address() {
 #[test]
 fn a_two_person_conversation_carries_its_speakers_across_untagged_turns() {
     let speaks = |text: &str| -> Vec<(String, String, [usize; 2])> {
-        extract(text)
+        extract_aggregates(text, &Options::default())
+            .expect("extraction failed")
             .into_iter()
-            .filter(|c| c.relation == "speaks_to")
-            .map(|c| (c.subject, c.object, c.span))
+            .filter(|a| a.relation == "speaks_to")
+            .flat_map(|a| {
+                let (s, o) = (a.subject, a.object);
+                a.spans
+                    .into_iter()
+                    .map(move |span| (s.clone(), o.clone(), span))
+            })
             .collect()
     };
     let said_in = |found: &[(String, String, [usize; 2])], text: &str, line: &str| {
@@ -1480,6 +1487,8 @@ fn a_two_person_conversation_carries_its_speakers_across_untagged_turns() {
             .iter()
             .filter(|(_, _, span)| (start..start + line.len()).contains(&span[0]))
             .map(|(s, o, _)| (s.as_str().to_owned(), o.as_str().to_owned()))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
             .collect::<Vec<_>>()
     };
     let pair = |s: &str, o: &str| vec![(s.to_string(), o.to_string())];
@@ -1499,12 +1508,25 @@ fn a_two_person_conversation_carries_its_speakers_across_untagged_turns() {
         pair("marco", "nora")
     );
 
-    // Whoever a turn addresses answers it.
+    // An address names who answers, but each side needs a tag of its own
+    // before untagged turns are given to it.
     let text = format!("\"Marco, are you coming?\" asked Nora.\n\"I am tired.\"{voices}");
+    let found = speaks(&text);
+    assert!(
+        said_in(&found, &text, "\"I am tired.\"").is_empty(),
+        "{found:?}"
+    );
+    let text = format!(
+        "\"Marco, are you coming?\" asked Nora.\n\"I am tired.\"\n\"Then rest.\"\n\"I will,\" said Marco.{voices}"
+    );
     let found = speaks(&text);
     assert_eq!(
         said_in(&found, &text, "\"I am tired.\""),
         pair("marco", "nora")
+    );
+    assert_eq!(
+        said_in(&found, &text, "\"Then rest.\""),
+        pair("nora", "marco")
     );
 
     // Speech left open at a paragraph's end is the same speaker's next paragraph.

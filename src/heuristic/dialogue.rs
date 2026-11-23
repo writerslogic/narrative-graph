@@ -6,11 +6,10 @@
 //! one speaker's turn, so a turn's tag and address are joined across its
 //! sentences.
 //!
-//! Turns also carry a conversation. Between two people the turns alternate,
-//! so an untagged turn belongs to whoever spoke the turn before last, a turn
-//! tagged only "she said" to whichever of the two the pronoun fits, and
-//! either one is said to the other. A turn whose speaker stays unknown, or
-//! two paragraphs without speech, end the conversation.
+//! Turns also make a conversation, solved whole once two paragraphs pass
+//! without speech: between two people the turns alternate, so once each side
+//! of a stretch is tagged, every turn in it belongs to its side and is said
+//! to the other person. See [`solve`].
 
 use super::entities::EntityCandidate;
 use super::pack::LanguagePack;
@@ -31,32 +30,37 @@ pub const TURN_RULE: &str = "dialogue-turn";
 /// Paragraphs without speech after which a conversation is over.
 const QUIET: usize = 2;
 
-#[derive(Default)]
-pub struct Turn {
+/// One paragraph's speech, as read.
+#[derive(Default, Clone)]
+struct Para {
+    /// Names tagged as speaking it.
     speakers: Vec<String>,
-    /// Pronouns tagging speech in this paragraph ("she said"), lowercase.
+    /// Pronouns tagging it ("she said"), lowercase.
     pronoun_tags: Vec<String>,
     /// Vocatives with their absolute byte span.
     vocatives: Vec<(String, usize, usize)>,
-    /// Absolute byte ranges of the paragraph's sentences that hold speech.
+    /// Absolute byte ranges of the sentences that hold speech.
     speech: Vec<[usize; 2]>,
+    /// The speech is still open at the paragraph's end.
+    open_end: bool,
+    /// A tag outside the speech carries on the last turn ("continued").
+    resumed: bool,
+    /// Tagged "I said".
+    first_person: bool,
+    /// The paragraph opens with a quotation mark, as a speech carried over
+    /// from the paragraph before does.
+    opens_quoted: bool,
+}
+
+#[derive(Default)]
+pub struct Turn {
+    current: Para,
+    /// The conversation so far: its turns, a paragraph left open merged into
+    /// the next.
+    conversation: Vec<Para>,
+    quiet: usize,
     /// How often each name is tagged as a speaker in the document.
     voices: BTreeMap<String, usize>,
-    /// Speakers of the conversation so far, oldest first, no two adjacent
-    /// alike.
-    exchange: Vec<String>,
-    quiet: usize,
-    /// Whether the paragraph's speech is still open at its end.
-    open_end: bool,
-    /// Whether the previous paragraph's speech was left open, so that this
-    /// one continues the same speaker's turn.
-    continued: bool,
-    /// The name the previous turn addressed, who is the likely next speaker.
-    addressed: Option<String>,
-    /// Whether this paragraph's speech is tagged "I said".
-    first_person: bool,
-    /// Whether a tag outside the speech carries on the last turn ("continued").
-    resumed: bool,
     /// The previous turn: whether it was the narrator's, and whom it addressed.
     last_turn: Option<(bool, Vec<String>)>,
     /// Names addressed in a turn next to one of the narrator's, by count.
@@ -78,8 +82,12 @@ impl Turn {
         if !open && !sentence.chars().any(is_quote_mark) {
             return;
         }
-        self.speech.push([start, start + sentence.len()]);
-        self.open_end = quotes.open_at_end;
+        let para = &mut self.current;
+        if para.speech.is_empty() {
+            para.opens_quoted = sentence.trim_start().starts_with(is_quote_mark);
+        }
+        para.speech.push([start, start + sentence.len()]);
+        para.open_end = quotes.open_at_end;
         for m in mentions {
             let first_person = pack
                 .first_person_pronouns
@@ -92,7 +100,7 @@ impl Turn {
                     && is_vocative(sentence, m)
                     && !interrupted(sentence, m, quotes)
                 {
-                    self.vocatives
+                    para.vocatives
                         .push((m.normalized.clone(), start + m.start, start + m.end));
                 }
             } else if m.pronoun && !first_person {
@@ -100,19 +108,21 @@ impl Turn {
                 // previous sentence, which in dialogue is usually the other
                 // speaker's tag; the conversation decides who it is instead.
                 if tags_speech(sentence, m, quotes, pack) {
-                    self.pronoun_tags.push(m.text.to_lowercase());
+                    para.pronoun_tags.push(m.text.to_lowercase());
                 }
             } else if tags_speech(sentence, m, quotes, pack)
-                && !self.speakers.contains(&m.normalized)
+                && !para.speakers.contains(&m.normalized)
             {
-                self.speakers.push(m.normalized.clone());
+                para.speakers.push(m.normalized.clone());
                 *self.voices.entry(m.normalized.clone()).or_default() += 1;
             }
         }
         for (word, at) in words(sentence) {
+            if quotes.inside(at) {
+                continue;
+            }
             let is_pronoun = |list: &[&str]| list.iter().any(|p| word.eq_ignore_ascii_case(p));
-            let covered = mentions.iter().any(|m| m.start == at);
-            let probe = |word: &str| EntityCandidate {
+            let probe = EntityCandidate {
                 text: word.to_string(),
                 normalized: word.to_lowercase(),
                 start: at,
@@ -120,52 +130,84 @@ impl Turn {
                 pronoun: true,
                 quoted: false,
             };
-            if word == "I"
-                && !quotes.inside(at)
-                && tags_speech(sentence, &probe(word), quotes, pack)
-            {
-                self.first_person = true;
+            if pack.resuming_verbs.contains(&word) {
+                para.resumed = true;
             }
-            if !covered
-                && !quotes.inside(at)
+            if word == "I" && tags_speech(sentence, &probe, quotes, pack) {
+                para.first_person = true;
+            }
+            if !mentions.iter().any(|m| m.start == at)
                 && (is_pronoun(pack.masculine_pronouns) || is_pronoun(pack.feminine_pronouns))
                 && is_pronoun(pack.subject_pronouns)
-                && tags_speech(sentence, &probe(word), quotes, pack)
+                && tags_speech(sentence, &probe, quotes, pack)
             {
-                self.pronoun_tags.push(word.to_lowercase());
+                para.pronoun_tags.push(word.to_lowercase());
             }
         }
     }
 
-    /// End the paragraph: its speaker `speaks_to` each listener, with a span
-    /// on each vocative and on each sentence of the speech.
+    /// End the paragraph. A conversation is solved whole once it is over:
+    /// after two paragraphs without speech, or with `last`, at the end of the
+    /// document.
     pub fn finish(
         &mut self,
         ontology: &BTreeMap<String, String>,
         register: &Register,
         pack: &LanguagePack,
+        last: bool,
     ) -> Vec<RelationCandidate> {
-        let speakers = std::mem::take(&mut self.speakers);
-        let pronoun_tags = std::mem::take(&mut self.pronoun_tags);
-        let vocatives = std::mem::take(&mut self.vocatives);
-        let speech = std::mem::take(&mut self.speech);
-        let continued = std::mem::replace(&mut self.continued, false);
-        let addressed = self.addressed.take();
-        let first_person = std::mem::take(&mut self.first_person);
-        let resumed = std::mem::take(&mut self.resumed);
-        if speech.is_empty() {
-            self.quiet += 1;
-            if self.quiet >= QUIET {
-                self.exchange.clear();
-                self.last_turn = None;
-            }
-            return vec![];
+        let mut para = std::mem::take(&mut self.current);
+        // A turn addressing three people or more is recounting a
+        // conversation, and its names are the recounted speakers' addresses.
+        if para
+            .vocatives
+            .iter()
+            .map(|v| &v.0)
+            .collect::<BTreeSet<_>>()
+            .len()
+            > 2
+        {
+            para.vocatives.clear();
         }
-        self.quiet = 0;
-        // The narrator is whoever the turns beside the narrator's address.
-        let names: Vec<String> = vocatives.iter().map(|(n, _, _)| n.clone()).collect();
+        if para.speech.is_empty() {
+            self.quiet += 1;
+        } else {
+            self.quiet = 0;
+            self.vote(&para);
+            // An apostrophe reads as a closing mark, so a quotation open at
+            // the end is trusted only when the next paragraph reopens it and
+            // names no other speaker.
+            let merge = self.conversation.last().is_some_and(|previous| {
+                let carried = previous.open_end && para.opens_quoted;
+                (carried || para.resumed)
+                    && para.speakers.iter().all(|s| previous.speakers.contains(s))
+            });
+            match self.conversation.last_mut() {
+                Some(previous) if merge => {
+                    previous.speakers.extend(para.speakers);
+                    previous.speakers.dedup();
+                    previous.pronoun_tags.extend(para.pronoun_tags);
+                    previous.vocatives.extend(para.vocatives);
+                    previous.speech.extend(para.speech);
+                    previous.open_end = para.open_end;
+                    previous.first_person |= para.first_person;
+                }
+                _ => self.conversation.push(para),
+            }
+        }
+        if self.quiet >= QUIET || last {
+            self.last_turn = None;
+            let turns = std::mem::take(&mut self.conversation);
+            return solve(&turns, ontology, register, pack);
+        }
+        vec![]
+    }
+
+    /// The narrator is whoever the turns beside the narrator's address.
+    fn vote(&mut self, para: &Para) {
+        let names: Vec<String> = para.vocatives.iter().map(|(n, _, _)| n.clone()).collect();
         if let Some((last_first_person, last_names)) = self.last_turn.take() {
-            let votes = match (last_first_person, first_person) {
+            let votes = match (last_first_person, para.first_person) {
                 (false, true) => last_names,
                 (true, false) => names.clone(),
                 _ => vec![],
@@ -174,102 +216,201 @@ impl Turn {
                 *self.narrator_votes.entry(name).or_default() += 1;
             }
         }
-        self.last_turn = Some((first_person, names));
-        self.continued = std::mem::take(&mut self.open_end);
+        self.last_turn = Some((para.first_person, names));
+    }
+}
 
-        // The two people the conversation is between, most recent last.
-        // Only a conversation between two people alternates: with a third
-        // voice in it, the next turn may be anyone's.
-        let two = |exchange: &[String]| exchange.iter().collect::<BTreeSet<_>>().len() == 2;
-        let pair: Option<[String; 2]> = match self.exchange.as_slice() {
-            e @ [.., a, b] if two(e) => Some([a.clone(), b.clone()]),
+/// Who speaks each turn of a conversation, and to whom.
+///
+/// A turn's own tag anchors it, and so does the turn before it addressing
+/// someone other than its own speaker: the person addressed answers. The
+/// conversation is cut wherever an anchor breaks alternation (a third name,
+/// one person on both sides, two tags on one turn, or an address its own tag
+/// contradicts), and each stretch whose anchors name two people gives every
+/// turn to its side, before the first anchor and after the last, said to the
+/// other person unless it addresses someone. A pronoun tag that fits only the
+/// other side stops that inference for the stretch; tagged turns that address
+/// someone still count.
+fn solve(
+    turns: &[Para],
+    ontology: &BTreeMap<String, String>,
+    register: &Register,
+    pack: &LanguagePack,
+) -> Vec<RelationCandidate> {
+    let mut anchors: Vec<Option<String>> = turns
+        .iter()
+        .map(|t| match t.speakers.as_slice() {
+            [one] => Some(one.clone()),
             _ => None,
-        };
-        let previous = self.exchange.last().cloned();
-        let fits = |pronoun: &str, n: &str| register.allows(pronoun, n, pack);
-        let (speaker, tagged) = match (speakers.as_slice(), pronoun_tags.as_slice()) {
-            ([one], _) => (Some(one.clone()), true),
-            // Speech left open at the end of a paragraph resumes in the next.
-            ([], []) if continued || resumed => (previous.clone(), false),
-            // Whoever the last turn addressed answers it.
-            ([], tags)
-                if tags.len() <= 1
-                    && addressed.as_ref().is_some_and(|a| {
-                        Some(a) != previous.as_ref() && tags.iter().all(|t| fits(t, a))
-                    }) =>
-            {
-                (addressed.clone(), false)
-            }
-            ([], [pronoun]) => (
-                pair.as_ref()
-                    .and_then(|[a, b]| match (fits(pronoun, a), fits(pronoun, b)) {
-                        (true, false) => Some(a.clone()),
-                        (false, true) => Some(b.clone()),
-                        // Both fit: the turns alternate.
-                        (true, true) => Some(a.clone()),
-                        (false, false) => None,
-                    }),
-                false,
-            ),
-            ([], []) => (pair.as_ref().map(|[a, _]| a.clone()), false),
-            _ => (None, false),
-        };
-        let Some(speaker) = speaker else {
-            self.exchange.clear();
-            self.addressed = vocatives.first().map(|(n, _, _)| n.clone());
-            return vec![];
-        };
-        if self.exchange.last() != Some(&speaker) {
-            self.exchange.push(speaker.clone());
-        }
-        self.addressed = vocatives
+        })
+        .collect();
+    let tagged: Vec<bool> = anchors.iter().map(Option::is_some).collect();
+    let mut breaks: Vec<bool> = turns.iter().map(|t| t.speakers.len() > 1).collect();
+    for i in 1..turns.len() {
+        let addressed = turns[i - 1]
+            .vocatives
             .iter()
             .map(|(n, _, _)| n)
-            .find(|n| **n != speaker)
-            .cloned();
-
-        let mut out: Vec<RelationCandidate> = Vec::new();
-        let mut emit = |listener: &str, span: [usize; 2], rule: &str, base: f32| {
-            out.push(RelationCandidate {
-                subject: speaker.clone(),
-                relation: normalize_relation("speaks_to", ontology),
-                object: listener.to_string(),
-                rule: rule.into(),
-                span,
-                base,
-                gap: 0,
-                stance: Stance::Asserted,
-                single_filler: false,
-            });
-        };
-        let mut listeners: Vec<String> = Vec::new();
-        for (name, start, end) in vocatives {
-            if name == speaker || listeners.contains(&name) {
-                continue;
+            .find(|n| Some(*n) != anchors[i - 1].as_ref());
+        if let Some(name) = addressed {
+            match &anchors[i] {
+                None => anchors[i] = Some(name.clone()),
+                Some(own) if own != name => breaks[i] = true,
+                Some(_) => {}
             }
-            let (rule, base) = if tagged {
-                (RULE, BASE)
-            } else {
-                (TURN_RULE, INFERRED)
-            };
-            emit(&name, [start, end], rule, base);
-            listeners.push(name);
         }
-        if listeners.is_empty() {
-            // Between two people, each turn is said to the other.
-            // A turn answers the one before it: said to its speaker.
-            let other = match self.exchange.as_slice() {
-                [.., a, b] if *b == speaker && (tagged || two(&self.exchange)) => Some(a.clone()),
+    }
+
+    let mut out = Vec::new();
+    let mut start = 0;
+    // The two sides of the alternation, by the parity of the turn.
+    let mut sides: [Option<String>; 2] = [None, None];
+    let mut sides_tagged = [false, false];
+    for i in 0..=turns.len() {
+        let conflict = i < turns.len()
+            && (breaks[i]
+                || anchors[i].as_ref().is_some_and(|name| {
+                    sides[i % 2].as_ref().is_some_and(|side| side != name)
+                        || sides[1 - i % 2].as_ref() == Some(name)
+                }));
+        if i == turns.len() || conflict {
+            // Each side needs a tag of its own: an address alone is too weak
+            // to carry a whole stretch.
+            let pair = match &sides {
+                [Some(a), Some(b)] if sides_tagged == [true, true] => Some([a.clone(), b.clone()]),
                 _ => None,
             };
-            listeners.extend(other);
+            out.extend(stretch(
+                &turns[start..i],
+                start,
+                &tagged[start..i],
+                pair,
+                ontology,
+                register,
+                pack,
+            ));
+            start = i;
+            sides = [None, None];
+            sides_tagged = [false, false];
         }
-        for listener in &listeners {
-            for &span in &speech {
-                emit(listener, span, TURN_RULE, INFERRED);
+        if let Some(name) = anchors.get(i).and_then(Option::as_ref) {
+            sides[i % 2].get_or_insert_with(|| name.clone());
+            sides_tagged[i % 2] |= tagged[i];
+        }
+    }
+    out
+}
+
+/// One stretch of a conversation; `offset` is its first turn's index, which
+/// `pair` is keyed to by parity.
+fn stretch(
+    turns: &[Para],
+    offset: usize,
+    tagged: &[bool],
+    pair: Option<[String; 2]>,
+    ontology: &BTreeMap<String, String>,
+    register: &Register,
+    pack: &LanguagePack,
+) -> Vec<RelationCandidate> {
+    let side = |j: usize| (offset + j) % 2;
+    let Some(pair) = pair.filter(|pair| {
+        !turns.iter().enumerate().any(|(j, t)| {
+            t.pronoun_tags.iter().any(|p| {
+                !register.allows(p, &pair[side(j)], pack)
+                    && register.allows(p, &pair[1 - side(j)], pack)
+            })
+        })
+    }) else {
+        return solve_tagged(turns, tagged, ontology);
+    };
+
+    let mut out = Vec::new();
+    for (j, turn) in turns.iter().enumerate() {
+        let speaker = &pair[side(j)];
+        let other = &pair[1 - side(j)];
+        let addressed: Vec<&(String, usize, usize)> = turn
+            .vocatives
+            .iter()
+            .filter(|(n, _, _)| n != speaker)
+            .collect();
+        if addressed.is_empty() {
+            for &span in &turn.speech {
+                out.push(candidate(
+                    speaker, other, span, TURN_RULE, INFERRED, ontology,
+                ));
             }
         }
-        out
+        let (rule, base) = if tagged[j] {
+            (RULE, BASE)
+        } else {
+            (TURN_RULE, INFERRED)
+        };
+        let mut seen: Vec<&str> = Vec::new();
+        for (name, start, end) in addressed {
+            out.push(candidate(
+                speaker,
+                name,
+                [*start, *end],
+                rule,
+                base,
+                ontology,
+            ));
+            if !seen.contains(&name.as_str()) {
+                seen.push(name);
+                for &span in &turn.speech {
+                    out.push(candidate(
+                        speaker, name, span, TURN_RULE, INFERRED, ontology,
+                    ));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Without a two-person alternation, only a tagged turn's own address.
+fn solve_tagged(
+    turns: &[Para],
+    tagged: &[bool],
+    ontology: &BTreeMap<String, String>,
+) -> Vec<RelationCandidate> {
+    let mut out = Vec::new();
+    for (turn, _) in turns.iter().zip(tagged).filter(|(_, &t)| t) {
+        let speaker = &turn.speakers[0];
+        for (name, start, end) in &turn.vocatives {
+            if name != speaker {
+                out.push(candidate(
+                    speaker,
+                    name,
+                    [*start, *end],
+                    RULE,
+                    BASE,
+                    ontology,
+                ));
+            }
+        }
+    }
+    out
+}
+
+fn candidate(
+    speaker: &str,
+    listener: &str,
+    span: [usize; 2],
+    rule: &str,
+    base: f32,
+    ontology: &BTreeMap<String, String>,
+) -> RelationCandidate {
+    RelationCandidate {
+        subject: speaker.to_string(),
+        relation: normalize_relation("speaks_to", ontology),
+        object: listener.to_string(),
+        rule: rule.into(),
+        span,
+        base,
+        gap: 0,
+        stance: Stance::Asserted,
+        single_filler: false,
     }
 }
 

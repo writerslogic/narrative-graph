@@ -189,7 +189,7 @@ fn collect_candidates(
         }
         if breaks >= paragraph_break {
             found.extend(
-                turn.finish(&opts.ontology, &register, pack)
+                turn.finish(&opts.ontology, &register, pack, false)
                     .into_iter()
                     .map(|r| (r, 0)),
             );
@@ -236,7 +236,7 @@ fn collect_candidates(
         );
     }
     found.extend(
-        turn.finish(&opts.ontology, &register, pack)
+        turn.finish(&opts.ontology, &register, pack, true)
             .into_iter()
             .map(|r| (r, 0)),
     );
