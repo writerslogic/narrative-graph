@@ -1,6 +1,6 @@
 # Contributing to narrative-graph
 
-Thanks for considering a contribution. narrative-graph turns prose into candidate relational facts with a rule-based, deterministic pipeline: no language model, no network call, no state between calls. Keep that scope in mind. Anything that needs a model, a store, or a project model belongs in a consuming application, not here.
+Thanks for considering a contribution. narrative-graph turns prose into candidate relational facts with a deterministic rule pipeline. The opt-in `model` feature can also score relations with a local checkpoint. Keep inference in-process and leave persistence and project state to consuming applications.
 
 ## Reporting bugs
 

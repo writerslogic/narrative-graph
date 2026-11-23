@@ -33,6 +33,11 @@ enum Command {
         /// Language of the text
         #[arg(long, value_enum, default_value_t = Lang::English)]
         language: Lang,
+
+        /// Directory containing a local student checkpoint
+        #[cfg(feature = "model")]
+        #[arg(long, value_name = "DIRECTORY")]
+        model: Option<PathBuf>,
     },
 }
 
@@ -54,6 +59,8 @@ fn main() -> anyhow::Result<()> {
         min_confidence,
         format,
         language,
+        #[cfg(feature = "model")]
+        model,
     } = Args::parse().command;
 
     let text = if input.as_os_str() == "-" {
@@ -76,6 +83,14 @@ fn main() -> anyhow::Result<()> {
             Lang::Chinese => Language::Chinese,
         },
     };
+    #[cfg(feature = "model")]
+    let candidates = match model {
+        Some(path) => {
+            narrative_graph::StudentModel::load(&path)?.extract_candidate_triples(&text, &opts)?
+        }
+        None => extract_candidate_triples(&text, &opts)?,
+    };
+    #[cfg(not(feature = "model"))]
     let candidates = extract_candidate_triples(&text, &opts)?;
 
     match write_candidates(&candidates, format) {

@@ -1,8 +1,9 @@
 # Architecture
 
-narrative-graph is a pure-heuristic pipeline: no model, no network call, no
-external process. Everything below runs in-process, sentence by sentence,
-inside `extract_candidate_triples` (`src/heuristic/mod.rs`).
+The default extractor runs its rules in-process, sentence by sentence,
+inside `extract_candidate_triples` (`src/heuristic/mod.rs`). The opt-in
+`StudentModel` runs a local encoder alongside the rules. It builds pairs
+from the names in each window and scores them with an ONNX checkpoint.
 
 ## Dependencies
 
@@ -13,7 +14,7 @@ pattern matching against a small closed vocabulary is hand-rolled byte and
 token scanning, not a regex engine, so there is no DFA-compile cost and no
 backtracking risk in the hot path.
 
-Every dependency is opt-in and serves a boundary rather than the core:
+Each dependency belongs to an opt-in feature.
 
 | Feature | Pulls in | For |
 |---|---|---|
@@ -23,6 +24,7 @@ Every dependency is opt-in and serves a boundary rather than the core:
 | `bindings` | `serde`, `ts-rs` | TypeScript declarations generated from the Rust types |
 | `node-api` | `napi`, `napi-derive`, `napi-build` (+ `bindings`, `json`) | The Node addon |
 | `cli` | `clap`, `anyhow` (+ `json`) | The `narrative-graph` binary |
+| `model` | Tract and SentencePiece (+ `json`) | Local DeBERTa inference |
 
 A Rust caller consuming `Vec<TripleCandidate>` directly never compiles any
 of them.

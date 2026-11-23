@@ -8,6 +8,8 @@ mod entities;
 mod events;
 mod kinds;
 mod knowledge;
+#[cfg(feature = "model")]
+pub mod model;
 pub mod pack;
 mod quotes;
 mod register;

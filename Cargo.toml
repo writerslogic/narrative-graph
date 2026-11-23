@@ -19,7 +19,7 @@ exclude = ["tests/corpus/", "tests/corpus.rs", "tests/real_text_eval.rs"]
 # Every public surface beyond the heuristic core sits behind an opt-in feature,
 # so the default build docs.rs would otherwise render omits it.
 [package.metadata.docs.rs]
-features = ["json", "bindings"]
+features = ["json", "bindings", "model"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -32,6 +32,8 @@ ts-rs = { version = "12", features = ["serde-compat"], optional = true }
 serde_json = { version = "1.0", optional = true }
 anyhow = { version = "1.0", optional = true }
 clap = { version = "4.4", features = ["derive"], optional = true }
+sentencepiece-rs = { version = "0.2.2", optional = true }
+tract-onnx = { version = "0.23.10", default-features = false, optional = true }
 
 [build-dependencies]
 napi-build = { version = "2.2", optional = true }
@@ -41,7 +43,7 @@ napi-build = { version = "2.2", optional = true }
 # The default build is dependency-free: the heuristic pipeline compiles against
 # the standard library alone. Every dependency below is opt-in, and exists only
 # to serve a boundary (JSON, TypeScript bindings, N-API, CLI) rather than the
-# extraction core.
+# extraction core. The student encoder is opt-in as well.
 [features]
 default = []
 serde = ["dep:serde"]
@@ -49,10 +51,15 @@ json = ["serde", "dep:serde_json"]
 bindings = ["serde", "dep:ts-rs"]
 node-api = ["dep:napi", "dep:napi-derive", "dep:napi-build", "bindings", "json"]
 cli = ["dep:clap", "dep:anyhow", "json"]
+model = ["json", "dep:anyhow", "dep:sentencepiece-rs", "dep:tract-onnx"]
 
 [[example]]
 name = "precision_sample"
 required-features = ["json"]
+
+[[example]]
+name = "student_corpus"
+required-features = ["model"]
 
 [[bin]]
 name = "narrative-graph"

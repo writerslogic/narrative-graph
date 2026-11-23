@@ -6,6 +6,8 @@ pub mod types;
 
 pub use calibration::{rule_calibration, CalibrationGroup, RuleCalibration};
 pub use error::{NarrativeGraphError, Result};
+#[cfg(feature = "model")]
+pub use heuristic::model::StudentModel;
 pub use heuristic::{
     analyze, analyze_document, analyze_document_in, analyze_in, extract_aggregates,
     extract_aggregates_in, extract_candidate_triples, extract_candidate_triples_in, find_conflicts,

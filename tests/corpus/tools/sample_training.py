@@ -14,6 +14,7 @@ import argparse
 import logging
 import random
 import re
+from itertools import pairwise
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -45,6 +46,22 @@ def names(s):
     return {t for t in re.findall(r"(?<![.!?] )(?<!^)\b[A-Z][a-z]+", s) if t not in STOP}
 
 
+def sentence_windows(text):
+    def byte_positions():
+        byte_at, done = 0, 0
+        for offset, sentence in sentences(text):
+            byte_at += len(text[done:offset].encode())
+            done = offset
+            yield byte_at, sentence
+
+    for (previous_at, previous), (start, sentence) in pairwise(byte_positions()):
+        yield start, (min(start - WINDOW, previous_at), start + len(sentence.encode()), previous, sentence)
+
+
+def overlaps(lo, hi, protected):
+    return any(lo < end and start < hi for start, end in protected)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("out", type=Path)
@@ -54,32 +71,26 @@ def main():
     labels = (ROOT / "labels.txt").read_text(encoding="utf-8")
     header = labels.split("\n@ ", 1)[0]
     evaluated = {}
-    for m in re.finditer(r"^@ \d+ (\d+) (\d+) .*\n~ .*\n(.*)\n", labels, re.M):
-        start = int(m.group(2))
-        evaluated.setdefault(m.group(1), []).append((start - WINDOW, start + len(m.group(3).encode())))
+    for book, start in re.findall(r"^@ \d+ (\d+) (\d+) ", labels, re.M):
+        evaluated.setdefault(book, []).append(int(start))
 
     rng = random.Random(20261123)
     items = []
     for book in BOOKS:
-        text = (ROOT / f"{book}.txt").read_text(encoding="utf-8")
-        sents = list(sentences(text))
+        text = (ROOT / f"{book}.txt").read_bytes().decode("utf-8")
+        windows = dict(sentence_windows(text))
+        protected = [windows[start][:2] for start in evaluated.get(book, [])]
         eligible = []
-        byte_at, done = 0, 0
-        for i, (offset, s) in enumerate(sents):
-            byte_at += len(text[done:offset].encode())
-            done = offset
-            if i == 0 or not 40 <= len(s) <= 350 or s.isupper() or re.match(r"\s*(CHAPTER|Chapter|VOLUME)", s):
+        for start, (lo, hi, _, s) in windows.items():
+            if not 40 <= len(s) <= 350 or s.isupper() or re.match(r"\s*(CHAPTER|Chapter|VOLUME)", s):
                 continue
             if not (len(names(s)) >= 2 or re.search(r"[“\"‘]", s) or (REL.search(s) and names(s))):
                 continue
-            lo, hi = byte_at - WINDOW, byte_at + len(s.encode())
-            if any(lo < e_hi and e_lo < hi for e_lo, e_hi in evaluated.get(book, [])):
-                continue
-            eligible.append((i, byte_at))
-        for i, byte_at in sorted(rng.sample(eligible, min(args.per_book, len(eligible)))):
-            s = sents[i][1]
-            assert text.encode()[byte_at : byte_at + len(s.encode())].decode() == s
-            items.append((book, byte_at, " ".join(sents[i - 1][1].split()), " ".join(s.split())))
+            if not overlaps(lo, hi, protected):
+                eligible.append(start)
+        for start in sorted(rng.sample(eligible, min(args.per_book, len(eligible)))):
+            _, _, previous, sentence = windows[start]
+            items.append((book, start, " ".join(previous.split()), " ".join(sentence.split())))
 
     body = "".join(
         f"@ {n} {book} {start} training | {book}\n~ {prev}\n{s}\n=\n\n"

@@ -332,9 +332,9 @@ and `speaks_to` is the most frequent relation.
 - The classifier: a teacher (a local model through ollama) is first scored on
   the even half with the same matcher; only if it does well is it used to
   label training text, with every evaluated window excluded. The student is a
-  small fine-tuned encoder (DeBERTa-v3-small or ModernBERT-base class) run in
-  pure Rust through `candle`, behind an opt-in `model` feature; it scores
-  candidate pairs and resolves described mentions. A linear model cannot reach
+  small fine-tuned encoder run locally through Tract behind the opt-in `model`
+  feature. It scores candidate pairs and resolves described mentions.
+  A linear model cannot reach
   the target: most labels need coreference or a speaker carried across turns.
   The rule pipeline stays the dependency-free default and supplies features. Training text for shipped weights is public domain plus the
   author's own writing, not the commercial novels.
@@ -550,3 +550,30 @@ described 52/87. Several of the 26 false positives are spellings the matcher
 does not join (`Adela` for Adèle, `Lizzy` for Elizabeth). That is at the bar
 set for a usable teacher (about 0.6 and 0.7), against 0.206 and 0.163 for
 qwen3:14b. Answers: `/Volumes/C/ng-teacher/public-even-astra.raw.txt`.
+
+### Local student (2026-11-23)
+
+The teacher labeled 2,004 public-domain training windows and returned 2,361
+claims. The batch state, sample, and answers are in
+`/Volumes/C/ng-teacher/student`. The DeBERTa-v3-small run used 1,405 training
+windows and 396 validation windows. It selected epoch one and a threshold of
+0.16 on teacher validation, where precision was 0.260 and recall was 0.198.
+A trial that scored name tokens at their locations in the passage reached
+0.187 validation F1. The selected checkpoint reached 0.225.
+
+| Extractor | Even recall | Even precision | Odd recall | Odd precision |
+|---|---:|---:|---:|---:|
+| Conversation resolver | 0.075 | 0.727 | 0.034 | 0.571 |
+| Conversation resolver and student | 0.113 | 0.353 | 0.102 | 0.375 |
+| Paid teacher | 0.585 | 0.705 | — | — |
+
+Recall covers all tiers. The student scored the sampled sentence spans with
+book context. The rules and the matcher used the same revision as the
+conversation resolver comparison (`081c2ad`). On public even, the student had
+both candidate names for 77 of 98 usable claims. The combined run found 12
+of 106 claims with 22 false positives. It found 12 of 118 on the held-out
+half with 20 false positives.
+
+The `model` feature serves the ONNX export with Tract and SentencePiece.
+The trained checkpoint is at `/Volumes/C/ng-teacher/student/deberta-v3-small-ranked`.
+See the [training and evaluation commands](../tests/corpus/README.md#local-student).
