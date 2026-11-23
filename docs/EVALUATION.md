@@ -381,3 +381,53 @@ once. Private described labels are mostly nameless (`[the man]`).
   recall 0.093 over all tiers and 0.135 over the matchable labels, precision
   0.136 over 103 extractions. Most false positives are invented relations or
   common nouns as sides. Not good enough to label training text.
+
+### Labels revised onto the vocabulary (2026-11-22)
+
+Chosen over scoring only matchable labels, a synonym table in the matcher, or
+a lower target. `tests/corpus/tools/revise_relations.py` rewrites an invented
+relation to the guide relation that says the same (`scolds` and `warns` to
+`speaks_to`, `has_home_in` to `lives_in`, `distrusts` to a denied `trusts`,
+`visits` a person to `meets`) and comments out the rest as `# outside the
+vocabulary:`, since an invented name used once can neither be learned nor
+ruled for. A denied label is never rewritten: denying a specific act is not
+denying the broader relation. Public: 9 rewritten, 98 outside the
+vocabulary (9 of them `visits` to a place), 5 duplicates of an existing
+label; private: 12, 94 and 1 (backups `labels.before-relations.txt`,
+`labels.before-names.txt`). Eight private nameless sides got the name the
+book gives them, checked against the text; the other 51 are never named
+(most of them in *Outline*). The guide now says to leave a relation out when
+none fits.
+
+`visits` joined the guide's verbs afterwards, so the 7 public and 3 private
+`visits` labels to a place are scored again.
+
+| set, half | labels | ceiling | library recall |
+|---|---|---|---|
+| public even | 106 | 0.925 | 0.028 |
+| public odd | 118 | 0.915 | 0.000 |
+| private even | 78 | 0.667 | 0.000 |
+| private odd | 77 | 0.675 | 0.026 |
+
+The private ceiling stays under 0.7 because of the never-named sides, so the
+target (recall 0.7, precision 0.8) applies to the public odd half only; the
+private set is reported, never gated.
+
+Teacher, qwen3:14b without thinking, public even, on these labels before
+`visits` was restored (102 labels). Runs
+before v3 sliced the book by characters at a byte offset, so their context
+came from later in the book; v3 decodes from the byte offset and adds the `~`
+line.
+
+| prompt | recall all tiers | over matchable | precision |
+|---|---|---|---|
+| v1, guide only, wrong context | 0.137 | 0.149 | 0.136 |
+| v2, vocabulary and named sides required, wrong context | 0.108 | 0.117 | 0.147 |
+| v3, as v2 with the right context | 0.206 | 0.223 | 0.163 |
+
+v3 finds 6/9 stated, 1/8 implied and 14/85 described labels with 108 false
+positives: speaker and listener reversed, and background kinship the
+sentence does not state ("Mrs. Bennet | mother_of" every daughter). With
+thinking on it takes about eight minutes an item. Too weak to label training
+text, so the next work is the rule path for `speaks_to`, about 45% of public
+labels: conversation turns, pronoun speakers, and the narrator's identity.
