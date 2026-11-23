@@ -56,6 +56,8 @@ export interface NapiOptions {
   minConfidence?: number
   rejections?: Array<NapiRejection>
   ontology?: Record<string, string>
+  /** `"english"` (the default) or `"chinese"`. */
+  language?: string
 }
 
 export interface NapiRejection {

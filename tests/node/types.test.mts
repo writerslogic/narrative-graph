@@ -9,6 +9,7 @@ const opts: NapiOptions = {
   aliases: { Marco: 'marco_reyes' },
   minConfidence: 0.5,
   ontology: { mentors: 'mentorship' },
+  language: 'english',
 }
 const withOpts: NapiTripleCandidate[] = extractCandidateTriplesNapi('Marco mentors Dev.', opts)
 void withOpts

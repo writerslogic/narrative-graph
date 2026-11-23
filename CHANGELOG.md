@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Chinese, traditional or simplified, through `Options::language`
+  (`language: 'chinese'` in Node, `--language chinese` in the CLI). It has a
+  reader of its own: names come from the caller's `aliases`, matched as
+  literal character runs, and from a surname followed by a title (王夫人,
+  邢氏). It reads kinship and service from a genitive (賈赦之妻邢氏) or a
+  copula (李氏即賈珠之妻), marriage from 娶 and 嫁, and `speaks_to` from
+  speech aimed at someone (寶玉便問襲人) or a quotation that opens on a name.
+  Denials (並非) are kept as denials and conditionals (若是) assert nothing.
+
+### Changed
+- `Options` has a new public field, `language`, so a struct literal that
+  names every field must add it (or use `..Default::default()`).
+
 ## [0.2.0] - 2026-11-23
 
 ### Added
