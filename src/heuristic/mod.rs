@@ -1,4 +1,5 @@
 mod aggregate;
+mod chinese;
 mod context;
 mod cooccurrence;
 mod dialogue;
@@ -10,7 +11,9 @@ mod register;
 mod relations;
 mod segment;
 
-use crate::types::{AggregateTriple, Analysis, Conflict, Options, Polarity, TripleCandidate};
+use crate::types::{
+    AggregateTriple, Analysis, Conflict, Language, Options, Polarity, TripleCandidate,
+};
 use crate::Result;
 use pack::LanguagePack;
 use std::collections::btree_map::Entry;
@@ -130,9 +133,8 @@ pub(crate) struct Emitted {
 /// `dedup_candidates` keeps one candidate per triple and drops the spans of the
 /// rest, so anything that needs them has to read this list, not that output.
 ///
-/// Reading the whole vocabulary from one pack; selecting a pack is a
-/// caller-facing decision that waits on a second pack existing, so this stays
-/// internal and the public entry points supply English.
+/// English reads its vocabulary from `pack`; `Options::language` selects
+/// Chinese, which has a reader of its own (`chinese.rs`).
 fn collect_candidates(
     text: &str,
     opts: &Options,
@@ -158,7 +160,14 @@ fn collect_candidates(
         .map(|r| (r.subject.as_str(), r.relation.as_str(), r.object.as_str()))
         .collect();
 
-    let mut candidates = Vec::new();
+    if opts.language == Language::Chinese {
+        let found = chinese::relations(text, opts)
+            .into_iter()
+            .map(|r| (r, 0))
+            .collect();
+        return Ok(emit(found, min_confidence, &rejected));
+    }
+
     // Referents named by the previous sentence, for pronouns with no antecedent
     // of their own. Cleared at paragraph breaks.
     let mut carried: Vec<String> = Vec::new();
@@ -263,8 +272,19 @@ fn collect_candidates(
                     .any(|n| common.contains(*n) || pack.sentence_openers.contains(&n.as_str())))
     });
 
-    // Each span is relative to its offset: the sentence's start, or 0 for a
-    // paragraph-level candidate whose span is already absolute.
+    Ok(emit(found, min_confidence, &rejected))
+}
+
+/// Score, filter and convert what the readers found.
+///
+/// Each span is relative to its offset: the sentence's start, or 0 for a
+/// paragraph-level candidate whose span is already absolute.
+fn emit(
+    found: Vec<(relations::RelationCandidate, usize)>,
+    min_confidence: f32,
+    rejected: &BTreeSet<(&str, &str, &str)>,
+) -> Vec<Emitted> {
+    let mut candidates = Vec::new();
     for (rel, offset) in found {
         let confidence = cooccurrence::score_confidence(rel.base, rel.gap);
 
@@ -298,7 +318,7 @@ fn collect_candidates(
         }
     }
 
-    Ok(candidates)
+    candidates
 }
 
 fn dedup_candidates(candidates: &mut Vec<TripleCandidate>) {

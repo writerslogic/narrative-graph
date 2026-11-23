@@ -105,7 +105,7 @@ Every candidate carries a confidence score from the extraction rule's pattern st
 | Item | What it does |
 |------|-------------|
 | `extract_candidate_triples(text, &Options)` | Run the heuristic pipeline over a passage |
-| `Options { aliases, min_confidence, rejections, ontology }` | Alias map, confidence floor, rejected triples, relation-vocabulary overrides |
+| `Options { aliases, min_confidence, rejections, ontology, language }` | Alias map, confidence floor, rejected triples, relation-vocabulary overrides, and the text's language (`Language::English` by default, or `Language::Chinese`) |
 | `TripleCandidate { subject, relation, object, confidence, span, rule }` | One candidate fact; `span` is a byte range into the input, `rule` names the pattern that produced it |
 | `extract_aggregates(text, &Options)` | Same pipeline, collapsed per fact instead of per sentence: one entry per triple, ordered by where the document first states it |
 | `AggregateTriple { subject, relation, object, polarity, confidence, spans, rules }` | One fact with every span that stated it; `confidence` is the best of them, and repetition does not raise it |
@@ -120,7 +120,10 @@ Every candidate carries a confidence score from the extraction rule's pattern st
 
 ```bash
 narrative-graph extract chapter.txt --min-confidence 0.6 --format json
+narrative-graph extract 紅樓夢.txt --language chinese
 ```
+
+The CLI takes no alias map, so on Chinese text it finds only names written with a title (王夫人, 邢氏); bare given names such as 黛玉 need `aliases` through the library.
 
 Installed alongside the crate (`cargo install narrative-graph --features cli` provides the `narrative-graph` binary), the same way `holographic-memory` ships `hms-admin` and `hms-eval` as bins in its own crate rather than separate packages. Useful for shell pipelines, CI checks, and inspecting output before wiring the library into an application.
 
@@ -138,7 +141,7 @@ Installed alongside the crate (`cargo install narrative-graph --features cli` pr
 
 Spans in Node are UTF-16 code unit offsets, so `text.slice(span[0], span[1])` returns the evidence. The Rust API reports UTF-8 byte offsets; the two differ on non-ASCII text.
 
-`opts` accepts `aliases`, `minConfidence`, `rejections`, and `ontology`. Full TypeScript definitions ship in the package (`index.d.ts`), generated from the Rust types via `ts-rs` — treat them as the source of truth over this table.
+`opts` accepts `aliases`, `minConfidence`, `rejections`, `ontology`, and `language` (`'english'` or `'chinese'`). Full TypeScript definitions ship in the package (`index.d.ts`), generated from the Rust types via `ts-rs` — treat them as the source of truth over this table.
 
 </details>
 

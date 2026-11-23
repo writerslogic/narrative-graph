@@ -181,3 +181,21 @@ test('analyze returns the three results, synchronously and on the worker pool', 
   assert.deepEqual(await analyzeAsyncNapi(text), sync)
   assert.throws(() => analyzeAsyncNapi(text, { minConfidence: 2 }), /confidence threshold/i)
 })
+
+test('reads Chinese when asked, with spans in UTF-16 units', () => {
+  const text = '時賈赦之妻邢氏忙亦起身．'
+  const candidates = extractCandidateTriplesNapi(text, {
+    language: 'chinese',
+    aliases: { 賈赦: 'jia_she' },
+  })
+  assert.equal(candidates.length, 1)
+  const [candidate] = candidates
+  assert.equal(candidate.subject, '邢氏')
+  assert.equal(candidate.relation, 'wife_of')
+  assert.equal(candidate.object, 'jia_she')
+  assert.equal(text.slice(candidate.span[0], candidate.span[1]), '賈赦之妻邢氏')
+})
+
+test('rejects an unknown language', () => {
+  assert.throws(() => extractCandidateTriplesNapi('text', { language: 'klingon' }), /Unknown language/)
+})

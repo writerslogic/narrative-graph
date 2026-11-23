@@ -10,7 +10,7 @@ use napi_derive::napi;
 
 use crate::heuristic::{analyze, extract_aggregates, extract_candidate_triples, find_conflicts};
 use crate::types::{
-    AggregateTriple, Analysis, Conflict, ConflictKind, Options, Polarity, Rejection,
+    AggregateTriple, Analysis, Conflict, ConflictKind, Language, Options, Polarity, Rejection,
     TripleCandidate,
 };
 
@@ -180,6 +180,16 @@ fn to_options(opts: Option<NapiOptions>) -> napi::Result<Options> {
             })
             .collect(),
         ontology: napi_opts.ontology.unwrap_or_default().into_iter().collect(),
+        language: match napi_opts.language.as_deref() {
+            None | Some("english") => Language::English,
+            Some("chinese") => Language::Chinese,
+            Some(other) => {
+                return Err(napi::Error::new(
+                    napi::Status::InvalidArg,
+                    format!("Unknown language {other:?}; expected \"english\" or \"chinese\""),
+                ))
+            }
+        },
     })
 }
 
@@ -286,6 +296,8 @@ pub struct NapiOptions {
     pub min_confidence: Option<f64>,
     pub rejections: Option<Vec<NapiRejection>>,
     pub ontology: Option<std::collections::HashMap<String, String>>,
+    /// `"english"` (the default) or `"chinese"`.
+    pub language: Option<String>,
 }
 
 #[napi(object)]

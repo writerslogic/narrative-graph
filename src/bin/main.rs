@@ -1,6 +1,6 @@
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
-use narrative_graph::{extract_candidate_triples, Options};
+use narrative_graph::{extract_candidate_triples, Language, Options};
 use std::fs;
 use std::io::{self, BufWriter, Read, Write};
 use std::path::PathBuf;
@@ -29,7 +29,17 @@ enum Command {
         /// Output format
         #[arg(long, value_enum, default_value_t = Format::Text)]
         format: Format,
+
+        /// Language of the text
+        #[arg(long, value_enum, default_value_t = Lang::English)]
+        language: Lang,
     },
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum Lang {
+    English,
+    Chinese,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -43,6 +53,7 @@ fn main() -> anyhow::Result<()> {
         input,
         min_confidence,
         format,
+        language,
     } = Args::parse().command;
 
     let text = if input.as_os_str() == "-" {
@@ -60,6 +71,10 @@ fn main() -> anyhow::Result<()> {
         min_confidence: Some(min_confidence),
         rejections: Default::default(),
         ontology: Default::default(),
+        language: match language {
+            Lang::English => Language::English,
+            Lang::Chinese => Language::Chinese,
+        },
     };
     let candidates = extract_candidate_triples(&text, &opts)?;
 
