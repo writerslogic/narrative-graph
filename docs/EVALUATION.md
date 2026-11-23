@@ -380,7 +380,8 @@ once. Private described labels are mostly nameless (`[the man]`).
   cast of frequent names and the label guide as the prompt, public even:
   recall 0.093 over all tiers and 0.135 over the matchable labels, precision
   0.136 over 103 extractions. Most false positives are invented relations or
-  common nouns as sides. Not good enough to label training text.
+  common nouns as sides. Superseded: this run sliced the book at the wrong
+  offset; see the v3 table under "Labels revised onto the vocabulary".
 
 ### Labels revised onto the vocabulary (2026-11-22)
 
@@ -455,6 +456,9 @@ line break, only at a paragraph break.
 | before | 0.028 | 1.000 (3 of 3) |
 | forward tracker | 0.057 | 0.750 (6 of 8) |
 | conversation resolver | 0.075 | 0.727 (8 of 11) |
+
+Public odd, scored once at this milestone: recall 0.034 over all tiers,
+precision 0.571 (4 of 7).
 
 Private: even 0.000, odd 0.039 at precision 0.750. That is far below the
 target, so the rule path alone will not reach it: most remaining `speaks_to`
