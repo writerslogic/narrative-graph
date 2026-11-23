@@ -536,6 +536,10 @@ fn interrupted(sentence: &str, m: &EntityCandidate, quotes: &QuoteMap) -> bool {
     let Some((open, close)) = quotes.range_at(m.start) else {
         return false;
     };
+    // A mention that runs past the closing mark is not wholly quoted.
+    if m.end > close {
+        return false;
+    }
     let alone = |s: &str| {
         s.chars()
             .all(|c| c.is_whitespace() || c == ',' || is_quote_mark(c))
