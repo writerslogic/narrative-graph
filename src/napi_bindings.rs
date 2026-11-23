@@ -4,7 +4,7 @@
 //! unit `String.prototype.slice` takes. The Rust API reports UTF-8 byte
 //! offsets; the two agree only on ASCII text.
 
-use napi::bindgen_prelude::AsyncTask;
+use napi::bindgen_prelude::{AsyncTask, External};
 use napi::{Env, Task};
 use napi_derive::napi;
 
@@ -574,116 +574,127 @@ fn to_napi_fact(f: FactOccurrence, offsets: &Utf16Offsets) -> NapiFactOccurrence
     }
 }
 
-#[napi]
-pub struct NarrativeSeries {
+pub struct SeriesBinding {
     series: Series,
     offsets: BTreeMap<ChapterPosition, Utf16Offsets>,
 }
 
+#[napi(ts_return_type = "unknown")]
+pub fn create_series(opts: Option<NapiOptions>) -> napi::Result<External<SeriesBinding>> {
+    Ok(External::new(SeriesBinding {
+        series: Series::new(to_options(opts)?),
+        offsets: BTreeMap::new(),
+    }))
+}
+
 #[napi]
-impl NarrativeSeries {
-    #[napi(constructor)]
-    pub fn new(opts: Option<NapiOptions>) -> napi::Result<Self> {
-        Ok(Self {
-            series: Series::new(to_options(opts)?),
-            offsets: BTreeMap::new(),
-        })
+pub fn update_series_chapter(
+    #[napi(ts_arg_type = "unknown")] binding: &mut External<SeriesBinding>,
+    book: f64,
+    chapter: f64,
+    revision: f64,
+    text: String,
+) -> napi::Result<bool> {
+    let position = chapter_position(book, chapter)?;
+    let revision = bounded_integer(revision, (1u64 << 53) - 1, "revision")?;
+    if binding.series.chapter_revision(position) == Some(revision) {
+        return Ok(false);
     }
-
-    #[napi]
-    pub fn update_chapter(
-        &mut self,
-        book: f64,
-        chapter: f64,
-        revision: f64,
-        text: String,
-    ) -> napi::Result<bool> {
-        let position = chapter_position(book, chapter)?;
-        let revision = bounded_integer(revision, (1u64 << 53) - 1, "revision")?;
-        if self.series.chapter_revision(position) == Some(revision) {
-            return Ok(false);
-        }
-        let offsets = Utf16Offsets::new(&text)?;
-        let updated = self
-            .series
-            .update_chapter(position, revision, &text)
-            .map_err(failure)?;
-        if updated {
-            let document = self
-                .series
-                .chapter(position)
-                .expect("updated chapter is indexed");
-            self.offsets
-                .insert(position, offsets.for_document(document));
-        }
-        Ok(updated)
-    }
-
-    #[napi]
-    pub fn remove_chapter(&mut self, book: f64, chapter: f64) -> napi::Result<bool> {
-        let position = chapter_position(book, chapter)?;
-        self.offsets.remove(&position);
-        Ok(self.series.remove_chapter(position))
-    }
-
-    #[napi]
-    pub fn chapter(&self, book: f64, chapter: f64) -> napi::Result<Option<NapiDocumentAnalysis>> {
-        let position = chapter_position(book, chapter)?;
-        Ok(self
+    let offsets = Utf16Offsets::new(&text)?;
+    let updated = binding
+        .series
+        .update_chapter(position, revision, &text)
+        .map_err(failure)?;
+    if updated {
+        let document = binding
             .series
             .chapter(position)
-            .map(|document| to_napi_document(document.clone(), &self.offsets[&position])))
+            .expect("updated chapter is indexed");
+        let offsets = offsets.for_document(document);
+        binding.offsets.insert(position, offsets);
     }
+    Ok(updated)
+}
 
-    #[napi]
-    pub fn aggregates(&self) -> Vec<NapiSeriesAggregate> {
-        self.series
-            .aggregates()
-            .into_iter()
-            .map(|a| NapiSeriesAggregate {
-                subject: a.subject,
-                relation: a.relation,
-                object: a.object,
-                polarity: polarity(a.polarity),
-                confidence: f64::from(a.confidence),
-                rules: a.rules,
-                spans: a
-                    .spans
-                    .into_iter()
-                    .map(|s| NapiChapterSpan {
-                        book: s.position.book,
-                        chapter: s.position.chapter,
-                        span: self.offsets[&s.position].span(s.span),
-                    })
-                    .collect(),
-            })
-            .collect()
-    }
+#[napi]
+pub fn remove_series_chapter(
+    #[napi(ts_arg_type = "unknown")] binding: &mut External<SeriesBinding>,
+    book: f64,
+    chapter: f64,
+) -> napi::Result<bool> {
+    let position = chapter_position(book, chapter)?;
+    binding.offsets.remove(&position);
+    Ok(binding.series.remove_chapter(position))
+}
 
-    #[napi]
-    pub fn relationship_history(
-        &self,
-        person: String,
-        other: String,
-    ) -> Vec<NapiChapterFactOccurrence> {
-        self.series
-            .relationship_history(&person, &other)
-            .map(|(position, fact)| NapiChapterFactOccurrence {
-                book: position.book,
-                chapter: position.chapter,
-                fact: to_napi_fact(fact.clone(), &self.offsets[&position]),
-            })
-            .collect()
-    }
+#[napi]
+pub fn series_chapter(
+    #[napi(ts_arg_type = "unknown")] binding: &External<SeriesBinding>,
+    book: f64,
+    chapter: f64,
+) -> napi::Result<Option<NapiDocumentAnalysis>> {
+    let position = chapter_position(book, chapter)?;
+    Ok(binding
+        .series
+        .chapter(position)
+        .map(|document| to_napi_document(document.clone(), &binding.offsets[&position])))
+}
 
-    #[napi]
-    pub fn characters(&self) -> Vec<NapiCharacterProfile> {
-        self.series
-            .characters()
-            .into_iter()
-            .map(to_napi_profile)
-            .collect()
-    }
+#[napi]
+pub fn series_aggregates(
+    #[napi(ts_arg_type = "unknown")] binding: &External<SeriesBinding>,
+) -> Vec<NapiSeriesAggregate> {
+    binding
+        .series
+        .aggregates()
+        .into_iter()
+        .map(|a| NapiSeriesAggregate {
+            subject: a.subject,
+            relation: a.relation,
+            object: a.object,
+            polarity: polarity(a.polarity),
+            confidence: f64::from(a.confidence),
+            rules: a.rules,
+            spans: a
+                .spans
+                .into_iter()
+                .map(|s| NapiChapterSpan {
+                    book: s.position.book,
+                    chapter: s.position.chapter,
+                    span: binding.offsets[&s.position].span(s.span),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+#[napi]
+pub fn series_relationship_history(
+    #[napi(ts_arg_type = "unknown")] binding: &External<SeriesBinding>,
+    person: String,
+    other: String,
+) -> Vec<NapiChapterFactOccurrence> {
+    binding
+        .series
+        .relationship_history(&person, &other)
+        .map(|(position, fact)| NapiChapterFactOccurrence {
+            book: position.book,
+            chapter: position.chapter,
+            fact: to_napi_fact(fact.clone(), &binding.offsets[&position]),
+        })
+        .collect()
+}
+
+#[napi]
+pub fn series_characters(
+    #[napi(ts_arg_type = "unknown")] binding: &External<SeriesBinding>,
+) -> Vec<NapiCharacterProfile> {
+    binding
+        .series
+        .characters()
+        .into_iter()
+        .map(to_napi_profile)
+        .collect()
 }
 
 fn chapter_position(book: f64, chapter: f64) -> napi::Result<ChapterPosition> {

@@ -163,7 +163,7 @@ Installed alongside the crate (`cargo install narrative-graph --features cli` pr
 
 Spans in Node are UTF-16 code unit offsets, so `text.slice(span[0], span[1])` returns the evidence. The Rust API reports UTF-8 byte offsets; the two differ on non-ASCII text.
 
-`opts` accepts `aliases`, `minConfidence`, `rejections`, `ontology`, and `language` (`'english'` or `'chinese'`). Full TypeScript definitions ship in the package (`index.d.ts`), generated from the Rust types via `ts-rs` — treat them as the source of truth over this table.
+`opts` accepts `aliases`, `minConfidence`, `rejections`, `ontology`, and `language` (`'english'` or `'chinese'`). The package exports TypeScript definitions through `index.d.ts`.
 
 </details>
 

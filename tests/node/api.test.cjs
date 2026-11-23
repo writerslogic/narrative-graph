@@ -77,6 +77,16 @@ test('chapter views retain each dialogue span and relationship changes', () => {
   assert.equal(second.slice(...history[1].fact.candidate.span), 'Dev married Nora')
 })
 
+test('series instances keep separate chapter state across entry points', async () => {
+  const { NarrativeSeries: ESMSeries } = await import('narrative-graph')
+  const first = new NarrativeSeries()
+  const second = new ESMSeries()
+  assert.equal(first.updateChapter(1, 1, 1, 'Nora married Dev.'), true)
+  assert.equal(second.chapter(1, 1), null)
+  assert.throws(() => first.removeChapter.call(second.chapter(1, 1), 1, 1), TypeError)
+  assert.equal(first.chapter(1, 1).timeline[0].state, 'married')
+})
+
 test('extracts a possessive-sister relation with a confident score', () => {
   const candidates = extractCandidateTriplesNapi("Elena is Marco's sister.")
 
