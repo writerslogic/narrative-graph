@@ -4,6 +4,40 @@ use narrative_graph::{
 };
 
 #[test]
+fn character_profiles_reject_sentence_initial_common_nouns_but_keep_established_names() {
+    let document = analyze_document(
+        "About books. About books, Jane met Lydia. Jane wrote about books, and the story was about a book about people.",
+        &Options::default(),
+    )
+    .unwrap();
+    let ids: Vec<_> = document
+        .characters
+        .iter()
+        .map(|profile| profile.id.as_str())
+        .collect();
+    assert!(ids.contains(&"jane"), "{ids:?}");
+    assert!(ids.contains(&"lydia"), "{ids:?}");
+    assert!(!ids.contains(&"about"), "{ids:?}");
+    assert!(!ids.contains(&"books"), "{ids:?}");
+}
+
+#[test]
+fn common_role_descriptions_remain_character_profiles() {
+    let document = analyze_document(
+        "Wife met Husband. Wife returned home. Husband returned home.",
+        &Options::default(),
+    )
+    .unwrap();
+    let ids: Vec<_> = document
+        .characters
+        .iter()
+        .map(|profile| profile.id.as_str())
+        .collect();
+    assert!(ids.contains(&"wife"), "{ids:?}");
+    assert!(ids.contains(&"husband"), "{ids:?}");
+}
+
+#[test]
 fn dialogue_counts_complete_utterances_with_exact_source_spans() {
     let text = concat!(
         "“Marco, follow me.\nWe’re late 🦊,” said Nora. “Nora, wait,” said Marco.\n\n",

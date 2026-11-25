@@ -105,9 +105,38 @@ impl<'a> Document<'a> {
     fn learn_descriptions(&mut self, pack: &LanguagePack) {
         let mut genders = BTreeSet::new();
         let mut denied = BTreeSet::new();
+        let document_text = self
+            .sentences
+            .iter()
+            .map(|sentence| sentence.text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let candidate_names: BTreeSet<_> = self
+            .sentences
+            .iter()
+            .flat_map(|sentence| {
+                sentence
+                    .named
+                    .iter()
+                    .map(|mention| mention.normalized.as_str())
+            })
+            .collect();
+        let common_names = dialogue::common_words(&document_text, candidate_names.into_iter());
         for sentence in &mut self.sentences {
             for m in &sentence.named {
-                if is_possible_person(sentence.text, m, &self.register, pack) {
+                let role_description = m
+                    .text
+                    .split_whitespace()
+                    .last()
+                    .map(|word| {
+                        word.trim_matches(|ch: char| !ch.is_alphabetic())
+                            .to_lowercase()
+                    })
+                    .is_some_and(|word| is_family_role(&word) || role_gender(&word).is_some());
+                if role_description
+                    || (is_character_profile_candidate(sentence.text, m, &self.register, pack)
+                        && !common_names.contains(&m.normalized))
+                {
                     self.aliases
                         .entry(m.normalized.clone())
                         .or_default()
@@ -268,6 +297,16 @@ impl<'a> Document<'a> {
                 gender: self.register.gender(id),
                 family: Vec::new(),
             });
+        }
+        for name in self.roles.values().flatten() {
+            profiles
+                .entry(name.as_str())
+                .or_insert_with(|| CharacterProfile {
+                    id: name.clone(),
+                    aliases: Vec::new(),
+                    gender: self.register.gender(name),
+                    family: Vec::new(),
+                });
         }
         for (description, names) in &self.descriptions {
             if let Some(profile) =
@@ -576,6 +615,22 @@ fn is_possible_person(
         kinds::classify(text, mention, register, pack),
         Kind::Person | Kind::Unknown
     )
+}
+
+fn is_character_profile_candidate(
+    text: &str,
+    mention: &EntityCandidate,
+    register: &Register,
+    pack: &LanguagePack,
+) -> bool {
+    match kinds::classify(text, mention, register, pack) {
+        Kind::Person => true,
+        Kind::Unknown => {
+            register.is_established(&mention.normalized)
+                || mention.text.split_whitespace().count() > 1
+        }
+        Kind::Place | Kind::Org | Kind::Thing => false,
+    }
 }
 
 fn is_definition(sentence: &Sentence<'_>, start: usize, end: usize) -> bool {
